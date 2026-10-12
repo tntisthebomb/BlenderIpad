@@ -1,0 +1,34 @@
+name: Validate native Blender browser platform
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'native/browser/**'
+      - 'patches/**'
+      - 'browser-port.lock.json'
+      - 'port.lock.json'
+      - 'scripts/*browser*.py'
+      - 'tests/ghost_platform_test.py'
+      - '.github/workflows/browser-platform.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-platform:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out project
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Compile stable Blender GHOST for WebAssembly
+        run: python3 scripts/build_browser_platform.py
+      - name: Install browser test runner
+        run: |
+          python3 -m venv .cache/browser-tests
+          .cache/browser-tests/bin/python -m pip install playwright==1.62.0
+      - name: Validate native event delivery and lifecycle
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+        run: .cache/browser-tests/bin/python tests/ghost_platform_test.py

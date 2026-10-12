@@ -1,0 +1,21 @@
+--- a/contrib/libtests/pngvalid.c
++++ b/contrib/libtests/pngvalid.c
+@@ -821,11 +821,13 @@
+ static void
+ store_freebuffer(png_store_buffer* psb)
+ {
+-   if (psb->prev)
+-   {
+-      store_freebuffer(psb->prev);
+-      free(psb->prev);
+-      psb->prev = NULL;
++   png_store_buffer *current = psb->prev;
++   psb->prev = NULL;
++   while (current != NULL)
++   {
++      png_store_buffer *previous = current->prev;
++      free(current);
++      current = previous;
+    }
+ }
+ 

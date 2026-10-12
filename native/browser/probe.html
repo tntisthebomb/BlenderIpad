@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blender native browser platform probe</title>
+<style>
+body{font:16px system-ui;background:#222;color:#ddd;margin:24px}canvas{display:block;width:800px;max-width:100%;height:450px;background:#30343a;outline:2px solid #e99b61;touch-action:none;-webkit-user-select:none;user-select:none}pre{white-space:pre-wrap}button{margin:12px 0;padding:12px}
+</style>
+<h1>Blender 5.2.2 native GHOST platform</h1>
+<p>Development probe: real Blender window registration and native event dispatch. No graphics backend or Blender interface is attached yet.</p>
+<canvas id="canvas" tabindex="0" aria-label="Native Blender input target"></canvas>
+<button id="outside">Move focus outside the native window</button>
+<pre id="status">Loading native GHOST module…</pre>
+<script src="./ghost-platform-probe.js"></script>
+<script>
+(async function () {
+  const output = document.getElementById('status');
+  try {
+    window.nativeGhost = await BlenderGhostNative({canvas:document.getElementById('canvas')});
+    if (!nativeGhost._ghost_probe_init()) throw new Error('Native GHOST initialization failed');
+    window.nativeGhostSnapshot = function () {
+      nativeGhost._ghost_probe_tick();
+      return JSON.parse(nativeGhost.ccall('ghost_probe_snapshot', 'string', [], []));
+    };
+    function tick() {
+      output.textContent = JSON.stringify(nativeGhostSnapshot(), null, 2);
+      requestAnimationFrame(tick);
+    }
+    tick();
+    document.body.dataset.ready = 'true';
+  } catch (error) { output.textContent = error.message; document.body.dataset.ready = 'failed'; }
+})();
+</script>
+</html>

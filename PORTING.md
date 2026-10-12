@@ -4,6 +4,8 @@ Target: Blender 5.2.2 LTS, exact commit in `port.lock.json`, on Safari and Home 
 
 ## What the current build proves
 
+The native browser build now compiles Blender's real GHOST system factory, event queue, window manager, timers, allocator and logging, with a browser implementation adapted for this stable source release. Chromium tests exercise keyboard, UTF-8 text, left/right modifiers, blur release, mouse, touch, wheel, resize, redraw and lifecycle cleanup. The platform currently accepts only `GHOST_kDrawingContextTypeNone`; graphics requests fail explicitly. See [BROWSER_PORT.md](BROWSER_PORT.md) for reproducible commands and the full-application configuration diagnostic.
+
 Selected upstream `blenlib` C++ implementation files compile with WASI SDK 25 and execute inside the browser. The wrapper exposes transformation, matrix inversion, interpolation and normalization. Assertions remain enabled and abort on failure. `MATH_STANDALONE` uses Blender's supported scalar inversion implementation instead of the Eigen C API. The build neither patches upstream source nor links the complete Blender application.
 
 ## 1. Browser build target and dependencies
@@ -12,9 +14,9 @@ The upstream top-level `CMakeLists.txt` loads Unix, Windows or Apple platform co
 
 Add an explicit Emscripten platform configuration, with separate native builds for code generators and browser builds for runtime code. Audit target sizes and alignment assumptions. Cross-compile required libraries, beginning with allocation, compression, images/fonts, geometry and the Python runtime. Preserve assertions and dependency integrity checks.
 
-The attempted Emscripten 4.0.18 installation was blocked by proxy policy for `storage.googleapis.com`, its official SDK artifact host. That domain is saved in the environment draft. No Emscripten artifact was installed or used after the failed download. The working math build uses a checksum-pinned WASI SDK from GitHub instead. WASI by itself does not supply Blender's browser event loop, windowing, GPU or filesystem integration.
+Emscripten 4.0.18 is installed and pinned in `browser-port.lock.json`. The native GHOST browser target builds with it. The older math workbench retains its separate checksum-pinned WASI SDK. WASI alone does not supply Blender's browser windowing, GPU or filesystem integration.
 
-Before a full build, fetch required LFS assets using existing GitHub proxy authentication. `release/datafiles/startup.blend` is currently a pointer; Blender's upstream configuration explicitly rejects that state. Do not represent the math source checkout as a complete asset/dependency checkout.
+`scripts/configure_blender_browser.py` fetches `release/datafiles/startup.blend` through Blender's public upstream LFS endpoint and verifies its SHA256 against the source pointer. It materializes the asset only in `.cache/blender-browser`; the original release checkout remains pristine. Required browser dependencies and generated host tools remain incomplete; successful platform compilation does not establish a full application build.
 
 Acceptance: configure and link a real browser-target Blender binary, with declared dependencies and generated files; verify startup without silently omitting the application or substituting a test executable.
 

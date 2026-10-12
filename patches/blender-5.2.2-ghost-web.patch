@@ -1,0 +1,60 @@
+--- a/intern/ghost/intern/GHOST_ISystem.cc
++++ b/intern/ghost/intern/GHOST_ISystem.cc
+@@ -22,6 +22,8 @@
+ #  include "GHOST_SystemX11.hh"
+ #elif defined(WITH_GHOST_WAYLAND)
+ #  include "GHOST_SystemWayland.hh"
++#elif defined(WITH_GHOST_WEB)
++#  include "GHOST_SystemWeb.hh"
+ #elif defined(WITH_GHOST_SDL)
+ #  include "GHOST_SystemSDL.hh"
+ #elif defined(WIN32)
+@@ -140,6 +142,9 @@
+     else {
+       system_ = nullptr;
+     }
++#elif defined(WITH_GHOST_WEB)
++    backends_attempted.push_back({"WEB"});
++    system_ = new GHOST_SystemWeb();
+ #elif defined(WITH_GHOST_SDL)
+     backends_attempted.push_back({"SDL"});
+     try {
+--- a/intern/ghost/CMakeLists.txt
++++ b/intern/ghost/CMakeLists.txt
+@@ -135,6 +135,13 @@
+ 
+ if(WITH_HEADLESS)
+   add_definitions(-DWITH_HEADLESS)
++elseif(WITH_GHOST_WEB)
++  list(APPEND SRC
++    intern/GHOST_SystemWeb.cc
++    intern/GHOST_SystemWeb.hh
++    intern/GHOST_WindowWeb.hh
++  )
++  add_definitions(-DWITH_GHOST_WEB)
+ elseif(WITH_GHOST_SDL)
+   list(APPEND SRC
+     intern/GHOST_ContextSDL.cc
+@@ -470,7 +477,7 @@
+   endif()
+ endif()
+ 
+-if(UNIX AND NOT APPLE)
++if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+   if(WITH_OPENGL_BACKEND)
+     list(APPEND SRC
+       intern/GHOST_ContextEGL.cc
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -331,6 +331,11 @@
+ option(WITH_HARU "Enable features relying on Libharu (Grease Pencil PDF export)" ON)
+ 
+ # GHOST Windowing Library Options
++option(WITH_GHOST_WEB "Enable the Emscripten browser window and event backend" OFF)
++if(WITH_GHOST_WEB AND NOT EMSCRIPTEN)
++  message(FATAL_ERROR "WITH_GHOST_WEB requires an Emscripten toolchain")
++endif()
++
+ option(WITH_GHOST_DEBUG "Enable debugging output for the GHOST library" OFF)
+ mark_as_advanced(WITH_GHOST_DEBUG)
+ 

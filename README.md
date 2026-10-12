@@ -2,7 +2,7 @@
 
 Goal: run the latest stable Blender locally on an iPad as an installable, offline PWA, with physical keyboard input and no jailbreak or alternative app store.
 
-**Current status: a tested first porting milestone, not full Blender.** The workbench compiles unmodified Blender math implementation files into WebAssembly. It displays a wireframe transformation test and accepts keyboard move/rotate/scale commands. Blender's editor, Eevee/Cycles, `.blend` I/O, Python, sculpting and modifiers are not ported or exposed by this milestone.
+**Current status: native browser port in development; the downloadable workbench is still a math test.** Blender's actual GHOST window manager, event queue, timers, allocator and logging now compile with an Emscripten browser platform. Keyboard, mouse and touch events pass through that native code. See [BROWSER_PORT.md](BROWSER_PORT.md) for the build and validation. This is not yet the Blender editor: GPU presentation, Python, `.blend` I/O and render engines still require porting.
 
 The target is **Blender 5.2.2 LTS**, the newest stable version tag observed in the official [Blender source mirror](https://github.com/blender/blender/tree/v5.2.2) on October 12, 2026. Its version header says `502`, patch `2`, cycle `release`, suffix `LTS`. The official download page could not be accessed from this environment; the release selection was verified against source tags and the source version header. The exact source commit and compiler artifact hash are in [port.lock.json](port.lock.json). The project stays on that reproducible release until an explicit version update.
 
@@ -23,7 +23,7 @@ python3 scripts/serve.py --port 8080
 - `web/engine/build.json`: version, source commit, scope and input/output hashes.
 - `web/engine/source.tar.gz`: corresponding source, upstream license notices, wrapper and a standalone rebuild script. After extraction, set `WASI_SDK_PATH` to the WASI SDK 25 directory and run `python3 rebuild.py`.
 
-The initial Git clone intentionally leaves LFS assets as pointers. The math build does not use them. A future full Blender build must fetch the real LFS assets and separately cross-compile its dependencies; this is not a prepared full desktop Blender checkout.
+The initial Git clone intentionally leaves LFS assets as pointers. The math build does not use them. The full-browser configuration script separately materializes and verifies the real startup asset in a patched source copy; dependencies must be cross-compiled rather than borrowed from the build host.
 
 The server listens only on the build machine's loopback interface. **To install on an iPad, deploy the contents of `web/` to an HTTPS static host.** No backend or remote Blender process is required by this milestone. Hosting needs `.wasm` served as `application/wasm`, `.js` as JavaScript, and the manifest as `application/manifest+json`. Serve `sw.js` without long-lived HTTP caching. For future WASM threads, preserve these headers on the app and assets:
 
@@ -80,7 +80,7 @@ Verified here:
 - Offline corresponding-source retrieval, isolation headers, and narrow-screen layout.
 - The downloaded source bundle rebuilds and its resulting WASM passes the five browser math checks.
 
-**Not verified:** Safari/WebKit, installation on a physical iPad, background suspension, real iPad GPU limits, or any full Blender workflow. The target device is an iPad 10th generation (A14, 4 GB RAM); its iPadOS version has not been supplied. Check Safari's WebGPU adapter availability on the actual device before committing to a graphics implementation.
+**Not verified here:** Safari/WebKit, installation on a physical iPad, background suspension, real iPad GPU limits, or any full Blender workflow. The target device is an iPad 10th generation (A14, 4 GB RAM), running iPadOS 26. The user has verified the math workbench's keyboard controls on that device. iPadOS 26 provides Safari WebGPU support, but an adapter and its limits still need verification in a secure context on the actual device. An HTTP `.local` address does not provide that context.
 
 ## Full-port work remaining
 
