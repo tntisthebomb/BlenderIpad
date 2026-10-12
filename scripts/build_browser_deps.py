@@ -10,7 +10,10 @@ from setup_browser import ROOT, CACHE, LOCK, toolchain, run
 
 def fetch(name):
     spec = (LOCK["dependencies"].get(name) or LOCK.get("runtime_dependencies", {}).get(name)
-            or LOCK["core_dependencies"][name])
+            or LOCK.get("core_dependencies", {}).get(name)
+            or LOCK.get("graphics_dependencies", {}).get(name))
+    if spec is None:
+        raise SystemExit("No pinned dependency: " + name)
     archive = CACHE / spec["archive"]
     if not archive.exists():
         temporary = archive.with_suffix(".partial")

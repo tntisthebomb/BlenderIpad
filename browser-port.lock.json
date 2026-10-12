@@ -157,5 +157,47 @@
       "hash_type": "md5",
       "hash": "f1044dd3b4466cc53464210148e08146"
     }
+  },
+  "graphics_dependencies": {
+    "shaderc": {
+      "url": "https://github.com/google/shaderc/archive/v2025.4.tar.gz",
+      "archive": "shaderc-v2025.4.tar.gz",
+      "source": "shaderc-2025.4",
+      "hash_type": "md5",
+      "hash": "02208e374e610808c4ca3b1e7627b82d"
+    },
+    "shaderc-glslang": {
+      "url": "https://github.com/KhronosGroup/glslang/archive/d213562e35573012b6348b2d584457c3704ac09b.tar.gz",
+      "archive": "glslang-d213562e35573012b6348b2d584457c3704ac09b.tar.gz",
+      "source": "glslang-d213562e35573012b6348b2d584457c3704ac09b",
+      "hash_type": "md5",
+      "hash": "ac98b61f77ffade6bf819e342dc40c4c"
+    },
+    "spirv-headers": {
+      "url": "https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/vulkan-sdk-1.4.341.0.tar.gz",
+      "archive": "SPIRV-Headers-1.4.341.tar.gz",
+      "source": "SPIRV-Headers-vulkan-sdk-1.4.341.0",
+      "hash_type": "md5",
+      "hash": "38bcd69036ec1443ac19b417bef8685e"
+    },
+    "spirv-tools": {
+      "url": "https://github.com/KhronosGroup/SPIRV-Tools/archive/refs/tags/v2026.1.tar.gz",
+      "archive": "SPIR-V-Tools-v2026.1.tar.gz",
+      "source": "SPIRV-Tools-2026.1",
+      "hash_type": "sha256",
+      "hash": "35dc16cf2dc64be5b6bbbe86d210e6f4a82b070cffd751605a3365cd8bce2d7e"
+    }
+  },
+  "webgpu_toolchain": {
+    "dawn": {
+      "repository": "https://github.com/google/dawn.git",
+      "tag": "v20251002.162335",
+      "commit": "01940842b667a7812d0e4ca0ef4367fbec294241"
+    },
+    "abseil": {
+      "repository": "https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp",
+      "commit": "9d692d669253232c024b20ae19d2ff0b581ee1cd"
+    },
+    "note": "Dawn matches Emscripten 4.0.18 emdawnwebgpu; SPIR-V libraries are shared with stable Blender shaderc."
   }
 }

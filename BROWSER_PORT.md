@@ -103,3 +103,25 @@ Blender uses `BLENDER_SYSTEM_RESOURCES` for its bundled scripts and `BLENDER_SYS
 OpenImageIO attempted to rewrite libc++ string internals using a legacy layout. Emscripten uses libc++ ABI v2, so long metadata names became invalid PNG keywords. The port uses the existing ordinary string-copy fallback. The expanded dependency probe preserves Software metadata through PNG/TIFF/EXR, and the actual Blender image save/load test passes.
 
 The default extension manager still reports a registration failure because its remote asset downloader requires native Python multiprocessing. External subprocesses and their extension-installation workflows are not ported. This does not prevent the tested background scene operations, but it prevents a claim of complete startup/extension support. Emscripten also reports unsupported `prlimit64`; OS resource-limit APIs are not established.
+
+## Verified WebGPU shader translation prerequisites
+
+```sh
+python3 scripts/build_browser_shaderc.py
+python3 scripts/test_browser_shaderc.py
+python3 scripts/build_browser_tint.py
+python3 scripts/test_browser_tint.py
+.cache/browser-tests/bin/python tests/shader_webgpu_test.py
+python3 scripts/build_browser_webgpu_probe.py
+.cache/browser-tests/bin/python tests/webgpu_native_browser_test.py
+```
+
+Shaderc 2025.4, glslang, SPIR-V Headers and SPIR-V Tools 2026.1 use the exact stable Blender manifest pins and verified source archives. The probe runs Blender's real shader text preprocessor on its matrix library, compiles a compute shader that calls that library on a runtime-supplied matrix, and validates the SPIR-V. Malformed GLSL and corrupted SPIR-V must be rejected. It does not require compiling the full background application.
+
+Tint uses Dawn commit `01940842b667a7812d0e4ca0ef4367fbec294241`, matching the Emdawnwebgpu package pinned by Emscripten 4.0.18. Abseil uses that Dawn release's DEPS commit. Both checkouts must remain clean. The translator reuses the same SPIR-V libraries as shaderc, including the original internal headers and generated tables. It retains IR validation and normal failure propagation. No internal-compiler-error recovery or shader-skipping workaround is imported from the reference fork. Dawn's forced PIC is disabled through CMake target properties for the validated static WASM relocation model.
+
+The translation probe must read the actual SPIR-V, produce WGSL, parse that WGSL successfully and reject invalid inputs. The browser probes must execute the emitted WGSL and read back the correct inverse of a non-diagonal matrix and Blender's zero/false result for a singular matrix. The native probe additionally exercises the actual C API for adapter/device acquisition, pipeline creation, storage buffers, queue submission and asynchronous mapping.
+
+These are renderer prerequisites, separate from Blender's GPU backend. The tests request a Chromium software WebGPU adapter in the cloud; they do not establish A14/Safari compatibility, graphics performance, the complete shader corpus, editor presentation or offline PWA relaunch. The native probe currently runs on the main browser thread; device/context handling for Blender's application thread remains to be integrated. Use the manually dispatched `Validate Blender browser shader translation` workflow for a clean-runner check.
+
+Local acceptance passed for GLSL → validated SPIR-V → WGSL → WebGPU dispatch/readback, and for the native WASM WebGPU API probe. Both normal and singular runtime matrix cases pass. The complete renderer remains unimplemented.

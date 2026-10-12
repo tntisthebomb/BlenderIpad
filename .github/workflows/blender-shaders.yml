@@ -1,0 +1,34 @@
+name: Validate Blender browser shader translation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shader-translation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out project
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build pinned shader compiler and validate Blender GPU math
+        run: |
+          python3 scripts/build_browser_shaderc.py
+          python3 scripts/test_browser_shaderc.py
+      - name: Build SDK-matched Tint and validate translation
+        run: |
+          python3 scripts/build_browser_tint.py
+          python3 scripts/test_browser_tint.py
+      - name: Install browser test runner
+        run: |
+          python3 -m venv .cache/browser-tests
+          .cache/browser-tests/bin/python -m pip install playwright==1.62.0
+      - name: Validate translated Blender shader through WebGPU
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+        run: |
+          .cache/browser-tests/bin/python tests/shader_webgpu_test.py
+          python3 scripts/build_browser_webgpu_probe.py
+          .cache/browser-tests/bin/python tests/webgpu_native_browser_test.py

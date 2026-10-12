@@ -82,6 +82,8 @@ Verified here:
 
 **Not verified here:** Safari/WebKit, installation on a physical iPad, background suspension, real iPad GPU limits, or the full editor and render engines. The target device is an iPad 10th generation (A14, 4 GB RAM), running iPadOS 26. The user has verified the math workbench's keyboard controls on that device. iPadOS 26 provides Safari WebGPU support, but an adapter and its limits still need verification in a secure context on the actual device. An HTTP `.local` address does not provide that context.
 
+The shader translation prerequisites now pass local tests: Blender’s actual GPU matrix library compiles through GLSL → SPIR-V → WGSL and executes through WebGPU, including the native C++ bindings. This does not provide the Blender viewport or render engines. See [BROWSER_PORT.md](BROWSER_PORT.md) for reproducible commands and the remaining integration.
+
 ## Full-port work remaining
 
 See [PORTING.md](PORTING.md) for the source-level requirements and acceptance checks. A successful math build does not establish that the full application can be compiled by changing a build flag.
