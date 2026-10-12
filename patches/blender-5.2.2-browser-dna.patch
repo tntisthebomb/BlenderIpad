@@ -1,0 +1,159 @@
+--- a/source/blender/makesdna/intern/makesdna.cc
++++ b/source/blender/makesdna/intern/makesdna.cc
+@@ -100,6 +100,7 @@
+   /* Alignment requirements for 32 and 64 bit platforms. */
+   short align_32;
+   short align_64;
++  short align_native;
+   /* Struct or built-in type? */
+   bool is_struct;
+ };
+@@ -127,6 +128,7 @@
+                          .size_64 = size,
+                          .align_32 = size,
+                          .align_64 = size,
++                         .align_native = size,
+                          .is_struct = false});
+   }
+ 
+@@ -139,6 +141,7 @@
+                      .size_64 = 0,
+                      .align_32 = 0,
+                      .align_64 = 0,
++                     .align_native = 0,
+                      .is_struct = true});
+   }
+ 
+@@ -228,6 +231,21 @@
+   }
+   return member_type.size_native * array_num;
+ }
++
++#ifdef __EMSCRIPTEN__
++static int native_member_alignment(const TypeInfo &type, const dna::ParsedMember &member)
++{
++  const char *name = member.member_name.c_str();
++  const int alignment = (name[0] == '*' || name[1] == '*') ? int(alignof(void *)) :
++                                                               int(type.align_native);
++  return std::max(1, std::max(alignment, member.alignment));
++}
++
++static int native_align_up(int offset, int alignment)
++{
++  return ((offset + alignment - 1) / alignment) * alignment;
++}
++#endif
+ 
+ static bool check_member_alignment(const TypeInfo &struct_info,
+                                    const TypeInfo &member_type,
+@@ -302,6 +320,7 @@
+         /* Sizes of the largest field in a struct. */
+         int max_align_32 = 0;
+         int max_align_64 = 0;
++        int max_align_native = 0;
+ 
+         /* check all members in struct */
+         for (const dna::ParsedMember &parsed_member : parsed_struct.members) {
+@@ -351,6 +370,11 @@
+               dna_error = true;
+             }
+ 
++#ifdef __EMSCRIPTEN__
++            const int native_alignment = native_member_alignment(member_type, parsed_member);
++            size_native = native_align_up(size_native, native_alignment);
++            max_align_native = std::max(max_align_native, native_alignment);
++#endif
+             size_native += member_size_native(member_type, parsed_member);
+             size_32 += 4 * array_num;
+             size_64 += 8 * array_num;
+@@ -410,6 +434,11 @@
+               dna_error = true;
+             }
+ 
++#ifdef __EMSCRIPTEN__
++            const int native_alignment = native_member_alignment(member_type, parsed_member);
++            size_native = native_align_up(size_native, native_alignment);
++            max_align_native = std::max(max_align_native, native_alignment);
++#endif
+             size_native += member_size_native(member_type, parsed_member);
+             size_32 += array_num * member_type.size_32;
+             size_64 += array_num * member_type.size_64;
+@@ -435,6 +464,13 @@
+           BLI_assert(size_32 <= SHRT_MAX);
+           BLI_assert(size_64 <= SHRT_MAX);
+ 
++#ifdef __EMSCRIPTEN__
++          size_native = native_align_up(size_native, max_align_native);
++          BLI_assert(size_native <= SHRT_MAX);
++          struct_info.align_native = short(max_align_native);
++#else
++          struct_info.align_native = short(sizeof(void *) == 4 ? max_align_32 : max_align_64);
++#endif
+           struct_info.size_native = short(size_native);
+           struct_info.size_32 = short(size_32);
+           struct_info.size_64 = short(size_64);
+@@ -781,6 +817,9 @@
+     int offset = 0;
+     for (const dna::ParsedMember &parsed_member : parsed_struct.members) {
+       const TypeInfo &member_type = table.lookup(parsed_member.type_name);
++#ifdef __EMSCRIPTEN__
++      offset = native_align_up(offset, native_member_alignment(member_type, parsed_member));
++#endif
+       const StringRef alias_id = DNA_member_id_string_ref(parsed_member.alias_member_name);
+       fprintf(file,
+               "BLI_STATIC_ASSERT(offsetof(struct %s, %.*s) == %d, \"DNA member offset "
+@@ -860,6 +899,41 @@
+  * Parse header files to generate SDNA blob and auxiliary files.
+  * \{ */
+ 
++#ifdef __EMSCRIPTEN__
++static Vector<dna::ParsedStruct> native_schema_with_padding(
++    const TypeTable &table, const Span<dna::ParsedStruct> original)
++{
++  Vector<dna::ParsedStruct> result(original);
++  for (dna::ParsedStruct &structure : result) {
++    Vector<dna::ParsedMember> members;
++    int offset = 0;
++    int padding_id = 0;
++    const auto append_padding = [&](const int bytes) {
++      if (bytes == 0) return;
++      std::string name = "_pad_wasm_native_" + std::to_string(padding_id++) +
++                         "[" + std::to_string(bytes) + "]";
++      for (const dna::ParsedMember &existing : structure.members) {
++        BLI_assert(existing.member_name != name);
++      }
++      members.append(dna::ParsedMember{.type_name = "char", .member_name = name,
++                                      .alias_member_name = name, .alignment = 0});
++    };
++    for (const dna::ParsedMember &member : structure.members) {
++      const TypeInfo &type = table.lookup(member.type_name);
++      const int aligned = native_align_up(offset, native_member_alignment(type, member));
++      append_padding(aligned - offset);
++      members.append(member);
++      offset = aligned + member_size_native(type, member);
++    }
++    const int total = table.lookup(structure.type_name).size_native;
++    BLI_assert(offset <= total);
++    append_padding(total - offset);
++    structure.members = std::move(members);
++  }
++  return result;
++}
++#endif
++
+ static bool make_structDNA(const StringRefNull base_directory,
+                            FILE *file,
+                            FILE *file_offsets,
+@@ -906,7 +980,12 @@
+ 
+   /* Write SDNA blob. */
+   DEBUG_PRINTF(0, "Writing file ... ");
++#ifdef __EMSCRIPTEN__
++  const Vector<dna::ParsedStruct> native_schema = native_schema_with_padding(table, parsed_structs);
++  write_sdna_blob(file, table, native_schema);
++#else
+   write_sdna_blob(file, table, parsed_structs);
++#endif
+ 
+   /* Write auxiliary files. */
+   write_sdna_type_offsets(file_offsets, parsed_structs);

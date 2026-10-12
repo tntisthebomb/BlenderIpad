@@ -8,4 +8,8 @@ Our changes include truthful capability reporting, explicit failure for unimplem
 
 The exploratory build recipe repository [HeyPuter/blender-wasm](https://github.com/HeyPuter/blender-wasm/tree/f8f811929f8a5bc218e04944cf2dff25eeeccbf3) informed the public upstream LFS endpoint configuration. Its claims of rendering/UI support have not been adopted as our validation results.
 
+That pinned repository also informed the runtime dependency graph and CPython embedding support-object requirements. Our scripts use stable Blender's dependency versions and checksums, preserve original sources, run the documented tests, and do not adopt the reference's undefined-symbol allowance or shader-recovery bypasses.
+
+CPython 3.13.13 retains its PSF license, copied beside the local browser runtime output. The standard-library ZIP contains the installed Python source modules; the interpreter C source is pinned in `browser-port.lock.json`. No runtime probe contains a substitute `bpy` module.
+
 Blender's original GHOST, allocator, logging and dependency code is fetched from the immutable release pin in `port.lock.json`. Dependency archive hashes are taken from that release's `build_files/build_environment/cmake/versions.cmake` and are retained in `browser-port.lock.json`. No checksums or assertions are weakened to accept a build.

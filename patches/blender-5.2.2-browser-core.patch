@@ -1,0 +1,115 @@
+--- a/build_files/cmake/platform/platform_unix.cmake
++++ b/build_files/cmake/platform/platform_unix.cmake
+@@ -138,7 +138,9 @@
+ find_package_wrapper(PNG REQUIRED)
+ find_package_wrapper(ZLIB REQUIRED)
+ find_package_wrapper(Zstd REQUIRED)
+-find_package_wrapper(Epoxy REQUIRED)
++if(WITH_OPENGL_BACKEND)
++  find_package_wrapper(Epoxy REQUIRED)
++endif()
+ find_package_wrapper(fmt REQUIRED)
+ if(DEFINED fmt_DIR)
+   # Hide the fmt_DIR from the standard user settings to be consistent with our
+@@ -600,6 +602,8 @@
+ # OpenSuse needs lutil, ArchLinux not, for now keep, can avoid by using --as-needed
+ if(HAIKU)
+   list(APPEND PLATFORM_LINKLIBS -lnetwork)
++elseif(EMSCRIPTEN)
++  # libc/libm are supplied by the Emscripten toolchain; libutil is unavailable.
+ else()
+   list(APPEND PLATFORM_LINKLIBS -lutil -lc -lm)
+ endif()
+--- a/build_files/cmake/macros.cmake
++++ b/build_files/cmake/macros.cmake
+@@ -1115,7 +1115,7 @@
+ 
+   add_custom_command(
+     OUTPUT ${file_to}
+-    COMMAND "$<TARGET_FILE:datatoc>" ${file_from} ${file_to} ${symbol_name_override}
++    COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "$<TARGET_FILE:datatoc>" ${file_from} ${file_to} ${symbol_name_override}
+     DEPENDS ${file_from} datatoc)
+ 
+   set_source_files_properties(${file_to} PROPERTIES GENERATED TRUE)
+@@ -1139,7 +1139,7 @@
+ 
+   add_custom_command(
+     OUTPUT  ${_file_to}
+-    COMMAND "$<TARGET_FILE:datatoc>" ${_file_from} ${_file_to}
++    COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "$<TARGET_FILE:datatoc>" ${_file_from} ${_file_to}
+     DEPENDS ${_file_from} datatoc)
+ 
+   set_source_files_properties(${_file_to} PROPERTIES GENERATED TRUE)
+@@ -1173,15 +1173,20 @@
+   list(APPEND ${list_to_add} ${file_from})
+   set(${list_to_add} ${${list_to_add}} PARENT_SCOPE)
+ 
++  set(_shader_tool_command ${CMAKE_CROSSCOMPILING_EMULATOR} "$<TARGET_FILE:shader_tool>")
++  if(EMSCRIPTEN AND BLENDER_HOST_SHADER_TOOL)
++    set(_shader_tool_command "${BLENDER_HOST_SHADER_TOOL}")
++  endif()
++
+   add_custom_command(
+     OUTPUT  ${_file_tmp} ${_file_meta} ${_file_info} ${_file_dep}
+     DEPFILE ${_file_dep}
+-    COMMAND "$<TARGET_FILE:shader_tool>" ${_file_from} ${_file_tmp} ${_file_meta} ${_file_info} ${_file_dep} ${_inc_list}
++    COMMAND ${_shader_tool_command} ${_file_from} ${_file_tmp} ${_file_meta} ${_file_info} ${_file_dep} ${_inc_list}
+     DEPENDS ${_file_from} shader_tool)
+ 
+   add_custom_command(
+     OUTPUT  ${_file_to}
+-    COMMAND "$<TARGET_FILE:datatoc>" ${_file_tmp} ${_file_to}
++    COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "$<TARGET_FILE:datatoc>" ${_file_tmp} ${_file_to}
+     DEPENDS ${_file_tmp} datatoc)
+ 
+   set_source_files_properties(${_file_tmp} PROPERTIES GENERATED TRUE)
+--- a/source/blender/makesdna/intern/CMakeLists.txt
++++ b/source/blender/makesdna/intern/CMakeLists.txt
+@@ -106,7 +106,7 @@
+     ${CMAKE_CURRENT_BINARY_DIR}/dna_verify.cc
+   COMMAND
+     ${CMAKE_COMMAND} -E env ${PLATFORM_ENV_BUILD}
+-    "$<TARGET_FILE:makesdna>"
++    ${CMAKE_CROSSCOMPILING_EMULATOR} "$<TARGET_FILE:makesdna>"
+     ${CMAKE_CURRENT_BINARY_DIR}/dna.cc
+     ${CMAKE_CURRENT_BINARY_DIR}/dna_type_offsets.h
+     ${CMAKE_CURRENT_BINARY_DIR}/dna_verify.cc
+--- a/source/blender/makesrna/intern/CMakeLists.txt
++++ b/source/blender/makesrna/intern/CMakeLists.txt
+@@ -423,7 +423,7 @@
+   OUTPUT ${GENSRC}
+   COMMAND
+     ${CMAKE_COMMAND} -E env ${PLATFORM_ENV_BUILD}
+-    "$<TARGET_FILE:makesrna>" ${CMAKE_SOURCE_DIR}/source/blender/makesdna/ ${CMAKE_CURRENT_BINARY_DIR}/ ${CMAKE_CURRENT_BINARY_DIR}/../
++    ${CMAKE_CROSSCOMPILING_EMULATOR} "$<TARGET_FILE:makesrna>" ${CMAKE_SOURCE_DIR}/source/blender/makesdna/ ${CMAKE_CURRENT_BINARY_DIR}/ ${CMAKE_CURRENT_BINARY_DIR}/../
+   DEPENDS makesrna
+ )
+ 
+--- a/build_files/cmake/platform/dependency_targets.cmake
++++ b/build_files/cmake/platform/dependency_targets.cmake
+@@ -141,7 +141,9 @@
+ # Configure OpenImageIO
+ 
+ add_library(bf::dependencies::openimageio ALIAS OpenImageIO::OpenImageIO)
+-get_target_property(OPENIMAGEIO_TOOL OpenImageIO::oiiotool LOCATION)
++if(TARGET OpenImageIO::oiiotool)
++  get_target_property(OPENIMAGEIO_TOOL OpenImageIO::oiiotool LOCATION)
++endif()
+ 
+ # -----------------------------------------------------------------------------
+ # Configure USD
+--- a/source/blender/gpu/shader_tool/CMakeLists.txt
++++ b/source/blender/gpu/shader_tool/CMakeLists.txt
+@@ -48,5 +48,10 @@
+ endif()
+ 
+ # `SRC_DNA_INC` is defined in the parent directory.
+-add_executable(shader_tool ${SRC})
+-optimize_debug_target(shader_tool)
++if(EMSCRIPTEN AND BLENDER_HOST_SHADER_TOOL)
++  add_executable(shader_tool IMPORTED GLOBAL)
++  set_target_properties(shader_tool PROPERTIES IMPORTED_LOCATION "${BLENDER_HOST_SHADER_TOOL}")
++else()
++  add_executable(shader_tool ${SRC})
++  optimize_debug_target(shader_tool)
++endif()

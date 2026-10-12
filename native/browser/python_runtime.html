@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Native Python dependency test</title>
+<body><p>Developer test: real CPython dependency; Blender bpy/editor is not linked here.</p><pre id="output"></pre>
+<script src="python-runtime.js"></script>
+<script>
+window.runtimeOutput = [];
+window.runtimeErrors = [];
+const output = document.getElementById('output');
+createBlenderPython({
+  print(text) { runtimeOutput.push(text); output.textContent += text + '\n'; },
+  printErr(text) { runtimeErrors.push(text); output.textContent += text + '\n'; },
+}).then(module => {
+  window.nativePython = module;
+  if (!module._python_runtime_initialize()) {
+    throw new Error(module.UTF8ToString(module._python_runtime_error()));
+  }
+  window.runNativePython = script => module.ccall('python_runtime_execute', 'number', ['string'], [script]);
+  document.body.dataset.ready = 'true';
+}).catch(error => { document.body.dataset.error = String(error); output.textContent += error; });
+</script></body></html>

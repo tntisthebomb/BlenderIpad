@@ -1,0 +1,137 @@
+--- a/source/blender/blenlib/intern/expr_pylike_eval.cc
++++ b/source/blender/blenlib/intern/expr_pylike_eval.cc
+@@ -83,6 +83,8 @@
+ using BinaryOpFunc = double (*)(double, double);
+ using TernaryOpFunc = double (*)(double, double, double);
+ 
++#include "expr_math_errors.hh"
++
+ struct ExprOp {
+   eOpCode opcode;
+ 
+@@ -173,7 +175,7 @@
+   ExprOp *ops = expr->ops.data();
+   int sp = 0, pc;
+ 
+-  feclearexcept(FE_ALL_EXCEPT);
++  ExprMathErrors math_errors;
+ 
+   for (pc = 0; pc >= 0 && pc < expr->ops.size(); pc++) {
+     switch (ops[pc].opcode) {
+@@ -188,16 +190,16 @@
+         break;
+       case OPCODE_FUNC1:
+         FAIL_IF(sp < 1);
+-        stack[sp - 1] = ops[pc].arg.func1(stack[sp - 1]);
++        stack[sp - 1] = math_errors.call(ops[pc].arg.func1, stack[sp - 1]);
+         break;
+       case OPCODE_FUNC2:
+         FAIL_IF(sp < 2);
+-        stack[sp - 2] = ops[pc].arg.func2(stack[sp - 2], stack[sp - 1]);
++        stack[sp - 2] = math_errors.call(ops[pc].arg.func2, stack[sp - 2], stack[sp - 1]);
+         sp--;
+         break;
+       case OPCODE_FUNC3:
+         FAIL_IF(sp < 3);
+-        stack[sp - 3] = ops[pc].arg.func3(stack[sp - 3], stack[sp - 2], stack[sp - 1]);
++        stack[sp - 3] = math_errors.call(ops[pc].arg.func3, stack[sp - 3], stack[sp - 2], stack[sp - 1]);
+         sp -= 2;
+         break;
+       case OPCODE_MIN:
+@@ -238,7 +240,7 @@
+       case OPCODE_CMP_CHAIN:
+         FAIL_IF(sp < 2);
+         /* If comparison fails, return 0 and jump to end. */
+-        if (!ops[pc].arg.func2(stack[sp - 2], stack[sp - 1])) {
++        if (!math_errors.call(ops[pc].arg.func2, stack[sp - 2], stack[sp - 1])) {
+           stack[sp - 2] = 0.0;
+           pc += ops[pc].jmp_offset;
+         }
+@@ -261,12 +263,7 @@
+   *r_result = stack[0];
+ 
+   /* Detect floating point evaluation errors. */
+-  int flags = fetestexcept(FE_DIVBYZERO | FE_INVALID);
+-  if (flags) {
+-    return (flags & FE_INVALID) ? EXPR_PYLIKE_MATH_ERROR : EXPR_PYLIKE_DIV_BY_ZERO;
+-  }
+-
+-  return EXPR_PYLIKE_SUCCESS;
++  return math_errors.status();
+ }
+ 
+ /** \} */
+@@ -543,7 +540,7 @@
+   ExprOp *prev_ops = state->ops.end();
+   int jmp_gap = state->ops.size() - state->last_jmp;
+ 
+-  feclearexcept(FE_ALL_EXCEPT);
++  ExprMathErrors math_errors;
+ 
+   if (std::holds_alternative<UnaryOpFunc>(funcptr)) {
+     UnaryOpFunc func = std::get<UnaryOpFunc>(funcptr);
+@@ -551,9 +548,9 @@
+     if (jmp_gap >= 1 && prev_ops[-1].opcode == OPCODE_CONST) {
+       /* volatile because some compilers overly aggressive optimize this call out.
+        * see D6012 for details. */
+-      volatile double result = func(prev_ops[-1].arg.dval);
+-
+-      if (fetestexcept(FE_DIVBYZERO | FE_INVALID) == 0) {
++      volatile double result = math_errors.call(func, prev_ops[-1].arg.dval);
++
++      if (math_errors.ok()) {
+         prev_ops[-1].arg.dval = result;
+         return true;
+       }
+@@ -568,9 +565,9 @@
+     {
+       /* volatile because some compilers overly aggressive optimize this call out.
+        * see D6012 for details. */
+-      volatile double result = func(prev_ops[-2].arg.dval, prev_ops[-1].arg.dval);
+-
+-      if (fetestexcept(FE_DIVBYZERO | FE_INVALID) == 0) {
++      volatile double result = math_errors.call(func, prev_ops[-2].arg.dval, prev_ops[-1].arg.dval);
++
++      if (math_errors.ok()) {
+         prev_ops[-2].arg.dval = result;
+         state->ops.resize(state->ops.size() - 1);
+         state->stack_ptr--;
+@@ -588,10 +585,10 @@
+     {
+       /* volatile because some compilers overly aggressive optimize this call out.
+        * see D6012 for details. */
+-      volatile double result = func(
+-          prev_ops[-3].arg.dval, prev_ops[-2].arg.dval, prev_ops[-1].arg.dval);
+-
+-      if (fetestexcept(FE_DIVBYZERO | FE_INVALID) == 0) {
++      volatile double result = math_errors.call(
++          func, prev_ops[-3].arg.dval, prev_ops[-2].arg.dval, prev_ops[-1].arg.dval);
++
++      if (math_errors.ok()) {
+         prev_ops[-3].arg.dval = result;
+         state->ops.resize(state->ops.size() - 2);
+         state->stack_ptr -= 2;
+--- a/source/blender/blenlib/BLI_resource_scope.hh
++++ b/source/blender/blenlib/BLI_resource_scope.hh
+@@ -141,7 +141,7 @@
+  * from #NonCopyable. That happens because then there would be two #NonCopyable types at the same
+  * address which is not allowed. The proper solution is probably to change how NonCopyable and
+  * NonMovable are used overall. */
+-static_assert(sizeof(ResourceScope) == 16);
++static_assert(sizeof(ResourceScope) == 2 * sizeof(void *));
+ 
+ /* -------------------------------------------------------------------- */
+ /** \name #ResourceScope Inline Methods
+--- a/source/blender/blenlib/intern/storage.cc
++++ b/source/blender/blenlib/intern/storage.cc
+@@ -142,6 +142,10 @@
+   GetDiskFreeSpace(tmp, &sectorspc, &bytesps, &freec, &clusters);
+ 
+   return double(freec * bytesps * sectorspc);
++#elif defined(__EMSCRIPTEN__)
++  /* Browser persistent-storage quotas require an asynchronous browser API. */
++  (void)dir;
++  return -1;
+ #else
+ 
+ #  ifdef USE_STATFS_STATVFS

@@ -2,7 +2,7 @@
 
 Goal: run the latest stable Blender locally on an iPad as an installable, offline PWA, with physical keyboard input and no jailbreak or alternative app store.
 
-**Current status: native browser port in development; the downloadable workbench is still a math test.** Blender's actual GHOST window manager, event queue, timers, allocator and logging now compile with an Emscripten browser platform. Keyboard, mouse and touch events pass through that native code. See [BROWSER_PORT.md](BROWSER_PORT.md) for the build and validation. This is not yet the Blender editor: GPU presentation, Python, `.blend` I/O and render engines still require porting.
+**Current status: native browser port in development; the downloadable workbench is still a math test.** Blender's actual GHOST window manager and input layer compile to WebAssembly. The matching CPython runtime also runs in Chromium with native threads, its standard library and memory-file I/O. The full Blender application is being integrated separately. See [BROWSER_PORT.md](BROWSER_PORT.md) for exact scope and validation. The editor, GPU presentation, `.blend` workflows and rendering are not ready.
 
 The target is **Blender 5.2.2 LTS**, the newest stable version tag observed in the official [Blender source mirror](https://github.com/blender/blender/tree/v5.2.2) on October 12, 2026. Its version header says `502`, patch `2`, cycle `release`, suffix `LTS`. The official download page could not be accessed from this environment; the release selection was verified against source tags and the source version header. The exact source commit and compiler artifact hash are in [port.lock.json](port.lock.json). The project stays on that reproducible release until an explicit version update.
 

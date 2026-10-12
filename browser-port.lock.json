@@ -48,5 +48,114 @@
     "repository": "https://github.com/HeyPuter/blender",
     "commit": "6b031d3d41c392883e3c495aa72343e10d15b43d",
     "scope": "Three GHOST browser platform files adapted to stable Blender 5.2.2; no alpha core or GPU backend imported"
+  },
+  "runtime_dependencies": {
+    "python": {
+      "url": "https://www.python.org/ftp/python/3.13.13/Python-3.13.13.tar.xz",
+      "archive": "Python-3.13.13.tar.xz",
+      "source": "Python-3.13.13",
+      "hash_type": "md5",
+      "hash": "3a19dd420883dd599728c9dd07c141e7"
+    }
+  },
+  "core_dependencies": {
+    "brotli": {
+      "url": "https://github.com/google/brotli/archive/refs/tags/v1.0.9.tar.gz",
+      "archive": "brotli-v1.0.9.tar.gz",
+      "source": "brotli-1.0.9",
+      "hash_type": "sha256",
+      "hash": "f9e8d81d0405ba66d181529af42a3354f838c939095ff99930da6aa9cdf6fe46"
+    },
+    "freetype": {
+      "url": "https://prdownloads.sourceforge.net/freetype/freetype-2.13.3.tar.gz",
+      "archive": "freetype-2.13.3.tar.gz",
+      "source": "freetype-2.13.3",
+      "hash_type": "md5",
+      "hash": "ac1f0b517f62bd40d50bc995faa5741d"
+    },
+    "imath": {
+      "url": "https://github.com/AcademySoftwareFoundation/Imath/archive/v3.2.2.tar.gz",
+      "archive": "imath-3.2.2.tar.gz",
+      "source": "Imath-3.2.2",
+      "hash_type": "md5",
+      "hash": "e29f25ce926ac53d8e0a52197299f61b"
+    },
+    "openjph": {
+      "url": "https://github.com/aous72/OpenJPH/archive/refs/tags/0.25.2.tar.gz",
+      "archive": "openjph-v0.25.2.tar.gz",
+      "source": "OpenJPH-0.25.2",
+      "hash_type": "sha256",
+      "hash": "ae5f09562cb811cb2fb881c5eb74583e18db941848cfa3c35787e2580f3defc6"
+    },
+    "openexr": {
+      "url": "https://github.com/AcademySoftwareFoundation/openexr/archive/v3.4.10.tar.gz",
+      "archive": "openexr-3.4.10.tar.gz",
+      "source": "openexr-3.4.10",
+      "hash_type": "md5",
+      "hash": "8926ba09c4e4cd21c7a0fa2d2b39fa82"
+    },
+    "openimageio": {
+      "url": "https://github.com/AcademySoftwareFoundation/OpenImageIO/archive/refs/tags/v3.1.13.1.tar.gz",
+      "archive": "OpenImageIO-v3.1.13.1.tar.gz",
+      "source": "OpenImageIO-3.1.13.1",
+      "hash_type": "md5",
+      "hash": "9f6f083900680b79ca4a136270103844"
+    },
+    "opencolorio": {
+      "url": "https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/v2.5.0.tar.gz",
+      "archive": "OpenColorIO-2.5.0.tar.gz",
+      "source": "OpenColorIO-2.5.0",
+      "hash_type": "md5",
+      "hash": "41d6b62ac672ed333ebfdcc1108407e0"
+    },
+    "robinmap": {
+      "url": "https://github.com/Tessil/robin-map/archive/refs/tags/v1.3.0.tar.gz",
+      "archive": "robinmap-v1.3.0.tar.gz",
+      "source": "robin-map-1.3.0",
+      "hash_type": "sha256",
+      "hash": "a8424ad3b0affd4c57ed26f0f3d8a29604f0e1f2ef2089f497f614b1c94c7236"
+    },
+    "yamlcpp": {
+      "url": "https://github.com/jbeder/yaml-cpp/archive/refs/tags/0.8.0.tar.gz",
+      "archive": "yaml-cpp-0.8.0.tar.gz",
+      "source": "yaml-cpp-0.8.0",
+      "hash_type": "md5",
+      "hash": "1d2c7975edba60e995abe3c4af6480e5"
+    },
+    "pystring": {
+      "url": "https://codeload.github.com/imageworks/pystring/tar.gz/refs/tags/v1.1.3",
+      "archive": "pystring-v1.1.3.tar.gz",
+      "source": "pystring-1.1.3",
+      "hash_type": "md5",
+      "hash": "f2c68786b359f5e4e62bed53bc4fb86d"
+    },
+    "expat": {
+      "url": "https://github.com/libexpat/libexpat/archive/R_2_7_5.tar.gz",
+      "archive": "libexpat-2_7_5.tar.gz",
+      "source": "libexpat-R_2_7_5",
+      "hash_type": "md5",
+      "hash": "aecc4366ab1a5189d8f027c369305c9a"
+    },
+    "eigen": {
+      "url": "https://gitlab.com/libeigen/eigen/-/archive/8a1083e9bf41b91fdea6546681f806154efdc25a/eigen-8a1083e9bf41b91fdea6546681f806154efdc25a.tar.gz",
+      "archive": "eigen-8a1083e9bf41b91fdea6546681f806154efdc25a.tar.gz",
+      "source": "eigen-8a1083e9bf41b91fdea6546681f806154efdc25a",
+      "hash_type": "sha256",
+      "hash": "cc28a84fdec496c6777596350ea805519bf10f717d21044ae6ba3dd562183a26"
+    },
+    "minizipng": {
+      "url": "https://github.com/zlib-ng/minizip-ng/archive/4.0.10.tar.gz",
+      "archive": "minizip-ng-4.0.10.tar.gz",
+      "source": "minizip-ng-4.0.10",
+      "hash_type": "md5",
+      "hash": "9b4de14db78016419598d0f292fde244"
+    },
+    "tiff": {
+      "url": "https://download.osgeo.org/libtiff/tiff-4.7.1.tar.gz",
+      "archive": "tiff-4.7.1.tar.gz",
+      "source": "tiff-4.7.1",
+      "hash_type": "md5",
+      "hash": "f1044dd3b4466cc53464210148e08146"
+    }
   }
 }

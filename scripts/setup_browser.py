@@ -73,20 +73,42 @@ def prepare_source(materialize_assets=False):
     previous = json.loads(metadata_path.read_text()) if metadata_path.exists() else {}
     if previous and previous.get("commit") != head:
         raise SystemExit("Prepared source belongs to another release; preserve it before updating.")
-    patch = ROOT / "patches/blender-5.2.2-ghost-web.patch"
-    patched_paths = ["CMakeLists.txt", "intern/ghost/CMakeLists.txt", "intern/ghost/intern/GHOST_ISystem.cc"]
+    patches = [ROOT / "patches/blender-5.2.2-ghost-web.patch"]
+    core_patch = ROOT / "patches/blender-5.2.2-browser-core.patch"
+    if core_patch.exists():
+        patches.append(core_patch)
+    expression_patch = ROOT / "patches/blender-5.2.2-browser-expressions.patch"
+    if expression_patch.exists():
+        patches.append(expression_patch)
+    dna_patch = ROOT / "patches/blender-5.2.2-browser-dna.patch"
+    if dna_patch.exists():
+        patches.append(dna_patch)
+    patched_paths = sorted({line[6:] for patch in patches for line in patch.read_text().splitlines()
+                            if line.startswith("+++ b/")})
     with tempfile.TemporaryDirectory(prefix="ghost-patch-", dir=CACHE) as temporary:
         expected = Path(temporary)
         for relative in patched_paths:
             (expected / relative).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(pristine / relative, expected / relative)
-        run("patch", "--batch", "-p1", "-i", patch, cwd=expected, stdout=subprocess.DEVNULL)
+        for patch in patches:
+            run("patch", "--batch", "-p1", "-i", patch, cwd=expected, stdout=subprocess.DEVNULL)
         generated = {relative: (expected / relative).read_bytes() for relative in patched_paths}
     for path in (ROOT / "native/browser").glob("GHOST_*"):
         generated["intern/ghost/intern/" + path.name] = path.read_bytes()
+    expression_header = ROOT / "native/browser/expr_math_errors.hh"
+    if expression_header.exists():
+        generated["source/blender/blenlib/expr_math_errors.hh"] = expression_header.read_bytes()
     startup_relative = "release/datafiles/startup.blend"
     pointer = subprocess.check_output(["git", "-C", str(pristine), "show", "HEAD:" + startup_relative], text=True)
     asset_oid = re.search(r"oid sha256:([a-f0-9]+)", pointer).group(1)
+    assets = {startup_relative: asset_oid}
+    for path in (pristine / "release/datafiles").rglob("*"):
+        if path.is_file():
+            with path.open("rb") as stream:
+                pointer_data = stream.read(200)
+            if pointer_data.startswith(b"version https://git-lfs.github.com/spec/v1\n"):
+                oid = re.search(rb"oid sha256:([a-f0-9]{64})", pointer_data).group(1).decode()
+                assets[path.relative_to(pristine).as_posix()] = oid
     # Check all copied inputs. Only generated files and the verified LFS asset may differ.
     for origin in pristine.rglob("*"):
         relative = origin.relative_to(pristine).as_posix()
@@ -96,7 +118,7 @@ def prepare_source(materialize_assets=False):
         if not actual.is_file():
             raise SystemExit(f"Prepared source file is missing: {relative}")
         actual_hash = digest(actual)
-        if actual_hash != digest(origin) and not (relative == startup_relative and actual_hash == asset_oid):
+        if actual_hash != digest(origin) and actual_hash != assets.get(relative):
             raise SystemExit(f"Prepared source has local edits: {relative}; they will not be overwritten.")
     for relative, data in generated.items():
         actual = source / relative
@@ -107,20 +129,30 @@ def prepare_source(materialize_assets=False):
         if actual.exists() and digest(actual) not in permitted:
             raise SystemExit(f"Generated platform source has local edits: {relative}")
         actual.parent.mkdir(parents=True, exist_ok=True)
-        actual.write_bytes(data)
-    if materialize_assets and digest(source / startup_relative) != asset_oid:
+        if not actual.exists() or actual.read_bytes() != data:
+            temporary = actual.with_name(actual.name + ".port-" + str(os.getpid()))
+            temporary.write_bytes(data)
+            temporary.replace(actual)
+    missing_assets = [name for name, oid in assets.items() if digest(source / name) != oid]
+    if materialize_assets and missing_assets:
         # Blender's public LFS objects are hosted upstream, not in the GitHub mirror.
         endpoint = "https://projects.blender.org/blender/blender.git/info/lfs"
         run("git", "-C", pristine, "-c", "lfs.url=" + endpoint, "-c", "lfs." + endpoint + ".access=none",
-            "lfs", "fetch", "--include=" + startup_relative, "origin", "HEAD",
+            "lfs", "fetch", "--include=release/datafiles/**", "origin", "HEAD",
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
-        object_path = pristine / ".git/lfs/objects" / asset_oid[:2] / asset_oid[2:4] / asset_oid
-        if not object_path.exists() or digest(object_path) != asset_oid:
-            raise SystemExit("Startup LFS object could not be verified against Blender's SHA256.")
-        shutil.copyfile(object_path, source / startup_relative)
-    metadata_path.write_text(json.dumps({"commit": head, "patch_sha256": digest(patch),
+        for name in missing_assets:
+            oid = assets[name]
+            object_path = pristine / ".git/lfs/objects" / oid[:2] / oid[2:4] / oid
+            if not object_path.exists() or digest(object_path) != oid:
+                raise SystemExit(f"LFS object could not be verified against Blender's SHA256: {name}")
+            shutil.copyfile(object_path, source / name)
+    metadata = json.dumps({"commit": head, "patches": {patch.name: digest(patch) for patch in patches},
         "generated": {name: hashlib.sha256(data).hexdigest() for name, data in generated.items()},
-        "startup_verified": digest(source / startup_relative) == asset_oid}, indent=2) + "\n")
+        "assets": assets,
+        "startup_verified": digest(source / startup_relative) == asset_oid}, indent=2) + "\n"
+    temporary = metadata_path.with_name(metadata_path.name + "." + str(os.getpid()))
+    temporary.write_text(metadata)
+    temporary.replace(metadata_path)
     return source
 
 if __name__ == "__main__":
