@@ -19,15 +19,23 @@
     <section class="workbench" aria-label="Blender source validation workbench">
       <div class="toolbar"><span><i id="engine-dot"></i> <span id="engine-status" role="status">Loading Blender math…</span></span><button id="reset" disabled>Reset transform</button></div>
       <div class="workspace">
-        <div class="viewport" id="viewport" tabindex="0" role="group" aria-label="Keyboard transformation test. Press G, R or S, then X, Y or Z, then arrow keys. Enter confirms and Escape cancels.">
+        <div class="viewport" id="viewport" tabindex="0" role="group" aria-label="Cube transformation test. Use the touch buttons or drag the cube. Keyboard: G, R or S, then X, Y or Z, then arrows. Enter confirms and Escape cancels.">
           <div class="view-label">TRANSFORMATION TEST <span>Wireframe · math only</span></div>
           <canvas id="canvas" aria-label="Cube wireframe transformed by Blender math"></canvas>
-          <div class="axis"><span>X</span><span>Y</span><span>Z</span></div>
-          <div class="operation" id="operation" role="status">Click or tap the viewport to use your keyboard</div>
+          <div class="axis" aria-label="Transform axis"><button data-command="x" aria-label="X axis" aria-pressed="true" disabled>X</button><button data-command="y" aria-label="Y axis" aria-pressed="false" disabled>Y</button><button data-command="z" aria-label="Z axis" aria-pressed="false" disabled>Z</button></div>
+          <div class="operation" id="operation" role="status">Drag to move, or choose a transform below</div>
         </div>
         <aside><h2>Transform</h2><div id="transform-values"></div><h2>On this device</h2><dl id="capabilities"><dt>Checking browser</dt><dd>…</dd></dl><p class="aside-note">WebGPU is a future port requirement. This wireframe uses a canvas, not Blender’s graphics backend.</p></aside>
       </div>
-      <div class="shortcuts"><span><kbd>G</kbd> Move</span><span><kbd>R</kbd> Rotate</span><span><kbd>S</kbd> Scale</span><span><kbd>X</kbd><kbd>Y</kbd><kbd>Z</kbd> Axis</span><span><kbd>←</kbd><kbd>→</kbd> Adjust</span><span><kbd>↵</kbd> Confirm</span><span><kbd>Esc</kbd> Cancel</span></div>
+      <div class="touch-controls" role="group" aria-label="Touch transform controls">
+        <button data-command="g" aria-label="Move" aria-pressed="false" disabled><kbd>G</kbd> Move</button>
+        <button data-command="r" aria-label="Rotate" aria-pressed="false" disabled><kbd>R</kbd> Rotate</button>
+        <button data-command="s" aria-label="Scale" aria-pressed="false" disabled><kbd>S</kbd> Scale</button>
+        <button data-command="arrowleft" aria-label="Decrease transform" disabled>−</button>
+        <button data-command="arrowright" aria-label="Increase transform" disabled>+</button>
+        <button data-command="enter" disabled>Confirm</button>
+        <button data-command="escape" disabled>Cancel</button>
+      </div>
     </section>
     <section class="readiness"><div><span class="label">SOURCE CHECK</span><p id="checks" role="status">Waiting for the engine</p></div><div><span class="label">OFFLINE</span><p id="offline-status" role="status">Preparing offline assets…</p></div><div><span class="label">NEXT MILESTONE</span><p>Browser windowing + WebGPU</p></div></section>
     <footer><p>No remote rendering. No account. All test calculations happen on this device.</p><p>Experimental project, unaffiliated with the Blender Foundation. <a href="./engine/source.tar.gz">Corresponding source</a> · <a href="./COPYING.txt">GPL license</a></p><p>WorldWideWeb: select the extracted folder containing index.html, start serving, and keep the server running. A plain HTTP .local address runs the test but cannot install its offline cache. HTTPS or an eligible loopback address is required for PWA caching. Browser storage can be evicted.</p></footer>

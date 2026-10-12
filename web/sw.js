@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 const PREFIX = `blender-port:${new URL('./', self.location).pathname}:`;
-const CACHE = PREFIX + 'math-v2';
+const CACHE = PREFIX + 'math-v3';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './math-runtime.js',
   './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './COPYING.txt',
   './engine/blender-math.wasm', './engine/build.json', './engine/source.tar.gz'];

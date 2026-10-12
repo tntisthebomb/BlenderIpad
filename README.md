@@ -55,9 +55,11 @@ For initial setup, the repository's **Settings → Pages → Build and deploymen
 
 GitHub Pages cannot set custom COOP/COEP response headers. The current single-threaded milestone does not require them and still runs offline. A future full port using WASM threads will need a hosting strategy that supplies the required isolation behavior; the local server's headers do not automatically carry over to Pages.
 
-## Keyboard test
+## Touch and keyboard test
 
-Tap or click the viewport to focus it. Press `G`, `R` or `S`, choose `X`, `Y` or `Z`, then use arrow keys. `Enter` confirms, `Escape` cancels, and `Shift` makes finer adjustments. This is a small test harness around the compiled math routines; it does not implement Blender's complete shortcut system. System-reserved shortcuts remain controlled by iPadOS/Safari.
+Use the Move, Rotate and Scale buttons, choose an axis with the X/Y/Z buttons, and tap − / + or drag in the viewport to adjust. Confirm keeps a change; Cancel restores the pose from before the operation. Dragging without choosing a mode moves along the selected axis and confirms when released. Touch interruption cancels a pending drag. The viewport and control panel suppress text selection and the iOS copy callout; text outside the workbench remains selectable.
+
+Tap or click the viewport to focus the physical keyboard. Press `G`, `R` or `S`, choose `X`, `Y` or `Z`, then use arrow keys. `Enter` confirms, `Escape` cancels, and `Shift` makes finer adjustments. This is a small test harness around the compiled math routines; it does not implement Blender's complete shortcut system. System-reserved shortcuts remain controlled by iPadOS/Safari.
 
 ## Validation
 
@@ -65,6 +67,7 @@ Tap or click the viewport to focus it. Press `G`, `R` or `S`, choose `X`, `Y` or
 node --test tests/math.test.mjs
 python3 tests/browser_test.py
 python3 tests/local_server_test.py
+python3 tests/touch_test.py
 ```
 
 The browser test requires the Python Playwright package and Chromium. It uses `/usr/lib/chromium/chromium` by default; set `CHROMIUM_PATH` for another installation. If those tools are absent, install them in a local virtual environment/browser directory rather than modifying the project sources. The onboarding machine already provides both.
