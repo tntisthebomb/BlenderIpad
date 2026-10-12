@@ -22,7 +22,10 @@ RECIPES = {
     "pystring": [],
     "expat": ["-DEXPAT_BUILD_TOOLS=OFF", "-DEXPAT_BUILD_EXAMPLES=OFF", "-DEXPAT_BUILD_TESTS=OFF", "-DEXPAT_SHARED_LIBS=OFF"],
     "minizipng": ["-DMZ_COMPAT=OFF", "-DMZ_ZLIB=ON", "-DMZ_BZIP2=OFF", "-DMZ_LZMA=OFF", "-DMZ_ZSTD=OFF", "-DMZ_OPENSSL=OFF", "-DMZ_LIBBSD=OFF", "-DMZ_PKCRYPT=OFF", "-DMZ_WZAES=OFF", "-DMZ_BUILD_TESTS=OFF", "-DMZ_BUILD_UNIT_TESTS=OFF", "-DMZ_FETCH_LIBS=OFF"],
-    "eigen": ["-DBUILD_TESTING=OFF", "-DEIGEN_BUILD_DOC=OFF"],
+    # Blender uses Eigen's header templates, not its standalone BLAS/LAPACK
+    # libraries. Those optional targets can accidentally detect host Fortran.
+    "eigen": ["-DBUILD_TESTING=OFF", "-DEIGEN_BUILD_TESTING=OFF", "-DEIGEN_BUILD_DOC=OFF",
+              "-DEIGEN_BUILD_BLAS=OFF", "-DEIGEN_BUILD_LAPACK=OFF"],
     "openjph": ["-DOJPH_BUILD_EXECUTABLES=OFF", "-DOJPH_BUILD_TESTS=OFF", "-DOJPH_ENABLE_TIFF_SUPPORT=OFF"],
     "openexr": ["-DBUILD_TESTING=OFF", "-DOPENEXR_BUILD_TOOLS=OFF", "-DOPENEXR_BUILD_EXAMPLES=OFF", "-DOPENEXR_INSTALL_EXAMPLES=OFF", "-DOPENEXR_INSTALL_TOOLS=OFF", "-DOPENEXR_FORCE_INTERNAL_IMATH=OFF"],
     "tiff": ["-Dtiff-tools=OFF", "-Dtiff-tests=OFF", "-Dtiff-docs=OFF", "-Dtiff-contrib=OFF", "-Dlzma=OFF", "-Djbig=OFF", "-Dlerc=OFF", "-Dwebp=OFF", "-Dzstd=ON"],
