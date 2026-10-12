@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class Handler(SimpleHTTPRequestHandler):
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
-                      ".wasm": "application/wasm", ".mjs": "text/javascript",
+                      ".wasm": "application/wasm", ".js": "text/javascript",
                       ".webmanifest": "application/manifest+json"}
 
     def end_headers(self):

@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { loadMath, checkMath, result } from '../web/math-runtime.mjs';
+import { loadMath, checkMath, result } from '../web/math-runtime.js';
 
 const bytes = await fs.readFile(new URL('../web/engine/blender-math.wasm', import.meta.url));
 const engine = await loadMath(bytes);

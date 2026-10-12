@@ -25,7 +25,7 @@ python3 scripts/serve.py --port 8080
 
 The initial Git clone intentionally leaves LFS assets as pointers. The math build does not use them. A future full Blender build must fetch the real LFS assets and separately cross-compile its dependencies; this is not a prepared full desktop Blender checkout.
 
-The server listens only on the build machine's loopback interface. **To install on an iPad, deploy the contents of `web/` to an HTTPS static host.** No backend or remote Blender process is required by this milestone. Hosting needs `.wasm` served as `application/wasm`, `.mjs` as JavaScript, and the manifest as `application/manifest+json`. Serve `sw.js` without long-lived HTTP caching. For future WASM threads, preserve these headers on the app and assets:
+The server listens only on the build machine's loopback interface. **To install on an iPad, deploy the contents of `web/` to an HTTPS static host.** No backend or remote Blender process is required by this milestone. Hosting needs `.wasm` served as `application/wasm`, `.js` as JavaScript, and the manifest as `application/manifest+json`. Serve `sw.js` without long-lived HTTP caching. For future WASM threads, preserve these headers on the app and assets:
 
 ```text
 Cross-Origin-Opener-Policy: same-origin
@@ -37,9 +37,19 @@ The current math build is single-threaded. Shared memory is detected but not use
 
 Open the hosted page in Safari, choose **Share → Add to Home Screen**, and wait for **Downloaded · ready for offline reload** before disconnecting. The service worker caches the app, WASM, build metadata, license, and corresponding source. Storage is subject to browser eviction: offline availability is verified for the current cache, not guaranteed indefinitely. Bump the service worker cache version when deploying changed assets so existing installations receive a coherent update.
 
+## WorldWideWeb on iPad
+
+Download the newest successful build's `ipad-workbench` artifact from the repository's Actions tab. Extract it in Files. Select the directory containing `index.html` as WorldWideWeb's root and start serving. Open the supplied address in Safari and keep WorldWideWeb running. Browser scripts use `.js` because some local servers do not recognize the `.mjs` module extension.
+
+An HTTP `users-ipad.local` or Wi-Fi address can run the math test without Internet, but it is not a secure context for service-worker installation. In that mode the status says **Local server mode · keep WorldWideWeb running**; files are served by the local app each time. HTTPS or a browser-recognized loopback address is needed for the independent PWA offline cache. Closing or suspending the local server can interrupt access.
+
+A blank viewport stuck on Loading Blender math means startup did not complete. The updated page reports script-load, runtime and missing-engine errors directly in Source Check. A successful startup displays **Blender math running locally**, five passed source checks, and a wireframe cube. This is a math test, not the Blender editor or render engines.
+
 ## GitHub Pages deployment
 
-The workflow in `.github/workflows/pages.yml` builds the pinned source, runs the seven WASM tests, uploads `web/` including corresponding source, and deploys to GitHub Pages when `main` is pushed or the workflow is run manually. Official GitHub Actions are pinned to exact commits.
+The **Build iPad workbench** workflow in `.github/workflows/pages.yml` builds the pinned source, runs the seven WASM tests, and uploads a direct `ipad-workbench` ZIP containing `index.html`, browser scripts, engine and corresponding source. Normal pushes do not attempt Pages deployment. Official GitHub Actions are pinned to exact commits.
+
+For optional HTTPS publication, run the workflow manually and select **deploy_pages**.
 
 For initial setup, the repository's **Settings → Pages → Build and deployment → Source** must be **GitHub Actions**. An authorized administrator can enable this in the UI or via the Pages API. The workflow's default `GITHUB_TOKEN` cannot enable Pages for the first time. This is a prerequisite, not a completed deployment.
 
@@ -54,6 +64,7 @@ Tap or click the viewport to focus it. Press `G`, `R` or `S`, choose `X`, `Y` or
 ```sh
 node --test tests/math.test.mjs
 python3 tests/browser_test.py
+python3 tests/local_server_test.py
 ```
 
 The browser test requires the Python Playwright package and Chromium. It uses `/usr/lib/chromium/chromium` by default; set `CHROMIUM_PATH` for another installation. If those tools are absent, install them in a local virtual environment/browser directory rather than modifying the project sources. The onboarding machine already provides both.

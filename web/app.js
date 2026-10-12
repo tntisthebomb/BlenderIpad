@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-import { loadMath, result, checkMath } from './math-runtime.mjs';
+import { loadMath, result, checkMath } from './math-runtime.js';
+if (window.portBoot) window.portBoot.started = true;
 
 const byId = id => document.getElementById(id);
 const viewport = byId('viewport');
@@ -93,7 +94,8 @@ byId('reset').addEventListener('click', () => {
   byId('operation').textContent = 'Transform reset · click the viewport to use your keyboard';
   draw();
 });
-new ResizeObserver(draw).observe(canvas);
+if (typeof ResizeObserver !== 'undefined') new ResizeObserver(draw).observe(canvas);
+else window.addEventListener('resize', draw);
 
 async function capabilities() {
   let gpu = 'Unavailable';
@@ -103,7 +105,7 @@ async function capabilities() {
   const entries = [
     ['WebAssembly', typeof WebAssembly === 'object' ? 'Available' : 'Unavailable'],
     ['WebGPU adapter', gpu],
-    ['Shared memory', crossOriginIsolated && typeof SharedArrayBuffer !== 'undefined' ? 'Available' : 'Unavailable'],
+    ['Shared memory', window.crossOriginIsolated === true && typeof SharedArrayBuffer !== 'undefined' ? 'Available' : 'Unavailable'],
     ['App mode', matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'Installed' : 'Browser'],
   ];
   const list = byId('capabilities'); list.replaceChildren();
@@ -115,8 +117,8 @@ async function capabilities() {
 
 async function prepareOffline() {
   const status = byId('offline-status');
-  if (!isSecureContext || !('serviceWorker' in navigator)) {
-    status.textContent = 'Requires HTTPS (localhost works for development)'; return;
+  if (window.isSecureContext !== true || !('serviceWorker' in navigator)) {
+    status.textContent = 'Local server mode · keep WorldWideWeb running'; return;
   }
   try {
     const registration = await navigator.serviceWorker.register('./sw.js');
@@ -144,10 +146,12 @@ try {
   byId('engine-dot').classList.add('ready');
   byId('checks').textContent = `${count} source checks passed · Blender 5.2.2`;
   byId('reset').disabled = false;
+  window.portBoot?.complete();
   draw();
   prepareOffline();
 } catch (error) {
   byId('engine-status').textContent = 'Blender math failed to load';
   byId('checks').textContent = error.message;
   byId('offline-status').textContent = 'Unavailable until the math build loads';
+  window.portBoot?.complete();
 }

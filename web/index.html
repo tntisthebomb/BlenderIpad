@@ -30,8 +30,36 @@
       <div class="shortcuts"><span><kbd>G</kbd> Move</span><span><kbd>R</kbd> Rotate</span><span><kbd>S</kbd> Scale</span><span><kbd>X</kbd><kbd>Y</kbd><kbd>Z</kbd> Axis</span><span><kbd>←</kbd><kbd>→</kbd> Adjust</span><span><kbd>↵</kbd> Confirm</span><span><kbd>Esc</kbd> Cancel</span></div>
     </section>
     <section class="readiness"><div><span class="label">SOURCE CHECK</span><p id="checks" role="status">Waiting for the engine</p></div><div><span class="label">OFFLINE</span><p id="offline-status" role="status">Preparing offline assets…</p></div><div><span class="label">NEXT MILESTONE</span><p>Browser windowing + WebGPU</p></div></section>
-    <footer><p>No remote rendering. No account. All test calculations happen on this device.</p><p>Experimental project, unaffiliated with the Blender Foundation. <a href="./engine/source.tar.gz">Corresponding source</a> · <a href="./COPYING.txt">GPL license</a></p><p>On iPad: open the HTTPS-hosted page in Safari, then Share → Add to Home Screen. Complete the offline download before disconnecting. Browser storage can be evicted.</p></footer>
+    <footer><p>No remote rendering. No account. All test calculations happen on this device.</p><p>Experimental project, unaffiliated with the Blender Foundation. <a href="./engine/source.tar.gz">Corresponding source</a> · <a href="./COPYING.txt">GPL license</a></p><p>WorldWideWeb: select the extracted folder containing index.html, start serving, and keep the server running. A plain HTTP .local address runs the test but cannot install its offline cache. HTTPS or an eligible loopback address is required for PWA caching. Browser storage can be evicted.</p></footer>
   </main>
-  <script type="module" src="./app.mjs"></script>
+  <script>
+    // Report startup failures even when the module itself cannot execute.
+    window.portBoot = {
+      started: false,
+      finished: false,
+      complete: function () { this.finished = true; clearTimeout(this.timer); },
+      fail: function (message) {
+        if (this.finished) return;
+        document.getElementById('engine-status').textContent = 'Math test could not start';
+        document.getElementById('checks').textContent = message;
+        document.getElementById('offline-status').textContent = 'Unavailable until startup succeeds';
+        this.complete();
+      }
+    };
+    document.addEventListener('error', function (event) {
+      if (event.target && event.target.id === 'app-module') {
+        window.portBoot.fail('JavaScript could not load. Check that app.js and math-runtime.js are present and served as JavaScript.');
+      }
+    }, true);
+    window.addEventListener('error', function (event) {
+      window.portBoot.fail(event.message || 'JavaScript startup failed.');
+    });
+    window.portBoot.timer = setTimeout(function () {
+      window.portBoot.fail(window.portBoot.started
+        ? 'Engine download is taking too long. Check that engine/blender-math.wasm is present and your local server is running.'
+        : 'JavaScript did not start. Check the extracted folder and the local server.');
+    }, 20000);
+  </script>
+  <script id="app-module" type="module" src="./app.js"></script>
 </body>
 </html>

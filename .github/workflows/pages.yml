@@ -1,9 +1,14 @@
-name: Publish Blender browser workbench
+name: Build iPad workbench
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      deploy_pages:
+        description: Publish to GitHub Pages (requires Pages already enabled)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,12 +27,20 @@ jobs:
         run: python3 scripts/build_kernel.py
       - name: Validate compiled WebAssembly
         run: node --test tests/math.test.mjs
-      - name: Upload static site and corresponding source
+      - name: Upload local-server ZIP
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ipad-workbench
+          path: web
+          if-no-files-found: error
+      - name: Upload optional Pages package
+        if: github.event_name == 'workflow_dispatch' && inputs.deploy_pages
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: web
 
   deploy:
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_pages
     needs: build
     runs-on: ubuntu-24.04
     permissions:
