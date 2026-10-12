@@ -115,9 +115,14 @@ def build(name, env, threaded=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("names", nargs="*", choices=list(LOCK["dependencies"]), default=[])
+    allowed = list(LOCK["dependencies"])
+    parser.add_argument("names", nargs="*", metavar="LIBRARY",
+                        help="Optional subset: " + ", ".join(allowed))
     parser.add_argument("--threaded", action="store_true", help="Build a separate pthread ABI sysroot for the application runtime")
     args = parser.parse_args()
+    for name in args.names:
+        if name not in allowed:
+            parser.error("unknown library: " + name + "; choose from " + ", ".join(allowed))
     environment = toolchain()
     # fmt's locale and threading suites currently expose unsupported runtime
     # behavior. Keep its explicit diagnostic available, but exclude it from the

@@ -110,8 +110,16 @@ def core_build(name, env):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("names", nargs="*", choices=["jpeg", "png", "zlib", "zstd", "fmt", *RECIPES], default=[])
+    allowed = ["jpeg", "png", "zlib", "zstd", "fmt", *RECIPES]
+    # argparse validates the entire [] default against choices for nargs='*'.
+    # Validate individual supplied names instead, so the full no-argument
+    # dependency pipeline works on the pinned host Python versions.
+    parser.add_argument("names", nargs="*", metavar="LIBRARY",
+                        help="Optional subset: " + ", ".join(allowed))
     args = parser.parse_args()
+    for name in args.names:
+        if name not in allowed:
+            parser.error("unknown library: " + name + "; choose from " + ", ".join(allowed))
     env = toolchain()
     prefix = CACHE / "wasm-threaded-sysroot"
     env.update({"PKG_CONFIG_LIBDIR": str(prefix / "lib/pkgconfig"), "PKG_CONFIG_PATH": ""})
