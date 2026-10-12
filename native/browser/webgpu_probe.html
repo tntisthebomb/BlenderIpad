@@ -1,0 +1,7 @@
+<!doctype html><html><body>
+<p>Real Blender GHOST WebGPU canvas context acceptance; editor not attached.</p>
+<canvas id="canvas" width="64" height="48" tabindex="0" style="width:64px;height:48px;touch-action:none;user-select:none"></canvas>
+<script src="ghost-webgpu-probe.js"></script><script>
+GhostWebGPU({canvas:document.getElementById('canvas'),onAbort:message => document.body.dataset.error=String(message)})
+.then(module => window.ghostGPU=module).catch(error => document.body.dataset.error=String(error));
+</script></body></html>

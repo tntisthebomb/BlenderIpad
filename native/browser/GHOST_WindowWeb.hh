@@ -8,13 +8,16 @@
 /** \file
  * \ingroup GHOST
  * Browser window mapped to one canvas. This platform milestone uses a real
- * GHOST_ContextNone for event/window integration. No graphics backend is
- * attached: presentation explicitly fails until a renderer is implemented.
+ * GHOST_ContextNone by default, with an opt-in real WebGPU canvas context.
+ * Blender scene drawing and its editor renderer remain unimplemented.
  */
 
 #pragma once
 
 #include "GHOST_Window.hh"
+#ifdef WITH_GHOST_WEBGPU_CONTEXT
+#  include "GHOST_ContextWebGPU.hh"
+#endif
 
 #include <emscripten/emscripten.h>
 #include <functional>
@@ -44,7 +47,8 @@ class GHOST_WindowWeb : public GHOST_Window {
 
   GHOST_TSuccess swapBufferAcquire() override
   {
-    return GHOST_kFailure; // No graphics backend is attached yet.
+    return drawing_context_type_ != GHOST_kDrawingContextTypeNone ?
+      GHOST_Window::swapBufferAcquire() : GHOST_kFailure;
   }
 
   GHOST_TSuccess hasCursorShape(GHOST_TStandardCursor shape) override
@@ -123,10 +127,20 @@ class GHOST_WindowWeb : public GHOST_Window {
   }
   GHOST_TSuccess swapBufferRelease() override
   {
-    return GHOST_kFailure; // Presentation is not implemented; do not report success.
+    return drawing_context_type_ != GHOST_kDrawingContextTypeNone ?
+      GHOST_Window::swapBufferRelease() : GHOST_kFailure;
   }
-  GHOST_Context *newDrawingContext(GHOST_TDrawingContextType /*type*/) override
+  GHOST_Context *newDrawingContext(GHOST_TDrawingContextType type) override
   {
+#ifdef WITH_GHOST_WEBGPU_CONTEXT
+    if (type == GHOST_kDrawingContextTypeWebGPU) {
+      auto *context = new GHOST_ContextWebGPU(want_context_params_);
+      if (context->initializeDrawingContext() == GHOST_kSuccess) return context;
+      delete context;
+    }
+#else
+    (void)type;
+#endif
     return nullptr;
   }
   GHOST_TSuccess activateDrawingContext() override

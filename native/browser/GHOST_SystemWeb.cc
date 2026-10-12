@@ -225,7 +225,11 @@ GHOST_IWindow *GHOST_SystemWeb::createWindow(const char *title,
                                              const bool /*is_dialog*/,
                                              const GHOST_IWindow * /*parent_window*/)
 {
-  if (gpu_settings.context_type != GHOST_kDrawingContextTypeNone) return nullptr;
+  if (gpu_settings.context_type != GHOST_kDrawingContextTypeNone
+#ifdef WITH_GHOST_WEBGPU_CONTEXT
+      && gpu_settings.context_type != GHOST_kDrawingContextTypeWebGPU
+#endif
+  ) return nullptr;
   if (window_ != nullptr) {
     /* Single-window platform: additional windows (preferences, etc.) are not
      * supported; return null so WM falls back to opening in the main window. */
@@ -235,6 +239,9 @@ GHOST_IWindow *GHOST_SystemWeb::createWindow(const char *title,
   window_ = new GHOST_WindowWeb(title, canvas_w_, canvas_h_, state, context_params, [this]() {
     pushEvent(std::make_unique<GHOST_Event>(getMilliSeconds(), GHOST_kEventWindowUpdate, window_));
   });
+  if (window_->setDrawingContextType(gpu_settings.context_type) != GHOST_kSuccess) {
+    delete window_; window_ = nullptr; return nullptr;
+  }
   window_->setTitle(title);
   /* Register with the window manager so validWindow() passes — otherwise every
    * GHOST event is dropped as "invalid window" in wm_window's event handler. */

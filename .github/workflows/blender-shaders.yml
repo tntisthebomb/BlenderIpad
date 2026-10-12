@@ -24,7 +24,7 @@ jobs:
       - name: Install browser test runner
         run: |
           python3 -m venv .cache/browser-tests
-          .cache/browser-tests/bin/python -m pip install playwright==1.62.0
+          .cache/browser-tests/bin/python -m pip install playwright==1.62.0 Pillow==12.0.0
       - name: Validate translated Blender shader through WebGPU
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
@@ -32,3 +32,9 @@ jobs:
           .cache/browser-tests/bin/python tests/shader_webgpu_test.py
           python3 scripts/build_browser_webgpu_probe.py
           .cache/browser-tests/bin/python tests/webgpu_native_browser_test.py
+      - name: Build and validate real GHOST canvas presentation
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+        run: |
+          python3 scripts/build_browser_ghost_webgpu.py
+          .cache/browser-tests/bin/python tests/ghost_webgpu_browser_test.py

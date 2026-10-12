@@ -49,3 +49,17 @@ target_link_options(ghost-platform-probe PRIVATE
   "-sEXPORTED_FUNCTIONS=['_ghost_probe_init','_ghost_probe_tick','_ghost_probe_snapshot','_ghost_probe_shutdown','_ghost_probe_key_g','_ghost_probe_text','_ghost_probe_redraw','_ghost_probe_close_window','_ghost_probe_reopen_window']"
   "-sEXPORTED_RUNTIME_METHODS=['ccall','UTF8ToString']"
 )
+
+option(WITH_GHOST_WEBGPU_CONTEXT "Build real canvas WebGPU context and its acceptance probe" OFF)
+if(WITH_GHOST_WEBGPU_CONTEXT)
+  target_sources(blender_browser_ghost PRIVATE ${G}/intern/GHOST_ContextWebGPU.cc)
+  target_compile_definitions(blender_browser_ghost PUBLIC WITH_GHOST_WEBGPU_CONTEXT)
+  target_compile_options(blender_browser_ghost PUBLIC --use-port=emdawnwebgpu)
+  target_link_options(blender_browser_ghost INTERFACE --use-port=emdawnwebgpu)
+  add_executable(ghost-webgpu-probe ghost_webgpu_probe.cc)
+  target_link_libraries(ghost-webgpu-probe PRIVATE blender_browser_ghost)
+  target_link_options(ghost-webgpu-probe PRIVATE -sMODULARIZE=1 -sEXPORT_NAME=GhostWebGPU
+    -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=2 -sDISABLE_EXCEPTION_CATCHING=0
+    "-sEXPORTED_FUNCTIONS=['_main','_ghost_gpu_frame','_ghost_gpu_close','_ghost_gpu_reopen','_ghost_gpu_shutdown','_ghost_gpu_pending']")
+  configure_file(webgpu_probe.html ghost-webgpu.html COPYONLY)
+endif()

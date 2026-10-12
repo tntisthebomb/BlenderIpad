@@ -1,0 +1,48 @@
+--- a/intern/ghost/GHOST_Types.hh
++++ b/intern/ghost/GHOST_Types.hh
+@@ -284,6 +284,9 @@
+ #endif
+ #ifdef WITH_VULKAN_BACKEND
+   GHOST_kDrawingContextTypeVulkan,
++#endif
++#ifdef WITH_GHOST_WEBGPU_CONTEXT
++  GHOST_kDrawingContextTypeWebGPU,
+ #endif
+ };
+ 
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -334,6 +334,11 @@
+ option(WITH_GHOST_WEB "Enable the Emscripten browser window and event backend" OFF)
+ if(WITH_GHOST_WEB AND NOT EMSCRIPTEN)
+   message(FATAL_ERROR "WITH_GHOST_WEB requires an Emscripten toolchain")
++endif()
++
++option(WITH_GHOST_WEBGPU_CONTEXT "Enable the browser WebGPU canvas context" OFF)
++if(WITH_GHOST_WEBGPU_CONTEXT AND NOT WITH_GHOST_WEB)
++  message(FATAL_ERROR "WITH_GHOST_WEBGPU_CONTEXT requires WITH_GHOST_WEB")
+ endif()
+ 
+ option(WITH_GHOST_DEBUG "Enable debugging output for the GHOST library" OFF)
+--- a/intern/ghost/CMakeLists.txt
++++ b/intern/ghost/CMakeLists.txt
+@@ -142,6 +142,9 @@
+     intern/GHOST_WindowWeb.hh
+   )
+   add_definitions(-DWITH_GHOST_WEB)
++  if(WITH_GHOST_WEBGPU_CONTEXT)
++    list(APPEND SRC intern/GHOST_ContextWebGPU.cc intern/GHOST_ContextWebGPU.hh)
++  endif()
+ elseif(WITH_GHOST_SDL)
+   list(APPEND SRC
+     intern/GHOST_ContextSDL.cc
+@@ -645,3 +648,9 @@
+ endif()
+ 
+ blender_add_lib(bf_intern_ghost "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
++
++if(WITH_GHOST_WEBGPU_CONTEXT)
++  target_compile_definitions(bf_intern_ghost PUBLIC WITH_GHOST_WEBGPU_CONTEXT)
++  target_compile_options(bf_intern_ghost PUBLIC --use-port=emdawnwebgpu)
++  target_link_options(bf_intern_ghost INTERFACE --use-port=emdawnwebgpu)
++endif()

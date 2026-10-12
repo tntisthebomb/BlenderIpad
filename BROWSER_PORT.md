@@ -86,7 +86,7 @@ The full configuration command discovers the verified WASM JPEG, PNG, zlib and Z
 
 ## Remaining integration
 
-The browser platform currently accepts only `GHOST_kDrawingContextTypeNone` and reports failure for GPU presentation. It is single-window and single-threaded. Clipboard, cursor capture/custom shapes, gestures, IME composition, suspension and device-pixel scaling still need implementation and target-device tests. Browser event pumping in the probe is not a conversion of Blender's full application main loop.
+The default browser platform accepts `GHOST_kDrawingContextTypeNone` and reports failure for GPU presentation. A separate opt-in WebGPU context now attaches a real canvas surface; see the validated context profile below. It is single-window and single-threaded. Clipboard, cursor capture/custom shapes, gestures, IME composition, suspension and device-pixel scaling still need implementation and target-device tests. Browser event pumping in the probe is not a conversion of Blender's full application main loop.
 
 The full application's dependency discovery still uses upstream Unix platform configuration. Its required Epoxy library is for native OpenGL dispatch, not WebGPU. A browser platform configuration and a real GPU backend must replace that route; installing native Epoxy or returning success from empty presentation methods would not solve it.
 
@@ -125,3 +125,18 @@ The translation probe must read the actual SPIR-V, produce WGSL, parse that WGSL
 These are renderer prerequisites, separate from Blender's GPU backend. The tests request a Chromium software WebGPU adapter in the cloud; they do not establish A14/Safari compatibility, graphics performance, the complete shader corpus, editor presentation or offline PWA relaunch. The native probe currently runs on the main browser thread; device/context handling for Blender's application thread remains to be integrated. Use the manually dispatched `Validate Blender browser shader translation` workflow for a clean-runner check.
 
 Local acceptance passed for GLSL → validated SPIR-V → WGSL → WebGPU dispatch/readback, and for the native WASM WebGPU API probe. Both normal and singular runtime matrix cases pass. The complete renderer remains unimplemented.
+
+## GHOST WebGPU canvas context
+
+```sh
+python3 scripts/build_browser_ghost_webgpu.py
+.cache/browser-tests/bin/python tests/ghost_webgpu_browser_test.py
+```
+
+This separate `.cache/ghost-webgpu-build` profile enables `WITH_GHOST_WEBGPU_CONTEXT`. The real GHOST factory rejects a GPU window before device bootstrap, then registers a WebGPU window with an actual configured canvas surface. The context owns device/surface/frame references, obtains the browser's preferred canvas format, updates the surface size, and exposes its acquired texture/view to a future GPU backend. It requires command submission before frame release and rejects duplicate acquire/release operations. Browsers present when the animation frame yields; calling the native `wgpuSurfacePresent` would abort, so that unsupported API is not used.
+
+Acceptance passes real GPU render-pass clears, canvas-texture pixel readback and visible canvas screenshot pixels, continuous animation frames, surface resize, window close/recreation and full native shutdown. The screenshot assertion requires the rendered colour; a blank image fails. The separate default GHOST event profile remains available without WebGPU. This currently requires the main browser thread; application-worker integration and device-loss recovery remain unimplemented. No Blender GPU backend, scene drawing or editor UI is attached.
+
+Cloud canvas validation selects Chromium's bundled SwiftShader Vulkan ICD when present. Without it, this cloud browser accepted compute work but failed canvas shared-image allocation. Adding `--disable-vulkan-surface` allowed readback but yielded a blank screenshot; removing that flag restored visible output. The test preserves native errors and validates actual screenshot pixels with Pillow 12.0.0. These are cloud test settings, not iPad setup requirements. The application still needs an animation-frame presentation loop and idle-frame preservation; a sequence of GPU reads alone does not prove visible output.
+
+The previous clean background-engine workflow reached the final link but exceeded its 90-minute limit. Its limit is now 180 minutes. The independently dispatched shader-translation workflow passed on a clean GitHub runner; background application validation has passed locally but the complete fresh-runner application checks are not yet confirmed.
