@@ -3,6 +3,7 @@
 import hashlib
 import json
 import platform
+import os
 from pathlib import Path
 import subprocess
 import tarfile
@@ -22,8 +23,11 @@ def setup():
     source = CACHE / "blender"
     ref = LOCK["blender"]
     if not source.exists():
-        run("git", "-c", "filter.lfs.smudge=", "-c", "filter.lfs.required=false", "clone",
-            "--depth", "1", "--branch", ref["tag"], ref["repository"], str(source))
+        # Use LFS's supported skip flag. Overriding only its smudge filter is
+        # inconsistent on runners that also configure filter.lfs.process.
+        subprocess.run(["git", "clone", "--depth", "1", "--branch", ref["tag"],
+                        ref["repository"], str(source)], check=True,
+                       env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"})
     head = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
     if head != ref["commit"]:
         raise SystemExit("Blender source differs from port.lock.json. Preserve it before fetching a new version.")
