@@ -53,12 +53,12 @@ def core_build(name, env):
         staged = directory / "port-source"
         with tempfile.TemporaryDirectory(prefix="oiio-patch-", dir=CACHE) as temporary:
             expected = Path(temporary)
-            for filename in ["strutil.cpp", "sysutil.cpp"]:
+            for filename in ["strutil.cpp", "sysutil.cpp", "ustring.cpp"]:
                 relative = "src/libutil/" + filename
                 (expected / relative).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source / relative, expected / relative)
             run("patch", "--batch", "-p1", "-i", ROOT / "patches/openimageio-3.1.13.1-emscripten.patch", cwd=expected)
-            for filename in ["strutil.cpp", "sysutil.cpp"]:
+            for filename in ["strutil.cpp", "sysutil.cpp", "ustring.cpp"]:
                 relative = "src/libutil/" + filename
                 target = staged / relative
                 if target.exists() and target.read_bytes() != (expected / relative).read_bytes():

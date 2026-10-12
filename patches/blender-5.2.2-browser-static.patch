@@ -1,0 +1,16 @@
+--- a/build_files/cmake/platform/platform_unix.cmake
++++ b/build_files/cmake/platform/platform_unix.cmake
+@@ -1040,6 +1040,13 @@
+
+ unset(_IS_LINKER_DEFAULT)
+
++# The browser application and its extension modules are statically linked.
++# Native Unix PIC produces GOT relocations for function pointers; it is not
++# the ABI used by this Emscripten executable and its dependency archives.
++if(EMSCRIPTEN)
++  string(REPLACE "-fPIC" "" PLATFORM_CFLAGS "${PLATFORM_CFLAGS}")
++endif()
++
+ # Avoid conflicts with Mesa llvmpipe, Luxrender, and other plug-ins that may
+ # use the same libraries as Blender with a different version or build options.
+ set(PLATFORM_SYMBOLS_MAP ${CMAKE_SOURCE_DIR}/source/creator/symbols_unix.map)

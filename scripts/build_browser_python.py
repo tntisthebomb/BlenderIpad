@@ -58,6 +58,14 @@ if __name__ == "__main__":
     extras += [wasm / "Modules" / x for x in ["expat/xmlparse.o", "expat/xmltok.o", "expat/xmlrole.o", "_hacl/Hacl_Hash_SHA2.o"]]
     staged = wasm / "embed-support"
     staged.mkdir(exist_ok=True)
+    # CPython namespaces Expat's public API, but these newer internal globals
+    # are absent from pyexpatns.h. Keep its bundled Expat independent of OCIO's
+    # Expat, including references between all three translation units.
+    run("emmake", "make", "-j4", "-W", source / "Modules/expat/expat_config.h",
+        "EXTRA_CFLAGS=-Dg_reparseDeferralEnabledDefault=PyExpat_reparseDeferralEnabledDefault "
+        "-D_INTERNAL_trim_to_complete_utf8_characters=PyExpat_trim_to_complete_utf8_characters",
+        "Modules/expat/xmlparse.o", "Modules/expat/xmltok.o", "Modules/expat/xmlrole.o",
+        cwd=wasm, env=cross_env)
     for obj in extras:
         if obj.is_file():
             target = staged / ("pymod_" + obj.relative_to(wasm / "Modules").as_posix().replace("/", "_"))
@@ -65,5 +73,5 @@ if __name__ == "__main__":
             run("emar", "r", archive, target, env=env)
     (prefix / "python-runtime.json").write_text(json.dumps({
         "version": "3.13.13", "emscripten": LOCK["emsdk"]["version"],
-        "pthread": True, "scope": "Embeddable CPython; Blender bpy integration is not yet linked"
+        "pthread": True, "scope": "Embeddable CPython; standalone validation does not establish bpy or editor integration"
     }, indent=2) + "\n")

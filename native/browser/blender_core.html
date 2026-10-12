@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Actual Blender background integration test</title>
+<h1>Blender background engine test</h1>
+<p>This developer test runs the real Blender application and bpy in WebAssembly.
+It does not contain Blender's visible editor or a renderer.</p>
+<pre id="output">Loading compiled Blender…</pre>
+<script src="blender-core.js"></script>
+<script>
+window.coreOutput = [];
+window.coreErrors = [];
+window.coreExit = null;
+const write = message => {
+  coreOutput.push(String(message));
+  document.getElementById('output').textContent = coreOutput.join('\n');
+};
+if (!crossOriginIsolated) {
+  document.body.dataset.error = 'Shared-memory isolation headers are required.';
+} else {
+  createBlenderCore({noInitialRun: true, print: write,
+    printErr: message => {coreErrors.push(String(message)); write(message);},
+    onExit: code => {window.coreExit = code;},
+    onAbort: message => {document.body.dataset.error = String(message);}
+  }).then(module => {
+    window.blenderCore = module;
+    document.body.dataset.ready = 'true';
+    write('Background Blender ready; no editor or renderer.');
+  }).catch(error => {document.body.dataset.error = String(error);});
+}
+window.runCoreScene = () => blenderCore.callMain([
+  '--background', '--factory-startup', '--disable-autoexec', '--threads', '2',
+  '--python-exit-code', '1', '--python', '/scene_test.py', '--',
+  '/scene-output', '/blender/datafiles/startup.blend'
+]);
+</script>

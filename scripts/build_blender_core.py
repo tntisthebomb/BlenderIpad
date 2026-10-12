@@ -40,11 +40,16 @@ if __name__ == "__main__":
     build.mkdir(exist_ok=True)
     (build / "package.json").write_text('{"type":"commonjs"}\n')
     flags = "-pthread -fexceptions -DPY_CALL_TRAMPOLINE -UNDEBUG"
-    link = "-pthread -sNODERAWFS=1 -sENVIRONMENT=node -sASSERTIONS=2 -sDISABLE_EXCEPTION_CATCHING=0 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=134217728 -sMAXIMUM_MEMORY=1073741824 -sSTACK_SIZE=8388608 -sDEFAULT_PTHREAD_STACK_SIZE=2097152 -sUSE_ZLIB=1 -sUSE_BZIP2=1 --pre-js " + str(ROOT / "native/browser/core_node_env.js")
+    link = "-g2 -pthread -sNODERAWFS=1 -sENVIRONMENT=node -sASSERTIONS=2 -sDISABLE_EXCEPTION_CATCHING=0 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=134217728 -sMAXIMUM_MEMORY=1073741824 -sSTACK_SIZE=8388608 -sDEFAULT_PTHREAD_STACK_SIZE=2097152 -sUSE_ZLIB=1 -sUSE_BZIP2=1 --pre-js " + str(ROOT / "native/browser/core_node_env.js")
     run("emcmake", "cmake", "-S", source, "-B", build, "-G", "Ninja",
         "-DBROWSER_RUNTIME_PREFIX=" + str(prefix),
         "-DBROWSER_HOST_PYTHON=" + str(CACHE / "deps-build/python-host/python"),
         "-DBLENDER_HOST_SHADER_TOOL=" + str(shader_tool),
+        # Native Python extension loading exports every symbol on Unix. WASM
+        # uses statically linked modules; exporting the entire Blender binary
+        # exceeds browser engine limits and needlessly inflates its launcher.
+        "-DPYTHON_LINKFLAGS=",
+        "-DCMAKE_POSITION_INDEPENDENT_CODE=OFF",
         "-C", ROOT / "cmake/browser-core.cmake",
         "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_PREFIX_PATH=" + str(prefix),
         "-DCMAKE_FIND_ROOT_PATH=" + str(prefix),

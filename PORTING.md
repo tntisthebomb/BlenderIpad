@@ -8,6 +8,8 @@ The native browser build now compiles Blender's real GHOST system factory, event
 
 Selected upstream `blenlib` C++ implementation files compile with WASI SDK 25 and execute inside the browser. The wrapper exposes transformation, matrix inversion, interpolation and normalization. Assertions remain enabled and abort on failure. `MATH_STANDALONE` uses Blender's supported scalar inversion implementation instead of the Eigen C API. The build neither patches upstream source nor links the complete Blender application.
 
+The actual background Blender application now links and executes in Chromium with its static Python interpreter, scripts and startup assets. Tests pass modeling, Solidify, animation, PNG save/load and a native `.blend` round trip after disconnecting the network. This uses a memory filesystem; the original editor, render engines, durable storage and PWA relaunch are still unfinished. See BROWSER_PORT.md for the commands and diagnosed extension-manager failure.
+
 ## 1. Browser build target and dependencies
 
 The upstream top-level `CMakeLists.txt` loads Unix, Windows or Apple platform configuration. It has no browser platform configuration. Linux library archives cannot be linked into a WASM executable.
@@ -16,7 +18,7 @@ Add an explicit Emscripten platform configuration, with separate native builds f
 
 Emscripten 4.0.18 is installed and pinned in `browser-port.lock.json`. The native GHOST browser target builds with it. The older math workbench retains its separate checksum-pinned WASI SDK. WASI alone does not supply Blender's browser windowing, GPU or filesystem integration.
 
-`scripts/configure_blender_browser.py` fetches `release/datafiles/startup.blend` through Blender's public upstream LFS endpoint and verifies its SHA256 against the source pointer. It materializes the asset only in `.cache/blender-browser`; the original release checkout remains pristine. Required browser dependencies and generated host tools remain incomplete; successful platform compilation does not establish a full application build.
+`scripts/configure_blender_browser.py` fetches `release/datafiles/startup.blend` through Blender's public upstream LFS endpoint and verifies its SHA256 against the source pointer. It materializes the asset only in `.cache/blender-browser`; the original release checkout remains pristine. The background profile now has its required browser dependencies and code generators. Full graphics/render dependencies remain incomplete; the GHOST probe alone does not establish application behavior.
 
 Acceptance: configure and link a real browser-target Blender binary, with declared dependencies and generated files; verify startup without silently omitting the application or substituting a test executable.
 
@@ -60,4 +62,4 @@ Acceptance: render a known scene offline on the actual device and compare the re
 
 ## Completion criteria
 
-Call this a full Blender PWA only after the real editor starts, modeling/scripting/file workflows work, rendering is validated, and a Home Screen installation survives a verified offline relaunch on the target iPad. The current milestone meets none of those full-application criteria; it establishes a repeatable source-to-browser path for one component.
+Call this a full Blender PWA only after the real editor starts, modeling/scripting/file workflows work, rendering is validated, and a Home Screen installation survives a verified offline relaunch on the target iPad. The background engine passes scene/image/file checks in Chromium. Editor, rendering, durable project restoration and physical iPad acceptance criteria remain unmet.

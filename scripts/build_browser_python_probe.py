@@ -39,4 +39,4 @@ if __name__ == "__main__":
         "-o", build / "python-runtime.js", env=env)
     shutil.copyfile(ROOT / "native/browser/python_runtime.html", build / "runtime.html")
     shutil.copyfile(CACHE / "deps-src/Python-3.13.13/LICENSE", build / "PYTHON-LICENSE.txt")
-    print("Linked actual CPython C API and zipped standard library; bpy/editor integration is still pending.")
+    print("Linked actual CPython C API and zipped standard library; this probe does not test bpy or the editor.")

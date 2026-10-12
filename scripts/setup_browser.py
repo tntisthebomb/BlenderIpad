@@ -73,16 +73,8 @@ def prepare_source(materialize_assets=False):
     previous = json.loads(metadata_path.read_text()) if metadata_path.exists() else {}
     if previous and previous.get("commit") != head:
         raise SystemExit("Prepared source belongs to another release; preserve it before updating.")
-    patches = [ROOT / "patches/blender-5.2.2-ghost-web.patch"]
-    core_patch = ROOT / "patches/blender-5.2.2-browser-core.patch"
-    if core_patch.exists():
-        patches.append(core_patch)
-    expression_patch = ROOT / "patches/blender-5.2.2-browser-expressions.patch"
-    if expression_patch.exists():
-        patches.append(expression_patch)
-    dna_patch = ROOT / "patches/blender-5.2.2-browser-dna.patch"
-    if dna_patch.exists():
-        patches.append(dna_patch)
+    patches = [ROOT / "patches/blender-5.2.2-ghost-web.patch",
+               *sorted((ROOT / "patches").glob("blender-5.2.2-browser-*.patch"))]
     patched_paths = sorted({line[6:] for patch in patches for line in patch.read_text().splitlines()
                             if line.startswith("+++ b/")})
     with tempfile.TemporaryDirectory(prefix="ghost-patch-", dir=CACHE) as temporary:

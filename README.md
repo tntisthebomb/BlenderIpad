@@ -2,7 +2,7 @@
 
 Goal: run the latest stable Blender locally on an iPad as an installable, offline PWA, with physical keyboard input and no jailbreak or alternative app store.
 
-**Current status: native browser port in development; the downloadable workbench is still a math test.** Blender's actual GHOST window manager and input layer compile to WebAssembly. The matching CPython runtime also runs in Chromium with native threads, its standard library and memory-file I/O. The full Blender application is being integrated separately. See [BROWSER_PORT.md](BROWSER_PORT.md) for exact scope and validation. The editor, GPU presentation, `.blend` workflows and rendering are not ready.
+**Current status: Blender's real background engine runs in Chromium; the downloadable workbench is still a math test.** The actual Blender 5.2.2 application and `bpy` now pass modeling, Solidify, animation, PNG save/load, startup-file loading and a native `.blend` round trip after the browser disconnects from the network. This uses packaged assets and an in-memory filesystem. The editor, GPU presentation, render engines, durable storage and offline PWA relaunch remain unfinished. Blender's actual GHOST browser window/input layer is tested separately. See [BROWSER_PORT.md](BROWSER_PORT.md) for reproducible commands, scope and limitations.
 
 The target is **Blender 5.2.2 LTS**, the newest stable version tag observed in the official [Blender source mirror](https://github.com/blender/blender/tree/v5.2.2) on October 12, 2026. Its version header says `502`, patch `2`, cycle `release`, suffix `LTS`. The official download page could not be accessed from this environment; the release selection was verified against source tags and the source version header. The exact source commit and compiler artifact hash are in [port.lock.json](port.lock.json). The project stays on that reproducible release until an explicit version update.
 
@@ -80,7 +80,7 @@ Verified here:
 - Offline corresponding-source retrieval, isolation headers, and narrow-screen layout.
 - The downloaded source bundle rebuilds and its resulting WASM passes the five browser math checks.
 
-**Not verified here:** Safari/WebKit, installation on a physical iPad, background suspension, real iPad GPU limits, or any full Blender workflow. The target device is an iPad 10th generation (A14, 4 GB RAM), running iPadOS 26. The user has verified the math workbench's keyboard controls on that device. iPadOS 26 provides Safari WebGPU support, but an adapter and its limits still need verification in a secure context on the actual device. An HTTP `.local` address does not provide that context.
+**Not verified here:** Safari/WebKit, installation on a physical iPad, background suspension, real iPad GPU limits, or the full editor and render engines. The target device is an iPad 10th generation (A14, 4 GB RAM), running iPadOS 26. The user has verified the math workbench's keyboard controls on that device. iPadOS 26 provides Safari WebGPU support, but an adapter and its limits still need verification in a secure context on the actual device. An HTTP `.local` address does not provide that context.
 
 ## Full-port work remaining
 

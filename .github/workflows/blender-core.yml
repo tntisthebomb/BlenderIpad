@@ -1,0 +1,35 @@
+name: Validate Blender background engine
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  background-engine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out project
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Prepare pinned platform and threaded dependencies
+        run: |
+          python3 scripts/build_browser_platform.py
+          python3 scripts/build_browser_core_deps.py
+          python3 scripts/build_browser_python.py
+          python3 scripts/build_browser_python_probe.py
+      - name: Build and validate the real background application
+        run: |
+          python3 scripts/build_blender_core.py
+          python3 scripts/test_core_dependencies.py
+          python3 scripts/test_blender_core.py
+          python3 scripts/build_blender_core_browser.py
+      - name: Install browser test runner
+        run: |
+          python3 -m venv .cache/browser-tests
+          .cache/browser-tests/bin/python -m pip install playwright==1.62.0
+      - name: Validate actual Blender after network disconnect
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+        run: .cache/browser-tests/bin/python tests/blender_core_browser_test.py

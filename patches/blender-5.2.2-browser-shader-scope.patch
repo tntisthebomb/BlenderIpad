@@ -1,0 +1,11 @@
+--- a/source/blender/gpu/shader_tool/scope.hh
++++ b/source/blender/gpu/shader_tool/scope.hh
+@@ -38,7 +38,7 @@
+   Scope(const ParserBase &parser, int64_t index) : parser_(&parser), index_(index)
+   {
+     if (index < 0 || index >= parser.scope_types.size()) {
+-      index = parser.scope_types.size();
++      index_ = parser.scope_types.size();
+       return;
+     }
+ #ifndef NDEBUG

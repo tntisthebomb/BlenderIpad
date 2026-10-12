@@ -1,0 +1,11 @@
+--- a/build_files/cmake/platform/platform_unix.cmake
++++ b/build_files/cmake/platform/platform_unix.cmake
+@@ -201,7 +201,7 @@
+     mark_as_advanced(freetype_DIR)
+   endif()
+
+-  if(DEFINED LIBDIR)
++  if(DEFINED LIBDIR OR (EMSCRIPTEN AND BROWSER_RUNTIME_PREFIX))
+     find_package_wrapper(Brotli REQUIRED)
+
+     # NOTE: This is done on WIN32 & APPLE but fails on some Linux systems.

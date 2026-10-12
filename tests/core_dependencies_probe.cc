@@ -26,6 +26,8 @@ int main(int argc, char **argv)
     for (const char *extension : {"png", "tif", "exr"}) {
       const std::string filename = (output / (std::string("roundtrip.") + extension)).string();
       OIIO::ImageSpec spec(8, 8, 4, OIIO::TypeDesc::UINT8);
+      spec.attribute("Software", "Blender 5.2.2 LTS");
+      spec.attribute("Description", "iPad offline image metadata");
       std::vector<unsigned char> pixels(8 * 8 * 4);
       for (int i = 0; i < 64; ++i) {
         pixels[4*i] = static_cast<unsigned char>(i*3);
@@ -40,6 +42,8 @@ int main(int argc, char **argv)
       require(writer->close(), "image output close failed");
       auto reader = OIIO::ImageInput::open(filename);
       require(bool(reader), "image reader unavailable");
+      require(reader->spec().get_string_attribute("Software") == "Blender 5.2.2 LTS",
+              "image roundtrip lost Software metadata");
       std::vector<unsigned char> decoded(pixels.size());
       require(reader->read_image(0, 0, 0, 4, OIIO::TypeDesc::UINT8, decoded.data()), "image read failed");
       require(reader->close(), "image input close failed");

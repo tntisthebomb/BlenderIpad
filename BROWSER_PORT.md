@@ -1,6 +1,6 @@
 # Native Blender browser port
 
-Target: pinned Blender 5.2.2 LTS on iPad 10th generation, iPadOS 26. Native GHOST and the matching Python runtime are tested in Chromium. The real Blender application is now being integrated, but the editor and renderer are not available yet; the existing `ipad-workbench` download remains the separate math test.
+Target: pinned Blender 5.2.2 LTS on iPad 10th generation, iPadOS 26. The real background Blender application and `bpy` run in Chromium with packaged local assets. Modeling, Solidify, animation, PNG save/load, original startup loading and a native `.blend` round trip pass after network disconnect. The editor and renderer are not available yet; the existing `ipad-workbench` download remains the separate math test. Safari and the physical iPad remain untested.
 
 ## Actual Python runtime
 
@@ -20,21 +20,30 @@ Chromium validation covers UTF-8/JSON, arithmetic, decimal, compression, hashing
 ```sh
 python3 scripts/build_browser_core_deps.py
 python3 scripts/build_blender_core.py
+python3 scripts/test_blender_core.py
+# After the real CLI scene test passes:
+python3 scripts/build_browser_python_probe.py
+python3 scripts/build_blender_core_browser.py
+.cache/browser-tests/bin/python tests/blender_core_browser_test.py
 ```
 
 The separate `.cache/wasm-threaded-sysroot` prevents mixing this runtime's ABI with the older single-threaded workbench. The application profile explicitly starts with background Blender and Python, without graphics or Cycles. It retains Blender assertions and rejects undefined link symbols. `cmake/browser-core.cmake` lists the disabled development features; this profile is not advertised as the full editor.
 
-The preparation script now fetches and SHA256-verifies all 197 LFS assets under `release/datafiles/`, including startup data, fonts and colour resources, in the separate browser source copy. The original Blender checkout remains pristine. DNA/RNA and data generators run through the pinned Node emulator. The shader text preprocessor builds from the same stable source as a native host tool: its WASM lexer rejects valid resource-table attributes. It generates shader text/metadata, not target memory layouts. The core patch makes native OpenGL dispatch conditional on an enabled OpenGL backend.
+The preparation script fetches and SHA256-verifies all 197 LFS assets under `release/datafiles/`, including startup data, fonts and colour resources, in the separate browser source copy. The original Blender checkout remains pristine. DNA/RNA and data generators run through the pinned Node emulator. The shader text preprocessor builds from the same stable source as a native host tool. A scope-constructor fix assigns the invalid-index sentinel to the actual member rather than a local parameter; 24 WASM shader and shader-info outputs match the native tool byte for byte. It generates shader text/metadata, not target memory layouts. The core patch makes native OpenGL dispatch conditional on an enabled OpenGL backend.
+
+The static application explicitly omits Unix Python's `export-dynamic` flag. Exporting every function exceeded V8's 100,000-export limit and inflated the launcher to 89 MB. Unix PIC flags are also removed for this static executable. Its original PIC build produced an invalid direct call in mesh selection, with a global-index relocation where a function index was required. Browser builds must pass validation and actual application startup; a linker output file alone is insufficient evidence.
+
+The acceptance scripts exercise the real `bpy`: load the release's original startup file, create a plane, evaluate Solidify, interpolate animation, save and reload PNG pixels, save a native `.blend` and reopen it with Unicode object names intact. The browser relinker requires successful CLI validation tied to the exact binary hashes. Its developer harness packages the real scripts, startup assets and zipped Python library into Emscripten's virtual filesystem. It uses the headless application; there is no substitute scene implementation, visible editor, renderer, persistent project storage or offline-relaunch claim.
 
 WebAssembly does not expose CPU floating-point exception flags. The expression patch implements explicit per-evaluation error tracking, including errors masked by later clamping, without shared mutable state or folding invalid constants. Thirty-five actual parser/evaluator cases passed, including upstream divide-by-zero/domain examples, error precedence, short-circuiting and the native evaluator's accepted overflow behavior. Run `python3 scripts/test_driver_expressions.py` after building the GHOST allocator library. The resource-scope size assertion is expressed as two pointer widths, preserving its layout check on wasm32 and native 64-bit builds.
 
-Required compression/image/font/colour libraries are cross-compiled from the stable release's checksum pins. Brotli's 14 upstream tests and Imath's 38 registered test commands passed. Threaded JPEG's 155 tests, PNG validation and Zstandard's basic unit suite plus 128 fuzz iterations passed. The combined dependency probe also passes real PNG/TIFF/EXR pixel round trips, Blender's actual scene-linear-to-sRGB colour configuration, and WOFF2 glyph rasterization. Run `python3 scripts/test_core_dependencies.py`. This validates those library operations; full application workflows remain separate acceptance checks.
+Required compression/image/font/colour libraries are cross-compiled from the stable release's checksum pins. Brotli's 14 upstream tests and Imath's 38 registered test commands passed. Threaded JPEG's 155 tests, PNG validation and Zstandard's basic unit suite plus 128 fuzz iterations passed. The combined dependency probe also passes real PNG/TIFF/EXR pixel and string-metadata round trips, Blender's actual scene-linear-to-sRGB colour configuration, and WOFF2 glyph rasterization. Run `python3 scripts/test_core_dependencies.py`. This validates those library operations; full application workflows remain separate acceptance checks.
 
-The wasm32 DNA patch computes native alignment separately from the existing desktop layout models. It emits explicit padding members into the serialized native schema and retains compiler verification of every original member offset and struct size. Runtime `.blend` reconstruction continues using the file's own schema; it does not guess scalar alignment from pointer width, which would misread older 32-bit desktop files. The generated `dna_verify.cc` compiles successfully. Actual old/new `.blend` round trips remain pending until the application starts.
+The wasm32 DNA patch computes native alignment separately from the existing desktop layout models. It emits explicit padding members into the serialized native schema and retains compiler verification of every original member offset and struct size. Runtime `.blend` reconstruction continues using the file's own schema; it does not guess scalar alignment from pointer width, which would misread older 32-bit desktop files. The generated `dna_verify.cc` compiles successfully. Original release startup loading and native 32-bit `.blend` round trips now pass in the actual application, both under Node and in Chromium.
 
 The threaded fmt core profile passes 21 upstream test suites, including its formerly failing thread test. It explicitly excludes four unavailable non-C-locale date tests using `tests/fmt_classic_locale_env.js`. This exclusion is not a localization fix; the complete diagnostic described below still exposes the unsupported locale behavior.
 
-OpenImageIO's narrow compatibility patch adds Emscripten's POSIX declarations and C-locale comparisons. Its memory metrics refer to allocated linear memory and the configured engine heap ceiling, not physical iPad RAM or total browser/GPU memory. The original dependency sources are retained; two patched translation units are staged separately and selected through CMake.
+OpenImageIO's narrow compatibility patch adds Emscripten's POSIX declarations and C-locale comparisons. Its memory metrics refer to allocated linear memory and the configured engine heap ceiling, not physical iPad RAM or total browser/GPU memory. The original dependency sources are retained; three patched translation units are staged separately and selected through CMake.
 
 ## Build the native platform
 
@@ -81,6 +90,16 @@ The browser platform currently accepts only `GHOST_kDrawingContextTypeNone` and 
 
 The full application's dependency discovery still uses upstream Unix platform configuration. Its required Epoxy library is for native OpenGL dispatch, not WebGPU. A browser platform configuration and a real GPU backend must replace that route; installing native Epoxy or returning success from empty presentation methods would not solve it.
 
-Python/UI registration, scene/file operations, host code generation, offline asset packaging and rendering remain incomplete. PORTING.md lists acceptance checks for each. No full Blender WASM binary or working full editor is distributed by this milestone.
+Python scene/image/file operations and host code generation pass the background-engine checks. Full UI registration, graphics, durable storage, offline PWA relaunch and rendering remain incomplete. PORTING.md lists acceptance checks for each. No full Blender WASM binary or working full editor is distributed by this milestone.
 
 Safari WebGPU on iPadOS 26 requires a secure context. An ordinary HTTP `users-ipad.local` address from WorldWideWeb can serve the math/native event tests, but cannot establish a working WebGPU PWA. A browser-recognized loopback origin or HTTPS must be verified for graphics development. No permanent hosting service is required for computation; the engine is intended to execute locally.
+
+## Verified background application and remaining failures
+
+Both acceptance scripts pass with the actual application, not a substitute library or scene model. The browser test loads packaged assets, disconnects the network, then executes modeling, modifier evaluation, animation, PNG save/load and native `.blend` save/reload. This verifies execution after loading; it does not verify cached app relaunch, persistence across closing the browser, or target-device performance.
+
+Blender uses `BLENDER_SYSTEM_RESOURCES` for its bundled scripts and `BLENDER_SYSTEM_PYTHON` for the interpreter home; its default isolated interpreter ignores generic Python environment paths. The CLI forwards only explicit non-secret path selectors and writes thumbnails under an owned `XDG_CACHE_HOME`. Browser paths refer only to the packaged virtual filesystem.
+
+OpenImageIO attempted to rewrite libc++ string internals using a legacy layout. Emscripten uses libc++ ABI v2, so long metadata names became invalid PNG keywords. The port uses the existing ordinary string-copy fallback. The expanded dependency probe preserves Software metadata through PNG/TIFF/EXR, and the actual Blender image save/load test passes.
+
+The default extension manager still reports a registration failure because its remote asset downloader requires native Python multiprocessing. External subprocesses and their extension-installation workflows are not ported. This does not prevent the tested background scene operations, but it prevents a claim of complete startup/extension support. Emscripten also reports unsupported `prlimit64`; OS resource-limit APIs are not established.
