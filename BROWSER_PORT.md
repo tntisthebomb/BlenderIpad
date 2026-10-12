@@ -37,7 +37,9 @@ Dependency archive hashes are preserved from this stable Blender release's own m
 - PNG: upstream `pngtest` round trip and `pngvalid` pixel/gamma validation passed. The validator's recursive buffer cleanup exceeded the JavaScript engine's call stack; a tracked patch makes only that cleanup iterative. Pixel checks and assertions are preserved. Library sources are unchanged.
 - Zstandard: 128 seeded upstream fuzz iterations passed. Its basic unit suite unconditionally requests worker threads and fails against the current single-threaded library; the supported fuzzer starting-test option selects the randomized codec checks instead. Threaded compression remains unverified.
 
-fmt is an additional pinned prerequisite under development. Only completed test results should be treated as validation. The full configuration command discovers the verified WASM JPEG, PNG, zlib and Zstandard libraries, then currently fails at missing Epoxy. It is a diagnostic and returns failure when prerequisites remain missing; it does not silently substitute the probe executable for Blender.
+The default dependency build includes these four validated libraries. The optional `python3 scripts/build_browser_deps.py fmt` diagnostic currently fails: 17 of 21 upstream CTest suites pass, while four suites expose unavailable worker threads and missing Spanish/Belarusian locale behavior. C++ exception catching and Emscripten runtime assertions are enabled; test assertions are not removed. The script refuses to install fmt after failed tests. Threading and locale support must be resolved before this prerequisite is ready.
+
+The full configuration command discovers the verified WASM JPEG, PNG, zlib and Zstandard libraries, then currently fails at missing Epoxy. It is a diagnostic and returns failure when prerequisites remain missing; it does not silently substitute the probe executable for Blender.
 
 ## Remaining integration
 
