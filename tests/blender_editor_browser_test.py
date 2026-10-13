@@ -2,6 +2,7 @@
 """Verify actual editor pixels, input, native files, persistence and offline reload."""
 import json
 import os
+import time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
@@ -29,6 +30,10 @@ try:
                    (ROOT/'tests/blender_editor_scene.py').read_text()]
         context.add_init_script('window.editorArguments='+json.dumps(arguments)+';')
         page=context.new_page()
+        # Cold native shader compilation can block the browser main thread for
+        # over 30 seconds before the first frame. Keep explicit readiness and
+        # output assertions, with enough time for selector requests to execute.
+        page.set_default_timeout(180000)
         errors=[]
         page.on('pageerror',lambda error:errors.append(str(error)))
         try:
@@ -44,9 +49,20 @@ try:
             assert initial['windows']==1 and 'VIEW_3D' in initial['areas'],initial
             assert initial['active']=='Cube' and not initial['errors'],initial
             screenshot=ROOT/'.cache/blender-editor-frame.png'
-            page.locator('#canvas').screenshot(path=str(screenshot))
-            picture=Image.open(screenshot).convert('RGB')
+            # The native state timer can run before shader compilation and the
+            # first submitted canvas frame complete. Wait for actual pixels;
+            # keep the visible-output assertion and graphics errors as failures.
+            deadline=time.monotonic()+120
+            while True:
+                assert not page.evaluate('window.editorErrors.length'),page.evaluate('window.editorErrors')
+                page.locator('#canvas').screenshot(path=str(screenshot))
+                picture=Image.open(screenshot).convert('RGB')
+                if len(picture.getcolors(picture.width*picture.height))>64: break
+                if time.monotonic()>=deadline: break
+                page.wait_for_timeout(250)
             assert len(picture.getcolors(picture.width*picture.height))>64,'Editor presentation is blank or incomplete'
+            shader_failures=page.evaluate("editorOutput.filter(line=>/WGPU_SH.*FAIL|WGPU_SHADER translate FAILED|WGPU_BATCH skipped/.test(line))")
+            assert not shader_failures,shader_failures
             # Focus the actual 3D editor area, then use real GHOST keyboard events.
             box=page.locator('#canvas').bounding_box()
             page.mouse.move(box['x']+box['width']*0.4,box['y']+box['height']*0.5)
@@ -64,9 +80,12 @@ try:
             # The native application writes this project, rather than JS fabricating bytes.
             page.evaluate("blenderEditor.FS.writeFile('/editor-command.json',JSON.stringify({operation:'save',path:'/projects/keyboard-scene.blend'}))")
             page.wait_for_function("blenderEditor.FS.analyzePath('/projects/keyboard-scene.blend').exists",timeout=30000)
+            page.wait_for_function("JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).last_operation==='save'",timeout=30000)
+            assert not state()['errors'],state()
             page.evaluate("new Promise((resolve,reject)=>blenderEditor.FS.syncfs(false,error=>error ? reject(error) : resolve()))")
             saved=page.evaluate("Array.from(blenderEditor.FS.readFile('/projects/keyboard-scene.blend'))")
-            assert bytes(saved[:7])==b'BLENDER'
+            # Blender supports both ordinary and Zstandard-compressed projects.
+            assert bytes(saved[:7])==b'BLENDER' or bytes(saved[:4])==b'\x28\xb5\x2f\xfd',saved[:16]
             # A new runtime must boot from the installed cache with the server offline.
             context.set_offline(True)
             page.reload()

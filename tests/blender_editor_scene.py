@@ -1,13 +1,16 @@
 """Observe and exercise actual editor state; called only by browser acceptance."""
 import bpy
+bpy.context.preferences.view.show_splash=False
 import json
 from pathlib import Path
 
 command=Path('/editor-command.json')
 state=Path('/editor-state.json')
 errors=[]
+last_operation=None
 
 def observe():
+    global last_operation
     try:
         if command.exists():
             request=json.loads(command.read_text())
@@ -23,6 +26,7 @@ def observe():
                     obj.select_set(False)
             else:
                 raise ValueError(request['operation'])
+            last_operation=request['operation']
         windows=bpy.context.window_manager.windows
         active=windows[0].view_layer.objects.active if windows else None
         position=None
@@ -46,6 +50,7 @@ def observe():
             'selected':[obj.name for obj in windows[0].view_layer.objects if obj.select_get()] if windows else [],
             'object_position':position,
             'filepath':bpy.data.filepath,
+            'last_operation':last_operation,
             'errors':errors,
         }))
     except Exception as error:

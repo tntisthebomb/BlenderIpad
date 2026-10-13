@@ -245,3 +245,12 @@ SPIR-V validation, WGSL parsing and exact GPU readback pass for NaNs and integer
 samples at interior and out-of-range coordinates. Matrix and atomic composite
 GPU results also pass with the application's explicit sampler-binding mapping.
 Full editor validation of these corrections remains pending.
+
+An isolated project diagnostic using the actual native editor also passes the
+physical-keyboard event path (`G`, `X`, `1`, Enter), native save, IDBFS persistence,
+service-worker app reload with the network disconnected, exact saved-byte
+preservation and native reload restoring the Cube's transform. The saved file
+uses Blender's Zstandard magic (`28 b5 2f fd`), not a plain `BLENDER` header.
+The test waits for the native save operator to complete before synchronizing
+storage. This diagnostic deliberately excludes the known failing viewport
+shader check and touch selection; it is not a full editor acceptance pass.
