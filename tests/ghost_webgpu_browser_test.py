@@ -16,7 +16,7 @@ try:
     with sync_playwright() as playwright:
         executable=os.environ.get('CHROMIUM_PATH','/usr/lib/chromium/chromium')
         environment=dict(os.environ)
-        icd=Path(executable).parent/'vk_swiftshader_icd.json'
+        icd=Path(executable).resolve().parent/'vk_swiftshader_icd.json'
         if icd.exists(): environment['VK_ICD_FILENAMES']=str(icd)
         browser=playwright.chromium.launch(executable_path=executable,env=environment,args=[
             '--no-sandbox','--enable-unsafe-webgpu','--enable-features=Vulkan',
