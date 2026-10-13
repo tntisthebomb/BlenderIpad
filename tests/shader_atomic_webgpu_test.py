@@ -50,7 +50,7 @@ with sync_playwright() as playwright:
           return {values,error:error?.message};
         }''', shader.read_text())
         assert not result.get('error'), result
-        assert result['values'] == [11,13,7,17,11,13,10,17,41,47], result
+        assert result['values'] == [11,13,7,17,11,13,10,17,46,47], result
     finally:
         browser.close()
 print('PASS: atomic structure/vector/array loads and stores preserve GPU values.')

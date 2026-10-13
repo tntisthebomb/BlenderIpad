@@ -221,3 +221,9 @@ These checks verify the compiler correction. Full editor presentation, physical
 input, native project persistence and offline application relaunch remain
 separate acceptance requirements; do not infer a finished editor from these
 compiler tests.
+
+The compiler backport also passed the clean GitHub shader workflow at commit
+`50b4c74e8cd6432a153895dbf9e6f30b85b01bc6`: [run 38409893475](https://github.com/tntisthebomb/BlenderIpad/actions/runs/38409893475).
+This run includes SPIR-V/WGSL validation, matrix and atomic composite GPU
+readback, native WebGPU API checks and GHOST canvas presentation. It does not
+run the complete editor or verify physical Safari/iPad behavior.

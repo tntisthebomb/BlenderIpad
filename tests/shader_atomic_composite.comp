@@ -27,6 +27,9 @@ void main() {
   output_data.values[7]=snapshot.spare;
   atomicAdd(input_data.counters.values[1],4u);
   Counters copy=input_data.counters;
+  input_data.counters=copy;
+  atomicAdd(input_data.counters.values[0],5u);
+  copy=input_data.counters;
   output_data.values[8]=copy.values[0];
   output_data.values[9]=copy.values[1];
 }
