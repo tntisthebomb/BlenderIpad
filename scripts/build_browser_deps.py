@@ -64,6 +64,14 @@ def build(name, env, threaded=False):
         "-DCMAKE_FIND_ROOT_PATH=" + str(prefix),
         "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_EXE_LINKER_FLAGS=" + link_flags, *arguments, env=env)
     run("cmake", "--build", directory, "--parallel", "4", env=env)
+    if name == "jpeg" and threaded:
+        # md5cmp only hashes files and links no codec library. Keep this small
+        # upstream verification CLI on a synchronous runtime; its worker-based
+        # launch failed intermittently in CI with an indirect-call signature
+        # mismatch. Codec libraries and every codec test retain pthreads.
+        run("emcc", source / "md5/md5cmp.c", source / "md5/md5.c",
+            source / "md5/md5hl.c", "-O2", "-sNODERAWFS=1", "-sASSERTIONS=2",
+            "-sEXIT_RUNTIME=1", "-o", directory / "md5/md5cmp.js", env=env)
     if name == "zlib":
         # Upstream 1.3.1 registers literal `example`/`example64` commands using
         # legacy add_test syntax, which doesn't apply CMake's WASM emulator.
