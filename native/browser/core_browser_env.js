@@ -14,3 +14,19 @@ Module['preRun'].push(function () {
   ENV['OPENIMAGEIO_THREADS'] = '2';
   FS.mkdirTree('/cache');
 });
+
+// Asyncify rewinds outside callMain's initial exception handler. Register a
+// completion handler before the first wait resolves, including normal exit.
+Module['runBlenderMain'] = async function (args) {
+  try {
+    const result = callMain(args);
+    if (typeof Asyncify !== 'undefined' && Asyncify.currData) {
+      return await Asyncify.whenDone();
+    }
+    return result;
+  } catch (error) {
+    if (error instanceof ExitStatus && error.status === 0) return 0;
+    if (error === 'unwind' && keepRuntimeAlive()) return;
+    throw error;
+  }
+};

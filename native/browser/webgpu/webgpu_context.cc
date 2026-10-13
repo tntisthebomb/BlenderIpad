@@ -161,6 +161,9 @@ void WebGPUContext::activate()
   immActivate();
 #ifdef WITH_GHOST_WEBGPU_CONTEXT
   if (ghost_canvas_) {
+    if (ghost_canvas_->activateDrawingContext() != GHOST_kSuccess) {
+      throw std::runtime_error("Cannot activate WebGPU canvas context");
+    }
     int width=0,height=0;
     if (emscripten_get_canvas_element_size("#canvas", &width, &height) != EMSCRIPTEN_RESULT_SUCCESS) {
       throw std::runtime_error("Cannot obtain WebGPU canvas dimensions");

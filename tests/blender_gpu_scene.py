@@ -23,6 +23,8 @@ for name in ['RGBA8','RGBA16F','RGBA32F']:
     data=gpu.types.Buffer('FLOAT',len(expected),expected)
     texture=gpu.types.GPUTexture((8,8),format=name,data=data)
     actual=list(flattened(texture.read()))
+    # Blender's public API returns bytes for UNORM8 texture readback.
+    if name=='RGBA8': actual=[value/255 for value in actual]
     assert len(actual)==len(expected),(name,len(actual))
     tolerance=1/255 if name=='RGBA8' else 1e-6
     assert all(math.isclose(a,b,rel_tol=0,abs_tol=tolerance) for a,b in zip(actual,expected)),(name,actual[:8])
@@ -37,6 +39,7 @@ for label,options,layers in [
     for layer in range(layers): values += [layer/(layers-1),0.25,0.75,1.0]*64
     texture=gpu.types.GPUTexture(format='RGBA8',data=gpu.types.Buffer('FLOAT',len(values),values),**options)
     actual=list(flattened(texture.read()))
+    actual=[value/255 for value in actual]
     assert len(actual)==len(values),(label,len(actual),len(values))
     assert all(math.isclose(a,b,rel_tol=0,abs_tol=1/255) for a,b in zip(actual,values)),label
     checks[label]=True

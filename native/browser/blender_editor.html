@@ -75,7 +75,7 @@ window.addEventListener('resize',resizeCanvas);
   });
   window.blenderEditor=module;
   document.body.dataset.ready='true';
-  module.callMain(window.editorArguments || ['--offline-mode','--disable-autoexec','--threads','2',
+  await module.runBlenderMain(window.editorArguments || ['--offline-mode','--disable-autoexec','--threads','2',
                    '--python','/browser_startup.py']);
   canvas.focus({preventScroll:true});
   status.hidden=true;

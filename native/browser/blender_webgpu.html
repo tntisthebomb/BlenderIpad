@@ -39,7 +39,7 @@ if (!crossOriginIsolated) {
     write('Actual WebGPU backend ready for GPU acceptance.');
   }).catch(error => {document.body.dataset.error = String(error);});
 }
-window.runCoreScene = () => blenderCore.callMain([
+window.runCoreScene = () => blenderCore.runBlenderMain([
   '--background', '--factory-startup', '--disable-autoexec', '--threads', '2',
   '--python-exit-code', '1', '--python', '/scene_test.py', '--',
   '/scene-output', '/blender/datafiles/startup.blend'
@@ -47,7 +47,7 @@ window.runCoreScene = () => blenderCore.callMain([
 </script>
 
 <script>
-window.runGPUScene=()=>blenderCore.callMain([
+window.runGPUScene=()=>blenderCore.runBlenderMain([
  '--background','--factory-startup','--disable-autoexec','--threads','2',
  '--python-exit-code','1','--python','/gpu_test.py'
 ]);

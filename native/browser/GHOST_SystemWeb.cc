@@ -257,6 +257,11 @@ GHOST_IWindow *GHOST_SystemWeb::createWindow(const char *title,
   if (window_->setDrawingContextType(gpu_settings.context_type) != GHOST_kSuccess) {
     delete window_; window_ = nullptr; return nullptr;
   }
+  /* WM assumes GHOST has activated a newly created graphics window. */
+  if (gpu_settings.context_type != GHOST_kDrawingContextTypeNone &&
+      window_->activateDrawingContext() != GHOST_kSuccess) {
+    delete window_; window_ = nullptr; return nullptr;
+  }
   window_->setTitle(title);
   /* Register with the window manager so validWindow() passes — otherwise every
    * GHOST event is dropped as "invalid window" in wm_window's event handler. */

@@ -1,0 +1,12 @@
+--- a/source/blender/python/gpu/gpu_py_texture.cc
++++ b/source/blender/python/gpu/gpu_py_texture.cc
+@@ -688,7 +688,8 @@
+   const Py_ssize_t component_len = GPU_texture_component_len(tex_format);
+   Py_ssize_t shape[4];
+   int shape_len;
+-  if (GPU_texture_dimensions(self->tex) == 3) {
++  /* Array layers and cubemap faces are part of the returned pixel buffer. */
++  if (GPU_texture_dimensions(self->tex) == 3 || GPU_texture_depth(self->tex) > 0) {
+     shape[0] = GPU_texture_depth(self->tex);
+     shape[1] = GPU_texture_height(self->tex);
+     shape[2] = GPU_texture_width(self->tex);

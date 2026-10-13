@@ -26,8 +26,14 @@ static GHOST_IWindow *open_window()
 {
   GHOST_GPUSettings settings = {};
   settings.context_type = GHOST_kDrawingContextTypeWebGPU;
-  return system_instance->createWindow("Blender WebGPU GHOST context",0,0,64,48,
+  auto *window=system_instance->createWindow("Blender WebGPU GHOST context",0,0,64,48,
       GHOST_kWindowStateNormal,settings,false,false,nullptr);
+  if (window && GHOST_Context::getActiveDrawingContext()!=window->getDrawingContext()) {
+    fail("new graphics window was not activated");
+    system_instance->disposeWindow(window);
+    return nullptr;
+  }
+  return window;
 }
 struct Readback { WGPUBuffer buffer; int red, green, blue; bool bgra; };
 static void mapped(WGPUMapAsyncStatus status, WGPUStringView message, void *user, void *)
