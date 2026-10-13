@@ -46,11 +46,12 @@ try:
         checks=json.loads(page.evaluate("blenderCore.FS.readFile('/gpu-output/result.json',{encoding:'utf8'})"))
         assert checks['version']==[5,2,2],checks
         assert checks['checks']=={'RGBA8':True,'RGBA16F':True,'RGBA32F':True,
-                                 'array_layers':True,'cube_faces':True,'builtin_shader_triangle':True},checks
+                                 'array_layers':True,'cube_faces':True,'builtin_shader_triangle':True,
+                                 'font_storage_shader':True},checks
         assert not errors,errors
         diagnostics.write(json.dumps(page.evaluate('({stdout:coreOutput,stderr:coreErrors})'),indent=2))
         diagnostics.close()
         browser.close()
-    print('PASS: actual Blender GPU backend, textures, builtin shaders, uniforms, vertex batches and synchronous framebuffer readback after network disconnect.')
+    print('PASS: actual Blender GPU backend, textures, font pixels, builtin shaders, uniforms, vertex batches and synchronous framebuffer readback after network disconnect.')
 finally:
     server.shutdown();server.server_close()

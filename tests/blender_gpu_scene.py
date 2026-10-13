@@ -64,7 +64,32 @@ with offscreen.bind():
     assert all(math.isclose(a,b,rel_tol=0,abs_tol=1/255) for a,b in zip(corner,[0,0,0,1])),corner
     checks['builtin_shader_triangle']=True
 offscreen.free()
+# Font glyphs use the storage-buffer shader whose translated block variable
+# can become `S`. Verify the real font renderer produces pixels, rather than
+# checking only the create-info mapping in isolation.
+import blf
+font=blf.load('/blender/datafiles/fonts/Inter.woff2')
+assert font>=0,font
+offscreen=gpu.types.GPUOffScreen(128,32,format='RGBA8')
+with offscreen.bind():
+    framebuffer=gpu.state.active_framebuffer_get()
+    framebuffer.clear(color=(0,0,0,1))
+    gpu.matrix.load_matrix(Matrix.Identity(4))
+    gpu.matrix.load_projection_matrix(Matrix((
+        (2/128,0,0,-1),(0,2/32,0,-1),(0,0,-1,0),(0,0,0,1))))
+    gpu.state.depth_test_set('NONE')
+    gpu.state.blend_set('ALPHA')
+    blf.size(font,16)
+    blf.position(font,4,8,0)
+    blf.color(font,1,1,1,1)
+    blf.draw(font,'Blender')
+    pixels=list(flattened(framebuffer.read_color(0,0,128,32,4,0,'FLOAT')))
+    lit=sum(max(pixels[index:index+3])>0.25 for index in range(0,len(pixels),4))
+    assert 20<lit<128*32/2,lit
+    checks['font_storage_shader']=True
+offscreen.free()
+blf.unload('/blender/datafiles/fonts/Inter.woff2')
 os.makedirs('/gpu-output',exist_ok=True)
 with open('/gpu-output/result.json','w') as stream:
     json.dump({'version':list(bpy.app.version),'checks':checks},stream)
-print('PASS: actual Blender GPU texture upload/readback, builtin shader, uniforms, vertex batch and framebuffer draw/readback.')
+print('PASS: actual Blender GPU texture upload/readback, font rendering, builtin shader, uniforms, vertex batch and framebuffer draw/readback.')
