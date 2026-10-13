@@ -254,3 +254,9 @@ uses Blender's Zstandard magic (`28 b5 2f fd`), not a plain `BLENDER` header.
 The test waits for the native save operator to complete before synchronizing
 storage. This diagnostic deliberately excludes the known failing viewport
 shader check and touch selection; it is not a full editor acceptance pass.
+
+The viewport shader prerequisites passed a clean GitHub shader run at
+`c3e8917460109de5f264467c61657d3384d6b6b3`: [run 38419672544](https://github.com/tntisthebomb/BlenderIpad/actions/runs/38419672544).
+It verifies the portable common shader helpers, NaN/integer GPU values, matrix
+and atomic cases, native WebGPU API checks and GHOST presentation. Application
+viewport/touch acceptance remains pending.
