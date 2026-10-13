@@ -1,0 +1,35 @@
+--- a/source/blender/windowmanager/intern/wm_files.cc
++++ b/source/blender/windowmanager/intern/wm_files.cc
+@@ -511,6 +511,12 @@
+     return;
+   }
+ 
++#ifdef WITH_GHOST_WEB
++  /* Browser windows have a single compiled graphics backend. Desktop
++   * preferences must not request Vulkan/OpenGL and trigger a false fallback
++   * warning. Explicit command-line overrides retain their priority above. */
++  U.gpu_backend = USER_GPU_BACKEND_WEBGPU;
++#endif
+   GPU_backend_type_selection_set_override(GPUBackendType(U.gpu_backend));
+ }
+ 
+--- a/source/blender/makesrna/intern/rna_userdef.cc
++++ b/source/blender/makesrna/intern/rna_userdef.cc
+@@ -208,6 +208,7 @@
+     {GPU_BACKEND_OPENGL, "OPENGL", 0, "OpenGL", "Use OpenGL backend"},
+     {GPU_BACKEND_METAL, "METAL", 0, "Metal", "Use Metal backend"},
+     {GPU_BACKEND_VULKAN, "VULKAN", 0, "Vulkan", "Use Vulkan backend"},
++    {GPU_BACKEND_WEBGPU, "WEBGPU", 0, "WebGPU", "Use the browser WebGPU backend"},
+     {0, nullptr, 0, nullptr, nullptr},
+ };
+ static const EnumPropertyItem rna_enum_preference_gpu_preferred_device_items[] = {
+--- a/source/blender/makesdna/DNA_userdef_types.h
++++ b/source/blender/makesdna/DNA_userdef_types.h
+@@ -207,6 +207,7 @@
+   USER_GPU_BACKEND_OPENGL = 1 << 0,
+   USER_GPU_BACKEND_METAL = 1 << 1,
+   USER_GPU_BACKEND_VULKAN = 1 << 3,
++  USER_GPU_BACKEND_WEBGPU = 1 << 4,
+ #ifdef __APPLE__
+   USER_GPU_BACKEND_DEFAULT = USER_GPU_BACKEND_METAL,
+ #else

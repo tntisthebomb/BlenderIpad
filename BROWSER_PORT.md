@@ -260,3 +260,10 @@ The viewport shader prerequisites passed a clean GitHub shader run at
 It verifies the portable common shader helpers, NaN/integer GPU values, matrix
 and atomic cases, native WebGPU API checks and GHOST presentation. Application
 viewport/touch acceptance remains pending.
+
+The browser preference patch selects the sole compiled WebGPU backend when
+initializing desktop-derived preferences, preserves explicit CLI overrides,
+and exposes WebGPU in the native preference enum. The user-preference enum
+retains its existing short storage type with a new matching WebGPU value.
+The affected native source compiles; full startup and dialog behavior remain
+under validation in the application rebuild.
