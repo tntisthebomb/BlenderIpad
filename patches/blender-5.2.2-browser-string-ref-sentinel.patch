@@ -1,0 +1,35 @@
+--- a/source/blender/gpu/intern/gpu_shader_dependency.cc
++++ b/source/blender/gpu/intern/gpu_shader_dependency.cc
+@@ -195,8 +195,8 @@
+       std::function<void(GPUSource &, GPUFunctionDictionary *, GPUPrintFormatMap *)> metadata_fn)
+       : fullpath(path), filename(file), source(datatoc)
+   {
+-    BLI_assert_msg(source.find("//") == std::string::npos &&
+-                       source.find("/*") == std::string::npos,
++    BLI_assert_msg(source.find("//") == StringRef::not_found &&
++                       source.find("/*") == StringRef::not_found,
+                    "Input source should have no comments.");
+     metadata_fn(*this, g_functions, g_formats);
+   };
+--- a/source/blender/gpu/intern/gpu_shader_preprocessor.cc
++++ b/source/blender/gpu/intern/gpu_shader_preprocessor.cc
+@@ -1651,7 +1651,7 @@
+ 
+ std::string Shader::run_preprocessor(StringRef source, bool no_dead_code_elimination)
+ {
+-  BLI_assert_msg(source.find("//") == std::string::npos && source.find("/*") == std::string::npos,
++  BLI_assert_msg(source.find("//") == StringRef::not_found && source.find("/*") == StringRef::not_found,
+                  "Input source to the preprocessor should have no comments.");
+ 
+   if (G.debug & G_DEBUG_GPU_SHADER_NO_PREPROCESSOR) {
+--- a/source/blender/gpu/intern/gpu_shader.cc
++++ b/source/blender/gpu/intern/gpu_shader.cc
+@@ -52,7 +52,7 @@
+   }
+   else if (pattern.startswith("*") && pattern.endswith("*")) {
+     std::string sub_str = pattern.substr(1, pattern.size() - 2);
+-    if (shader_name.find(sub_str) == std::string::npos) {
++    if (shader_name.find(sub_str) == StringRef::not_found) {
+       return;
+     }
+   }
