@@ -2,7 +2,38 @@
 
 Goal: run the latest stable Blender locally on an iPad as an installable, offline PWA, with physical keyboard input and no jailbreak or alternative app store.
 
-**Current status: Blender's real background engine runs in Chromium; the downloadable workbench is still a math test.** The actual Blender 5.2.2 application and `bpy` now pass modeling, Solidify, animation, PNG save/load, startup-file loading and a native `.blend` round trip after the browser disconnects from the network. This uses packaged assets and an in-memory filesystem. The editor, GPU presentation, render engines, durable storage and offline PWA relaunch remain unfinished. Blender's actual GHOST browser window/input layer is tested separately. See [BROWSER_PORT.md](BROWSER_PORT.md) for reproducible commands, scope and limitations.
+**Current status: the real Blender 5.2.2 editor passes Chromium acceptance.** Its solid viewport, grid, fonts and native UI render; physical-keyboard transforms and touch selection work; native projects save, persist and reload after an offline application restart. This is an experimental port: render-engine validation, disabled optional features and acceptance on the target iPad remain outstanding. The older `ipad-workbench` download is still a separate math demo. See [BROWSER_PORT.md](BROWSER_PORT.md) for scope and reproducible commands.
+
+## Experimental editor build
+
+The actual editor is built separately from the legacy math workbench:
+
+```sh
+python3 scripts/build_browser_platform.py
+python3 scripts/build_browser_core_deps.py
+python3 scripts/build_browser_python.py
+python3 scripts/build_browser_python_probe.py
+python3 scripts/build_browser_shaderc.py
+python3 scripts/test_browser_shaderc.py
+python3 scripts/build_browser_tint.py
+python3 scripts/test_browser_tint.py
+python3 scripts/build_blender_core.py --editor
+python3 scripts/test_blender_core.py --webgpu
+python3 scripts/build_blender_core_browser.py --editor
+python3 -m venv .cache/browser-tests
+.cache/browser-tests/bin/python -m pip install playwright==1.62.0 Pillow==12.0.0
+python3 scripts/validate_blender_editor.py
+python3 scripts/package_blender_editor.py
+```
+
+Acceptance requires Chromium with a working WebGPU adapter; set `CHROMIUM_PATH` when necessary. Packaging rejects changed assets or fixtures after acceptance. It writes `dist/BlenderIpad-5.2.2-editor-preview.zip` and its corresponding `-source.tar.gz`, containing prepared Blender, dependency sources, runtime sources, overlays, licenses and rebuild instructions. These names describe local outputs, not an already published release.
+
+Serve the extracted editor assets over HTTPS with COOP/COEP headers as described below. WebGPU, shared memory and cross-origin isolation are required. Plain HTTP `users-ipad.local` in WorldWideWeb cannot provide those requirements. GitHub Pages cannot set the required headers directly; the existing Pages workflow continues to build the legacy math demo. No remote Blender process is needed: computation is local once the assets load. Initial shader compilation can take several minutes. Export backups because browser storage can be evicted.
+
+The combined experimental editor is distributed under GPL-3.0-or-later, compatible with Blender's GPL-2.0-or-later licensing and its Apache-2.0 shader translation dependencies. See [THIRD_PARTY.md](THIRD_PARTY.md).
+
+## Legacy math workbench
+
 
 The target is **Blender 5.2.2 LTS**, the newest stable version tag observed in the official [Blender source mirror](https://github.com/blender/blender/tree/v5.2.2) on October 12, 2026. Its version header says `502`, patch `2`, cycle `release`, suffix `LTS`. The official download page could not be accessed from this environment; the release selection was verified against source tags and the source version header. The exact source commit and compiler artifact hash are in [port.lock.json](port.lock.json). The project stays on that reproducible release until an explicit version update.
 
@@ -80,9 +111,9 @@ Verified here:
 - Offline corresponding-source retrieval, isolation headers, and narrow-screen layout.
 - The downloaded source bundle rebuilds and its resulting WASM passes the five browser math checks.
 
-**Not verified here:** Safari/WebKit, installation on a physical iPad, background suspension, real iPad GPU limits, or the full editor and render engines. The target device is an iPad 10th generation (A14, 4 GB RAM), running iPadOS 26. The user has verified the math workbench's keyboard controls on that device. iPadOS 26 provides Safari WebGPU support, but an adapter and its limits still need verification in a secure context on the actual device. An HTTP `.local` address does not provide that context.
+**Not verified here:** Safari/WebKit, installation on a physical iPad, background suspension, real iPad GPU limits, or render-engine behavior on the target device. The target device is an iPad 10th generation (A14, 4 GB RAM), running iPadOS 26. The user has verified the math workbench's keyboard controls on that device. iPadOS 26 provides Safari WebGPU support, but an adapter and its limits still need verification in a secure context on the actual device. An HTTP `.local` address does not provide that context.
 
-The shader translation prerequisites now pass local tests: Blender’s actual GPU matrix library compiles through GLSL → SPIR-V → WGSL and executes through WebGPU, including the native C++ bindings. This does not provide the Blender viewport or render engines. See [BROWSER_PORT.md](BROWSER_PORT.md) for reproducible commands and the remaining integration.
+The shader translation prerequisites now pass local tests: Blender’s actual GPU matrix library compiles through GLSL → SPIR-V → WGSL and executes through WebGPU, including the native C++ bindings. The integrated editor now also passes viewport and project acceptance; full render-engine validation remains outstanding. See [BROWSER_PORT.md](BROWSER_PORT.md) for reproducible commands and the remaining integration.
 
 ## Full-port work remaining
 

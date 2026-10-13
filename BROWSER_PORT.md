@@ -1,6 +1,8 @@
 # Native Blender browser port
 
-Target: pinned Blender 5.2.2 LTS on iPad 10th generation, iPadOS 26. The real background Blender application and `bpy` run in Chromium with packaged local assets. Modeling, Solidify, animation, PNG save/load, original startup loading and a native `.blend` round trip pass after network disconnect. The editor and renderer are not available yet; the existing `ipad-workbench` download remains the separate math test. Safari and the physical iPad remain untested.
+Target: pinned Blender 5.2.2 LTS on iPad 10th generation, iPadOS 26. The actual editor now passes Chromium acceptance: solid Cube/grid/native UI pixels, keyboard transforms, touch selection, native project save/load, durable files and an offline application reload. GPU resource and native font-pixel tests also pass. The background application passes modeling, Solidify, animation, PNG and startup loading. Render engines and disabled optional features remain incomplete; Safari and the physical iPad remain untested. The existing `ipad-workbench` download is the separate math test.
+
+The latest local acceptance is recorded by `scripts/validate_blender_editor.py` in `.cache/blender-webgpu-browser/editor-validation.json`, tied to exact asset and fixture hashes. `scripts/package_blender_editor.py` requires that proof and packages the editor together with a separate corresponding-source archive. See README.md for the complete editor build sequence. Older diagnostic entries below describe intermediate milestones, not the current editor result.
 
 ## Actual Python runtime
 

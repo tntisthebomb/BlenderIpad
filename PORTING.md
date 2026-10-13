@@ -8,7 +8,7 @@ The native browser build now compiles Blender's real GHOST system factory, event
 
 Selected upstream `blenlib` C++ implementation files compile with WASI SDK 25 and execute inside the browser. The wrapper exposes transformation, matrix inversion, interpolation and normalization. Assertions remain enabled and abort on failure. `MATH_STANDALONE` uses Blender's supported scalar inversion implementation instead of the Eigen C API. The build neither patches upstream source nor links the complete Blender application.
 
-The actual background Blender application now links and executes in Chromium with its static Python interpreter, scripts and startup assets. Tests pass modeling, Solidify, animation, PNG save/load and a native `.blend` round trip after disconnecting the network. This uses a memory filesystem; the original editor, render engines, durable storage and PWA relaunch are still unfinished. See BROWSER_PORT.md for the commands and diagnosed extension-manager failure.
+The actual background Blender application now links and executes in Chromium with its static Python interpreter, scripts and startup assets. Tests pass modeling, Solidify, animation, PNG save/load and a native `.blend` round trip after disconnecting the network. The actual editor additionally passes solid viewport, keyboard/touch, native save/load, durable storage and offline application reload checks in Chromium. Render-engine validation and physical iPad acceptance remain outstanding. See BROWSER_PORT.md for the commands and diagnosed extension-manager failure.
 
 ## 1. Browser build target and dependencies
 
@@ -62,4 +62,4 @@ Acceptance: render a known scene offline on the actual device and compare the re
 
 ## Completion criteria
 
-Call this a full Blender PWA only after the real editor starts, modeling/scripting/file workflows work, rendering is validated, and a Home Screen installation survives a verified offline relaunch on the target iPad. The background engine passes scene/image/file checks in Chromium. Editor, rendering, durable project restoration and physical iPad acceptance criteria remain unmet.
+Call this a full Blender PWA only after the real editor starts, modeling/scripting/file workflows work, rendering is validated, and a Home Screen installation survives a verified offline relaunch on the target iPad. The background engine passes scene/image/file checks in Chromium. The editor and durable project restoration pass in Chromium. Rendering and physical iPad acceptance criteria remain unmet.
