@@ -8,5 +8,9 @@ Module['preRun'].push(function () {
   ENV['BLENDER_SYSTEM_SCRIPTS'] = '/blender/scripts';
   ENV['BLENDER_SYSTEM_DATAFILES'] = '/blender/datafiles';
   ENV['XDG_CACHE_HOME'] = '/cache';
+  // OIIO constructs its default pool before applying Blender's --threads
+  // override. Avoid creating a hardware-sized pool and synchronously joining
+  // workers that the browser has not yet had an opportunity to start.
+  ENV['OPENIMAGEIO_THREADS'] = '2';
   FS.mkdirTree('/cache');
 });
