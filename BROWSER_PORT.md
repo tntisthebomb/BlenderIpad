@@ -112,6 +112,7 @@ python3 scripts/test_browser_shaderc.py
 python3 scripts/build_browser_tint.py
 python3 scripts/test_browser_tint.py
 .cache/browser-tests/bin/python tests/shader_webgpu_test.py
+.cache/browser-tests/bin/python tests/shader_atomic_webgpu_test.py
 python3 scripts/build_browser_webgpu_probe.py
 .cache/browser-tests/bin/python tests/webgpu_native_browser_test.py
 ```
@@ -193,3 +194,30 @@ Actual drawing reached a diagnostic pass after network disconnection: RGBA8/16F/
 The editor's startup presentation failure exposed the platform window-creation contract: WM expects a new graphics context to be active before acquiring its first frame. GHOST now activates new graphics windows, and activating the native GPU canvas context restores its GHOST context. The separate actual GHOST test verifies the factory activation, visible canvas pixels, acquire/submit/release, resizing, recreation and shutdown. Full-editor acceptance remains pending.
 
 The browser main-entry helper now registers `Asyncify.whenDone()` after suspension, handles only successful `ExitStatus(0)` and the runtime's expected live-loop unwind, and rethrows other errors. The actual triangle diagnostic passes without the previously escaped successful-exit exception. The full application is being packaged with these changes; core scene operations pass in its exact rebuilt native binary.
+
+## Editor shader fixes under validation
+
+The full editor initially presents a blank canvas. Font storage buffers were
+resolved by translated WGSL variable names, which Tint can rename to `S`.
+The backend now resolves resources by the flat binding emitted by the GLSL
+generator and recovers their original create-info names. Blender's separate
+resource slots, including SSBO locations and array-name normalization, are
+preserved. Texture/sampler pairing and sampled/storage alias handling use the
+same mapping. Actual GPU initialization and builtin shader warm-up pass with
+the new mapping; the native regression confirms resource types, normalized
+array names and separate storage-buffer slots.
+
+The first viewport frame also reaches an internal assertion in Tint's atomic
+lowering of `draw_command_generate`: it loads a whole `DrawGroup` containing
+counters updated atomically. A [documented upstream backport](patches/tint-atomics-composite.md)
+adds composite load/store decomposition and type propagation while retaining the
+SDK-matched Dawn pin, clean checkout and IR validation. The captured actual
+shader now translates successfully. The new composite regression compiles to
+validated SPIR-V, translates to valid WGSL and produces exact expected GPU
+readback for mixed structure/vector/array values and atomic counters. Existing
+non-diagonal and singular matrix GPU results still pass.
+
+These checks verify the compiler correction. Full editor presentation, physical
+input, native project persistence and offline application relaunch remain
+separate acceptance requirements; do not infer a finished editor from these
+compiler tests.

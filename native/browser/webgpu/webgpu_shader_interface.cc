@@ -149,6 +149,7 @@ void WebGPUShaderInterface::init(const shader::ShaderCreateInfo &info)
   name_buffer_ = MEM_new_array_uninitialized<char>(names_size, "name_buffer");
   uint32_t name_offset = 0;
   ShaderInput *input = inputs_;
+  resource_names_.clear();
 
   /* --- Attributes --- */
   for (const ShaderCreateInfo::VertIn &attr : info.vertex_inputs_) {
@@ -170,6 +171,7 @@ void WebGPUShaderInterface::init(const shader::ShaderCreateInfo &info)
   for (const ShaderCreateInfo::Resource *res : all_resources) {
     if (res->bind_type == ShaderCreateInfo::Resource::BindType::UNIFORM_BUFFER) {
       copy_input_name(input, res->uniformbuf.name, name_buffer_, name_offset);
+      resource_names_[resource_binding(info, *res)] = name_buffer_ + input->name_offset;
       input->binding = res->slot;
       input->location = resource_binding(info, *res);
       enabled_ubo_mask_ |= (1 << res->slot);
@@ -181,6 +183,7 @@ void WebGPUShaderInterface::init(const shader::ShaderCreateInfo &info)
   for (const ShaderCreateInfo::Resource *res : all_resources) {
     if (res->bind_type == ShaderCreateInfo::Resource::BindType::SAMPLER) {
       copy_input_name(input, res->sampler.name, name_buffer_, name_offset);
+      resource_names_[resource_binding(info, *res)] = name_buffer_ + input->name_offset;
       input->binding = res->slot;
       input->location = resource_binding(info, *res);
       enabled_tex_mask_ |= (1ull << res->slot);
@@ -188,6 +191,7 @@ void WebGPUShaderInterface::init(const shader::ShaderCreateInfo &info)
     }
     else if (res->bind_type == ShaderCreateInfo::Resource::BindType::IMAGE) {
       copy_input_name(input, res->image.name, name_buffer_, name_offset);
+      resource_names_[resource_binding(info, *res)] = name_buffer_ + input->name_offset;
       input->binding = res->slot;
       input->location = resource_binding(info, *res);
       enabled_ima_mask_ |= (1 << res->slot);
@@ -199,6 +203,7 @@ void WebGPUShaderInterface::init(const shader::ShaderCreateInfo &info)
     char sp_name[24];
     snprintf(sp_name, sizeof(sp_name), "gpu_subpass_img_%d", sp.index);
     copy_input_name(input, sp_name, name_buffer_, name_offset);
+    resource_names_[200 + sp.index] = sp_name;
     input->binding = sp.index;
     input->location = 200 + sp.index;
     enabled_tex_mask_ |= (1ull << sp.index);
@@ -225,6 +230,7 @@ void WebGPUShaderInterface::init(const shader::ShaderCreateInfo &info)
   for (const ShaderCreateInfo::Resource *res : all_resources) {
     if (res->bind_type == ShaderCreateInfo::Resource::BindType::STORAGE_BUFFER) {
       copy_input_name(input, res->storagebuf.name, name_buffer_, name_offset);
+      resource_names_[resource_binding(info, *res)] = name_buffer_ + input->name_offset;
       input->binding = res->slot;
       /* GPU_shader_get_ssbo_binding returns ->location (unlike UBO/samplers,
        * which return ->binding): DRW's by-NAME ssbo binds use it as the bind
@@ -248,6 +254,24 @@ void WebGPUShaderInterface::init(const shader::ShaderCreateInfo &info)
   sort_inputs();
 
   populate_builtins(info);
+}
+
+const ShaderInput *WebGPUShaderInterface::ubo_get_by_wgsl_binding(uint32_t binding) const
+{
+  const auto found = resource_names_.find(binding);
+  return found == resource_names_.end() ? nullptr : ubo_get(found->second.c_str());
+}
+
+const ShaderInput *WebGPUShaderInterface::ssbo_get_by_wgsl_binding(uint32_t binding) const
+{
+  const auto found = resource_names_.find(binding);
+  return found == resource_names_.end() ? nullptr : ssbo_get(found->second.c_str());
+}
+
+const ShaderInput *WebGPUShaderInterface::uniform_get_by_wgsl_binding(uint32_t binding) const
+{
+  const auto found = resource_names_.find(binding);
+  return found == resource_names_.end() ? nullptr : uniform_get(found->second.c_str());
 }
 
 void WebGPUShaderInterface::populate_builtins(const shader::ShaderCreateInfo & /*info*/)

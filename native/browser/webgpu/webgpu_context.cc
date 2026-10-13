@@ -1300,7 +1300,7 @@ WebGPUTexture *WebGPUContext::bound_texture_for_binding(
     if (b.binding != binding || b.kind != WgslResourceBinding::TEXTURE) {
       continue;
     }
-    const ShaderInput *in = iface->uniform_get(StringRefNull(b.res_name.c_str()));
+    const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(b.binding);
     int slot = in ? in->binding : -1;
     return (slot >= 0 && slot < WEBGPU_MAX_TEX) ? bound_tex_[slot] : nullptr;
   }
@@ -1346,7 +1346,7 @@ WGPUBindGroupLayout WebGPUContext::make_bind_group_layout(
          * bound texture (pipelines are created at first draw, textures already
          * bound) and downgrade the sample type for depth formats. */
         if (iface != nullptr && e.texture.sampleType == WGPUTextureSampleType_Float) {
-          const ShaderInput *in = iface->uniform_get(StringRefNull(b.res_name.c_str()));
+          const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(b.binding);
           int slot = in ? in->binding : -1;
           WebGPUTexture *t = (slot >= 0 && slot < WEBGPU_MAX_TEX) ? bound_tex_[slot] : nullptr;
           if (t) {
@@ -1445,21 +1445,21 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
         break;
       }
       case WgslResourceBinding::UBO: {
-        const ShaderInput *in = iface->ubo_get(StringRefNull(b.res_name.c_str()));
+        const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->ubo_get_by_wgsl_binding(b.binding);
         int slot = in ? in->binding : -1;
         e.buffer = (slot >= 0 && slot < WEBGPU_MAX_UBO) ? bound_ubo_[slot] : nullptr;
         e.size = WGPU_WHOLE_SIZE;
         break;
       }
       case WgslResourceBinding::SSBO: {
-        const ShaderInput *in = iface->ssbo_get(StringRefNull(b.res_name.c_str()));
+        const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->ssbo_get_by_wgsl_binding(b.binding);
         int slot = in ? in->binding : -1;
         e.buffer = (slot >= 0 && slot < WEBGPU_MAX_SSBO) ? bound_ssbo_[slot] : nullptr;
         e.size = WGPU_WHOLE_SIZE;
         break;
       }
       case WgslResourceBinding::TEXTURE: {
-        const ShaderInput *in = iface->uniform_get(StringRefNull(b.res_name.c_str()));
+        const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(b.binding);
         int slot = in ? in->binding : -1;
         WebGPUTexture *t = (slot >= 0 && slot < WEBGPU_MAX_TEX) ? bound_tex_[slot] : nullptr;
         /* Depth-stencil textures must be bound through a single-aspect view. */
@@ -1467,7 +1467,7 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
         break;
       }
       case WgslResourceBinding::STORAGE_TEXTURE: {
-        const ShaderInput *in = iface->uniform_get(StringRefNull(b.res_name.c_str()));
+        const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(b.binding);
         int slot = in ? in->binding : -1;
         WebGPUTexture *t = (slot >= 0 && slot < WEBGPU_MAX_IMAGE) ? bound_image_[slot] : nullptr;
         /* Storage bindings require a single-mip view. */
@@ -1496,8 +1496,7 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
             if (tb.binding != b.binding - 128 || tb.kind != WgslResourceBinding::TEXTURE) {
               continue;
             }
-            const ShaderInput *in_tex = iface ? iface->uniform_get(
-                                                    StringRefNull(tb.res_name.c_str())) :
+            const ShaderInput *in_tex = iface ? static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(tb.binding) :
                                                 nullptr;
             if (in_tex != nullptr) {
               e.sampler = sampler_for_state(bound_tex_state_get(in_tex->binding));
@@ -1535,7 +1534,7 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
       WebGPUTexture *dbg_t = nullptr;
       if (b.kind == WgslResourceBinding::TEXTURE || b.kind == WgslResourceBinding::STORAGE_TEXTURE)
       {
-        const ShaderInput *in = iface->uniform_get(StringRefNull(b.res_name.c_str()));
+        const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(b.binding);
         int slot = in ? in->binding : -1;
         if (b.kind == WgslResourceBinding::TEXTURE) {
           dbg_t = (slot >= 0 && slot < WEBGPU_MAX_TEX) ? bound_tex_[slot] : nullptr;
@@ -1546,11 +1545,11 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
       }
       int dbg_slot = -2;
       if (b.kind == WgslResourceBinding::SSBO) {
-        const ShaderInput *in = iface->ssbo_get(StringRefNull(b.res_name.c_str()));
+        const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->ssbo_get_by_wgsl_binding(b.binding);
         dbg_slot = in ? in->binding : -1;
       }
       else if (b.kind == WgslResourceBinding::UBO) {
-        const ShaderInput *in = iface->ubo_get(StringRefNull(b.res_name.c_str()));
+        const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->ubo_get_by_wgsl_binding(b.binding);
         dbg_slot = in ? in->binding : -1;
       }
       fprintf(stderr,
@@ -1598,7 +1597,7 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
       {
         continue;
       }
-      const ShaderInput *in_j = iface->uniform_get(StringRefNull(bindings[j].res_name.c_str()));
+      const ShaderInput *in_j = static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(bindings[j].binding);
       int slot_j = in_j ? in_j->binding : -1;
       WebGPUTexture *tex_j = (slot_j >= 0 && slot_j < WEBGPU_MAX_IMAGE) ? bound_image_[slot_j] :
                                                                           nullptr;

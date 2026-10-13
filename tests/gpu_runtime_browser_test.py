@@ -45,6 +45,7 @@ try:
                                        timeout=120000)
                 assert page.locator('body').get_attribute('data-done') == 'true', output
                 assert 'Actual Blender GPU registration and builtin warm-up completed.' in output, output
+                assert 'Shader binding mapping preserves native slots, array names and resource types.' in output, output
                 assert not errors, errors
             finally:
                 browser.close()

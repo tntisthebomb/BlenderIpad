@@ -598,6 +598,23 @@ static bool glsl_to_wgsl(const std::string &glsl,
     return false;
   }
   std::vector<uint32_t> words(spv.cbegin(), spv.cend());
+  /* Capture the actual compiler input before Tint runs, including shaders
+   * whose translation fails. This is opt-in and does not change compilation. */
+  if (getenv("WGPU_DUMP_SPIRV")) {
+    char path[256];
+    snprintf(path, sizeof(path), "/tmp/wgpu_spirv_%s_%d.spv", name, int(kind));
+    if (FILE *file = fopen(path, "wb")) {
+      fwrite(words.data(), sizeof(uint32_t), words.size(), file);
+      fclose(file);
+    }
+    snprintf(path, sizeof(path), "/tmp/wgpu_spirv_%s_%d.glsl", name, int(kind));
+    if (FILE *file = fopen(path, "w")) {
+      fwrite(glsl.data(), 1, glsl.size(), file);
+      fclose(file);
+    }
+    fprintf(stderr, "WGPU_SH translating %s kind=%d\n", name, int(kind));
+    fflush(stderr);
+  }
   /* Tint splits SPIR-V combined image-samplers into a WGSL texture + sampler.
    * With no explicit mapping it resolves the sampler's binding by incrementing
    * until unique — a PER-MODULE outcome, so the same sampler can land on
