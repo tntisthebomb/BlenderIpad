@@ -37,7 +37,7 @@ int main(int argc, char **argv)
     tint::Source::File bad("invalid.wgsl", "@compute fn main( {");
     if (tint::wgsl::reader::Parse(&bad).IsValid())
       throw std::runtime_error("invalid WGSL was accepted");
-    std::cout << "PASS: Blender matrix SPIR-V translated to valid WGSL; invalid inputs rejected.\n";
+    std::cout << "PASS: SPIR-V translated to valid WGSL; invalid inputs rejected.\n";
     return 0;
   } catch (const std::exception &error) {
     std::cerr << "FAIL: " << error.what() << '\n';

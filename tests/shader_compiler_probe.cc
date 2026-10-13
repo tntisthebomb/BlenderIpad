@@ -57,12 +57,12 @@ class Includes : public shaderc::CompileOptions::IncluderInterface {
 int main(int argc, char **argv)
 {
   try {
-    if (argc != 4) throw std::runtime_error("expected source, generated and output paths");
+    if (argc != 4 && argc != 5) throw std::runtime_error("expected source, generated, output and optional shader paths");
     shaderc::Compiler compiler;
     shaderc::CompileOptions options;
     options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_0);
     options.SetIncluder(std::make_unique<Includes>(argv[1], argv[2]));
-    const std::string compute = R"glsl(#version 450
+    const std::string compute = argc == 5 ? read_file(argv[4]) : R"glsl(#version 450
 #define GPU_VULKAN
 #define GPU_COMPUTE_SHADER
 #include "gpu_shader_compat_glsl.glsl"
@@ -98,7 +98,8 @@ void main() {
     auto invalid = words;
     invalid[0] = 0;
     if (validator.Validate(invalid)) throw std::runtime_error("invalid SPIR-V was accepted");
-    std::cout << "PASS: actual Blender matrix shader library compiled to valid SPIR-V; GLSL and SPIR-V failures remain failures.\n";
+    std::cout << "PASS: " << (argc == 5 ? "atomic composite regression" : "actual Blender matrix library")
+              << " compiled to valid SPIR-V; invalid inputs rejected.\n";
     return 0;
   } catch (const std::exception &error) {
     std::cerr << "FAIL: " << error.what() << '\n';

@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Draw-command generation loads/stores whole structures whose counters are
+// also accessed atomically. Include vector and array members to exercise type
+// propagation and decomposition rather than just scalar atomic operations.
+#version 450
+layout(local_size_x=1) in;
+struct Group { uvec2 payload; uint count; uint spare; };
+struct Counters { uint values[2]; };
+layout(set=0,binding=0,std430) buffer Input {
+  Group groups[2];
+  Counters counters;
+} input_data;
+layout(set=0,binding=1,std430) buffer Output { uint values[]; } output_data;
+void main() {
+  atomicAdd(input_data.groups[0].count,2u);
+  Group snapshot=input_data.groups[0];
+  output_data.values[0]=snapshot.payload.x;
+  output_data.values[1]=snapshot.payload.y;
+  output_data.values[2]=snapshot.count;
+  output_data.values[3]=snapshot.spare;
+  input_data.groups[1]=snapshot;
+  atomicAdd(input_data.groups[1].count,3u);
+  snapshot=input_data.groups[1];
+  output_data.values[4]=snapshot.payload.x;
+  output_data.values[5]=snapshot.payload.y;
+  output_data.values[6]=snapshot.count;
+  output_data.values[7]=snapshot.spare;
+  atomicAdd(input_data.counters.values[1],4u);
+  Counters copy=input_data.counters;
+  output_data.values[8]=copy.values[0];
+  output_data.values[9]=copy.values[1];
+}

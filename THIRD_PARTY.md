@@ -17,3 +17,5 @@ That pinned repository also informed the runtime dependency graph and CPython em
 CPython 3.13.13 retains its PSF license, copied beside the local browser runtime output. The standard-library ZIP contains the installed Python source modules; the interpreter C source is pinned in `browser-port.lock.json`. No runtime probe contains a substitute `bpy` module.
 
 Blender's original GHOST, allocator, logging and dependency code is fetched from the immutable release pin in `port.lock.json`. Dependency archive hashes are taken from that release's `build_files/build_environment/cmake/versions.cmake` and are retained in `browser-port.lock.json`. No checksums or assertions are weakened to accept a build.
+
+Tint atomic composite lowering includes a narrow backport of upstream Dawn fixes. [Patch provenance](patches/tint-atomics-composite.md) records the original commits and retained BSD-3-Clause licensing. The SDK-matched source pin and compiler validation remain in place.

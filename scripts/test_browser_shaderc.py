@@ -31,3 +31,6 @@ if __name__ == '__main__':
     run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node', build / 'shader-compiler.js',
         gpu / 'shaders', generated,
         build / 'blender-matrix.spv', env=env)
+    run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node', build / 'shader-compiler.js',
+        gpu / 'shaders', generated, build / 'atomic-composite.spv',
+        ROOT / 'tests/shader_atomic_composite.comp', env=env)
