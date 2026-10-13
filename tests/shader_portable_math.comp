@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+#version 450
+#define GPU_VULKAN
+#define GPU_WEBGPU
+#include "gpu_shader_compat_glsl.glsl"
+#include "gpu_shader_utildefines_lib.glsl"
+layout(local_size_x=1) in;
+layout(set=0,binding=0) uniform usampler2D ids;
+layout(set=0,binding=1,std430) buffer Results { uint values[]; } output_data;
+void main() {
+  float value=NAN_FLT;
+  output_data.values[0]=floatBitsToUint(value);
+  output_data.values[1]=(value!=value)?1u:0u;
+  output_data.values[2]=gpu_texel_fetch_nearest(ids,float2(-0.25f)).r;
+  output_data.values[3]=gpu_texel_fetch_nearest(ids,float2(0.375f)).r;
+  output_data.values[4]=gpu_texel_fetch_nearest(ids,float2(0.999f)).r;
+  output_data.values[5]=gpu_texel_fetch_nearest(ids,float2(1.25f)).r;
+  output_data.values[6]=gpu_texel_fetch_nearest(ids,float2(1.25f,0.25f)).r;
+  output_data.values[7]=gpu_texel_fetch_nearest(ids,float2(-0.25f,1.25f)).r;
+}

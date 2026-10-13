@@ -14,12 +14,13 @@ if __name__ == '__main__':
     gpu = source / 'source/blender/gpu'
     generated = build / 'generated'
     generated.mkdir(exist_ok=True)
-    base = generated / 'common/gpu_shader_math_matrix_lib.glsl'
-    base.parent.mkdir(exist_ok=True)
-    run(shader_tool, gpu / 'shaders/common/gpu_shader_math_matrix_lib.glsl',
-        str(base) + '.tmp', str(base) + '.hh', str(base) + '.info', str(base) + '.d',
-        gpu, gpu / 'intern', gpu / 'shaders', gpu / 'shaders/common',
-        gpu / 'shaders/infos', gpu / 'shaders/material', gpu / 'vulkan/shaders', env=env)
+    for name in ['gpu_shader_math_matrix_lib.glsl', 'gpu_shader_utildefines_lib.glsl']:
+        base = generated / 'common' / name
+        base.parent.mkdir(exist_ok=True)
+        run(shader_tool, gpu / 'shaders/common' / name,
+            str(base) + '.tmp', str(base) + '.hh', str(base) + '.info', str(base) + '.d',
+            gpu, gpu / 'intern', gpu / 'shaders', gpu / 'shaders/common',
+            gpu / 'shaders/infos', gpu / 'shaders/material', gpu / 'vulkan/shaders', env=env)
     run('em++', ROOT / 'tests/shader_compiler_probe.cc', '-std=c++20', '-O1',
         '-pthread', '-fexceptions', '-I' + str(prefix / 'include'),
         prefix / 'lib/libshaderc_combined.a', '-sNODERAWFS=1',
@@ -34,3 +35,6 @@ if __name__ == '__main__':
     run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node', build / 'shader-compiler.js',
         gpu / 'shaders', generated, build / 'atomic-composite.spv',
         ROOT / 'tests/shader_atomic_composite.comp', env=env)
+    run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node', build / 'shader-compiler.js',
+        gpu / 'shaders', generated, build / 'portable-math.spv',
+        ROOT / 'tests/shader_portable_math.comp', env=env)

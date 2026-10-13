@@ -16,7 +16,11 @@ if __name__ == '__main__':
     run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node',
         build / 'blender_shader_translation_probe.js', probe / 'atomic-composite.spv',
         probe / 'atomic-composite.wgsl', env=env)
+    run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node',
+        build / 'blender_shader_translation_probe.js', probe / 'portable-math.spv',
+        probe / 'portable-math.wgsl', env=env)
     stamp = {name: hashlib.sha256((probe / name).read_bytes()).hexdigest()
              for name in ['blender-matrix.spv', 'blender-matrix.wgsl',
-                          'atomic-composite.spv', 'atomic-composite.wgsl']}
+                          'atomic-composite.spv', 'atomic-composite.wgsl',
+                          'portable-math.spv', 'portable-math.wgsl']}
     (probe / 'translation-validation.json').write_text(json.dumps(stamp, indent=2) + '\n')

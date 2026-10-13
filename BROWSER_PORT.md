@@ -227,3 +227,21 @@ The compiler backport also passed the clean GitHub shader workflow at commit
 This run includes SPIR-V/WGSL validation, matrix and atomic composite GPU
 readback, native WebGPU API checks and GHOST canvas presentation. It does not
 run the complete editor or verify physical Safari/iPad behavior.
+
+The rebuilt application passes all seven GPU checks after disconnecting the
+network, including actual font glyph pixels in an offscreen framebuffer. A
+subsequent editor diagnostic renders Blender's native menus, tools, properties,
+fonts and startup screen. It still fails full acceptance: viewport shader
+translation failures omit the Cube and overlays, and cold first-frame compilation
+blocks browser interaction for more than the old 30-second selector timeout.
+The editor check now waits for an actual frame and also rejects failed/skipped
+shader programs; UI pixels alone are insufficient evidence of a complete viewport.
+
+Further candidate shader corrections are validated independently against captured
+Workbench/overlay programs and the actual common shader library: a logically
+equivalent GLSL preprocessor expression, runtime construction of the unchanged
+`0x7FC00000` quiet-NaN pattern, and nearest/clamped integer ID texel fetches.
+SPIR-V validation, WGSL parsing and exact GPU readback pass for NaNs and integer
+samples at interior and out-of-range coordinates. Matrix and atomic composite
+GPU results also pass with the application's explicit sampler-binding mapping.
+Full editor validation of these corrections remains pending.

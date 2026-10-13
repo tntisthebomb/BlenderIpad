@@ -1,0 +1,93 @@
+--- a/source/blender/draw/engines/workbench/shaders/workbench_effect_outline_frag.glsl
++++ b/source/blender/draw/engines/workbench/shaders/workbench_effect_outline_frag.glsl
+@@ -3,6 +3,8 @@
+  * SPDX-License-Identifier: GPL-2.0-or-later */
+ 
+ #include "infos/workbench_effect_outline_infos.hh"
++
++#include "gpu_shader_utildefines_lib.glsl"
+ 
+ FRAGMENT_SHADER_CREATE_INFO(workbench_effect_outline)
+ 
+@@ -12,11 +14,11 @@
+ 
+   float3 offset = float3(world_data.viewport_size_inv, 0.0f) * world_data.ui_scale;
+ 
+-  uint center_id = texture(object_id_buffer, uv).r;
+-  uint4 adjacent_ids = uint4(texture(object_id_buffer, uv + offset.zy).r,
+-                             texture(object_id_buffer, uv - offset.zy).r,
+-                             texture(object_id_buffer, uv + offset.xz).r,
+-                             texture(object_id_buffer, uv - offset.xz).r);
++  uint center_id = gpu_texel_fetch_nearest(object_id_buffer, uv).r;
++  uint4 adjacent_ids = uint4(gpu_texel_fetch_nearest(object_id_buffer, uv + offset.zy).r,
++                             gpu_texel_fetch_nearest(object_id_buffer, uv - offset.zy).r,
++                             gpu_texel_fetch_nearest(object_id_buffer, uv + offset.xz).r,
++                             gpu_texel_fetch_nearest(object_id_buffer, uv - offset.xz).r);
+ 
+   float outline_opacity = 1.0f - dot(float4(equal(uint4(center_id), adjacent_ids)), float4(0.25f));
+ 
+--- a/source/blender/draw/engines/overlay/shaders/overlay_outline_detect_frag.glsl
++++ b/source/blender/draw/engines/overlay/shaders/overlay_outline_detect_frag.glsl
+@@ -3,6 +3,8 @@
+  * SPDX-License-Identifier: GPL-2.0-or-later */
+ 
+ #include "infos/overlay_outline_infos.hh"
++
++#include "gpu_shader_utildefines_lib.glsl"
+ 
+ FRAGMENT_SHADER_CREATE_INFO(overlay_outline_detect)
+ 
+@@ -45,10 +47,10 @@
+   ids = textureGather(outline_id_tx, uv);
+ #else
+   float3 ofs = float3(0.5f, 0.5f, -0.5f) * uniform_buf.size_viewport_inv.xyy;
+-  ids.x = textureLod(outline_id_tx, uv - ofs.xz, 0.0f).r;
+-  ids.y = textureLod(outline_id_tx, uv + ofs.xy, 0.0f).r;
+-  ids.z = textureLod(outline_id_tx, uv + ofs.xz, 0.0f).r;
+-  ids.w = textureLod(outline_id_tx, uv - ofs.xy, 0.0f).r;
++  ids.x = gpu_texel_fetch_nearest(outline_id_tx, uv - ofs.xz).r;
++  ids.y = gpu_texel_fetch_nearest(outline_id_tx, uv + ofs.xy).r;
++  ids.z = gpu_texel_fetch_nearest(outline_id_tx, uv + ofs.xz).r;
++  ids.w = gpu_texel_fetch_nearest(outline_id_tx, uv - ofs.xy).r;
+ #endif
+ 
+   return notEqual(ids, uint4(ref));
+@@ -167,7 +169,7 @@
+ void main()
+ {
+   float2 screen_uv = gl_FragCoord.xy / float2(textureSize(outline_id_tx, 0).xy);
+-  uint ref = textureLod(outline_id_tx, screen_uv, 0.0f).r;
++  uint ref = gpu_texel_fetch_nearest(outline_id_tx, screen_uv).r;
+   uint ref_col = ref;
+ 
+   float2 uvs = gl_FragCoord.xy * uniform_buf.size_viewport_inv;
+@@ -194,10 +196,10 @@
+     ids.yw = textureGather(outline_id_tx, uvs - ofs.xy * 0.5f).xz;
+   }
+ #else
+-  ids.x = textureLod(outline_id_tx, uvs + ofs.xz, 0.0f).r;
+-  ids.y = textureLod(outline_id_tx, uvs - ofs.xz, 0.0f).r;
+-  ids.z = textureLod(outline_id_tx, uvs + ofs.zy, 0.0f).r;
+-  ids.w = textureLod(outline_id_tx, uvs - ofs.zy, 0.0f).r;
++  ids.x = gpu_texel_fetch_nearest(outline_id_tx, uvs + ofs.xz).r;
++  ids.y = gpu_texel_fetch_nearest(outline_id_tx, uvs - ofs.xz).r;
++  ids.z = gpu_texel_fetch_nearest(outline_id_tx, uvs + ofs.zy).r;
++  ids.w = gpu_texel_fetch_nearest(outline_id_tx, uvs - ofs.zy).r;
+ #endif
+ 
+   bool has_edge_pos_x = has_edge(ids.x, uvs + ofs.xz, ref, ref_col, depth_uv);
+@@ -213,10 +215,10 @@
+       ids.z = tmp3.y;
+       ids.w = tmp4.y;
+ #else
+-      ids.x = textureLod(outline_id_tx, uvs + 2.0f * ofs.xz, 0.0f).r;
+-      ids.y = textureLod(outline_id_tx, uvs - 2.0f * ofs.xz, 0.0f).r;
+-      ids.z = textureLod(outline_id_tx, uvs + 2.0f * ofs.zy, 0.0f).r;
+-      ids.w = textureLod(outline_id_tx, uvs - 2.0f * ofs.zy, 0.0f).r;
++      ids.x = gpu_texel_fetch_nearest(outline_id_tx, uvs + 2.0f * ofs.xz).r;
++      ids.y = gpu_texel_fetch_nearest(outline_id_tx, uvs - 2.0f * ofs.xz).r;
++      ids.z = gpu_texel_fetch_nearest(outline_id_tx, uvs + 2.0f * ofs.zy).r;
++      ids.w = gpu_texel_fetch_nearest(outline_id_tx, uvs - 2.0f * ofs.zy).r;
+ #endif
+ 
+       has_edge_pos_x = has_edge(ids.x, uvs + 2.0f * ofs.xz, ref, ref_col, depth_uv);

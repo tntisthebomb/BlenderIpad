@@ -30,6 +30,7 @@ class Includes : public shaderc::CompileOptions::IncluderInterface {
   {
     sources["gpu_shader_compat_glsl.glsl"] = read_file(source / "gpu_shader_compat_glsl.glsl");
     sources["gpu_shader_math_matrix_lib.glsl"] = read_file(generated / "common/gpu_shader_math_matrix_lib.glsl.tmp");
+    sources["gpu_shader_utildefines_lib.glsl"] = read_file(generated / "common/gpu_shader_utildefines_lib.glsl.tmp");
     // Blender generates the version/extension header at runtime. This probe
     // supplies its Vulkan 1.0 compute version in the top-level shader instead.
     sources["gpu_shader_glsl_extension.glsl"] = "";
@@ -98,7 +99,7 @@ void main() {
     auto invalid = words;
     invalid[0] = 0;
     if (validator.Validate(invalid)) throw std::runtime_error("invalid SPIR-V was accepted");
-    std::cout << "PASS: " << (argc == 5 ? "atomic composite regression" : "actual Blender matrix library")
+    std::cout << "PASS: " << (argc == 5 ? "port shader regression" : "actual Blender matrix library")
               << " compiled to valid SPIR-V; invalid inputs rejected.\n";
     return 0;
   } catch (const std::exception &error) {

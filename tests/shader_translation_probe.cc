@@ -20,7 +20,14 @@ int main(int argc, char **argv)
     file.seekg(0);
     file.read(reinterpret_cast<char *>(words.data()), bytes);
     if (!file) throw std::runtime_error("SPIR-V input read failed");
-    auto ir = tint::spirv::reader::ReadIR(words);
+    tint::spirv::reader::Options reader_options;
+    // Match the application's stable texture/sampler binding pairs. Tint's
+    // default mapping can renumber subsequent resources when splitting them.
+    for (uint32_t binding = 0; binding < 128; ++binding) {
+      reader_options.sampler_mappings.insert(
+          {tint::BindingPoint{0, binding}, tint::BindingPoint{0, binding + 128}});
+    }
+    auto ir = tint::spirv::reader::ReadIR(words, reader_options);
     if (ir != tint::Success) throw std::runtime_error(ir.Failure().reason);
     auto wgsl = tint::wgsl::writer::WgslFromIR(ir.Get(), {});
     if (wgsl != tint::Success) throw std::runtime_error(wgsl.Failure().reason);
@@ -32,7 +39,7 @@ int main(int argc, char **argv)
     if (!output) throw std::runtime_error("WGSL output write failed");
     auto invalid = words;
     invalid[0] = 0;
-    if (tint::spirv::reader::ReadIR(invalid) == tint::Success)
+    if (tint::spirv::reader::ReadIR(invalid, reader_options) == tint::Success)
       throw std::runtime_error("invalid SPIR-V was accepted");
     tint::Source::File bad("invalid.wgsl", "@compute fn main( {");
     if (tint::wgsl::reader::Parse(&bad).IsValid())

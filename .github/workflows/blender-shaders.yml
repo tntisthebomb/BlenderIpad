@@ -31,6 +31,7 @@ jobs:
         run: |
           .cache/browser-tests/bin/python tests/shader_webgpu_test.py
           .cache/browser-tests/bin/python tests/shader_atomic_webgpu_test.py
+          .cache/browser-tests/bin/python tests/shader_portable_webgpu_test.py
           python3 scripts/build_browser_webgpu_probe.py
           .cache/browser-tests/bin/python tests/webgpu_native_browser_test.py
       - name: Build and validate real GHOST canvas presentation

@@ -1,0 +1,39 @@
+--- a/source/blender/gpu/shaders/common/gpu_shader_utildefines_lib.glsl
++++ b/source/blender/gpu/shaders/common/gpu_shader_utildefines_lib.glsl
+@@ -17,7 +17,18 @@
+ #  define USHRT_MAX 0x0000FFFFu
+ #  define UINT_MAX 0xFFFFFFFFu
+ #endif
+-#define NAN_FLT uintBitsToFloat(0x7FC00000u)
++#ifdef GPU_WEBGPU
++/* WGSL forbids non-finite constants. Preserve Blender's quiet-NaN bit pattern
++ * using a runtime bitcast, including vertex positions that discard primitives. */
++float gpu_nan_flt()
++{
++  uint bits = 0x7FC00000u;
++  return uintBitsToFloat(bits);
++}
++#  define NAN_FLT gpu_nan_flt()
++#else
++#  define NAN_FLT uintBitsToFloat(0x7FC00000u)
++#endif
+ #define FLT_11_MAX uintBitsToFloat(0x477E0000)
+ #define FLT_10_MAX uintBitsToFloat(0x477C0000)
+ #define FLT_11_11_10_MAX float3(FLT_11_MAX, FLT_11_MAX, FLT_10_MAX)
+@@ -132,3 +143,16 @@
+ {
+   return intBitsToFloat((int_value < 0) ? (int_value ^ 0x7FFFFFFF) : int_value);
+ }
++
++/* Integer ID buffers use nearest sampling, one mip and clamp-to-edge.
++ * WebGPU cannot filter integer textures: fetch the corresponding texel. */
++uint4 gpu_texel_fetch_nearest(usampler2D image, float2 uv)
++{
++#ifdef GPU_WEBGPU
++  int2 size = textureSize(image, 0);
++  int2 coordinate = clamp(int2(floor(uv * float2(size))), int2(0), size - int2(1));
++  return texelFetch(image, coordinate, 0);
++#else
++  return textureLod(image, uv, 0.0f);
++#endif
++}
