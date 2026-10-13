@@ -87,6 +87,9 @@ def prepare_source(materialize_assets=False):
         generated = {relative: (expected / relative).read_bytes() for relative in patched_paths}
     for path in (ROOT / "native/browser").glob("GHOST_*"):
         generated["intern/ghost/intern/" + path.name] = path.read_bytes()
+    for path in (ROOT / "native/browser/webgpu").glob("*"):
+        if path.suffix in {".cc", ".hh"}:
+            generated["source/blender/gpu/webgpu/" + path.name] = path.read_bytes()
     expression_header = ROOT / "native/browser/expr_math_errors.hh"
     if expression_header.exists():
         generated["source/blender/blenlib/expr_math_errors.hh"] = expression_header.read_bytes()

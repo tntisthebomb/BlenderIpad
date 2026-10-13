@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Actual Blender WebGPU integration test</title>
+<h1>Blender GPU backend test</h1>
+<p>This developer test runs the real Blender application and bpy in WebAssembly.
+It tests the actual GPU backend; the editor window is still under development.</p>
+<pre id="output">Loading compiled Blender…</pre>
+<script src="blender-core.js"></script>
+<script>
+window.coreOutput = [];
+window.coreErrors = [];
+window.coreExit = null;
+Error.stackTraceLimit=40;
+const write = message => {
+  coreOutput.push(String(message));
+  console.log(String(message));
+  if (String(message).includes('Blocking on the main thread')) console.log(new Error('Native startup wait').stack);
+  document.getElementById('output').textContent = coreOutput.join('\n');
+};
+if (!crossOriginIsolated) {
+  document.body.dataset.error = 'Shared-memory isolation headers are required.';
+} else {
+  (async () => {
+    if (!navigator.gpu) throw new Error('WebGPU unavailable');
+    const adapter=await navigator.gpu.requestAdapter();
+    if (!adapter) throw new Error('WebGPU adapter unavailable');
+    const wanted=['float32-filterable','depth32float-stencil8'];
+    const features=wanted.filter(feature=>adapter.features.has(feature));
+    const device=await adapter.requestDevice({requiredFeatures:features});
+    device.addEventListener('uncapturederror',event=>document.body.dataset.error=event.error.message);
+    return createBlenderCore({preinitializedWebGPUDevice:device,noInitialRun: true, print: write,
+    printErr: message => {coreErrors.push(String(message)); write(message);},
+    onExit: code => {window.coreExit = code;},
+    onAbort: message => {document.body.dataset.error = String(message);}
+  });
+  })().then(module => {
+    window.blenderCore = module;
+    document.body.dataset.ready = 'true';
+    write('Actual WebGPU backend ready for GPU acceptance.');
+  }).catch(error => {document.body.dataset.error = String(error);});
+}
+window.runCoreScene = () => blenderCore.callMain([
+  '--background', '--factory-startup', '--disable-autoexec', '--threads', '2',
+  '--python-exit-code', '1', '--python', '/scene_test.py', '--',
+  '/scene-output', '/blender/datafiles/startup.blend'
+]);
+</script>
+
+<script>
+window.runGPUScene=()=>blenderCore.callMain([
+ '--background','--factory-startup','--disable-autoexec','--threads','2',
+ '--python-exit-code','1','--python','/gpu_test.py'
+]);
+</script>

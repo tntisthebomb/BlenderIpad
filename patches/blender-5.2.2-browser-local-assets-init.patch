@@ -1,0 +1,20 @@
+--- a/scripts/addons_core/bl_pkg/__init__.py
++++ b/scripts/addons_core/bl_pkg/__init__.py
+@@ -577,14 +577,15 @@
+     if not bpy.context.preferences.experimental.use_remote_asset_libraries:
+         return
+ 
+-    from _bpy_internal.assets.remote_library import listing_downloader
+-
+     for asset_lib in bpy.context.preferences.filepaths.asset_libraries:
+         if not asset_lib.enabled:
+             continue
+         if not asset_lib.use_remote_url:
+             continue
+ 
++        # Loading the downloader requires native process support. Local-only
++        # asset libraries need no downloader or remote backup restoration.
++        from _bpy_internal.assets.remote_library import listing_downloader
+         listing_downloader.restore_backup_if_exists_locked(asset_lib.remote_url, Path(asset_lib.path))
+ 
+ 

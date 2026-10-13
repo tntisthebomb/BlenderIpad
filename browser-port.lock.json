@@ -47,7 +47,7 @@
   "reference": {
     "repository": "https://github.com/HeyPuter/blender",
     "commit": "6b031d3d41c392883e3c495aa72343e10d15b43d",
-    "scope": "Three GHOST browser platform files adapted to stable Blender 5.2.2; no alpha core or GPU backend imported"
+    "scope": "Browser GHOST files and experimental WebGPU backend adapted to stable 5.2.2; alpha Blender core is not imported; Tint ICE recovery is removed"
   },
   "runtime_dependencies": {
     "python": {

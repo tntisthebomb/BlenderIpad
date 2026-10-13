@@ -1,0 +1,94 @@
+--- a/source/blender/draw/CMakeLists.txt
++++ b/source/blender/draw/CMakeLists.txt
+@@ -822,7 +822,13 @@
+   string(APPEND GLSL_FILE_NAME_UNDERSCORES "_tmp")
+   string(APPEND GLSL_SOURCE_CONTENT "SHADER_SOURCE\(${GLSL_FILE_NAME_UNDERSCORES}, \"${GLSL_FILE_NAME}\", \"${GLSL_FILE}\"\)\n")
+   string(APPEND GLSL_METADATA_CONTENT "#include \"${GLSL_FILE}.hh\"\n")
++  if(EMSCRIPTEN)
++    # Keep each registration unit small enough for browser Wasm compilers.
++    # noinline also prevents the Asyncify link pass merging them back together.
++    string(APPEND GLSL_INFOS_CONTENT "[]() __attribute__((noinline)) {\n#include \"${GLSL_FILE}.info\"\n}();\n")
++  else()
+   string(APPEND GLSL_INFOS_CONTENT "#include \"${GLSL_FILE}.info\"\n")
++  endif()
+ endforeach()
+ 
+ set(glsl_source_list_file "${CMAKE_CURRENT_BINARY_DIR}/glsl_draw_source_list.h")
+--- a/source/blender/gpu/intern/gpu_shader_create_info.cc
++++ b/source/blender/gpu/intern/gpu_shader_create_info.cc
+@@ -680,6 +680,11 @@
+ 
+   if (GPU_stencil_clasify_buffer_workaround()) {
+     /* WORKAROUND: Adding a dummy buffer that isn't used fixes a bug inside the Qualcomm driver. */
++#ifdef __EMSCRIPTEN__
++    /* Browser registration units have their own local scope. */
++    ShaderCreateInfo &eevee_deferred_tile_classify =
++        *g_create_infos->lookup("eevee_deferred_tile_classify");
++#endif
+     eevee_deferred_tile_classify.storage_buf(
+         12, Qualifier::read_write, "uint", "dummy_workaround_buf[]");
+   }
+--- a/source/blender/compositor/CMakeLists.txt
++++ b/source/blender/compositor/CMakeLists.txt
+@@ -435,7 +435,11 @@
+   string(APPEND GLSL_FILE_NAME_UNDERSCORES "_tmp")
+   string(APPEND GLSL_SOURCE_CONTENT "SHADER_SOURCE\(${GLSL_FILE_NAME_UNDERSCORES}, \"${GLSL_FILE_NAME}\", \"${GLSL_FILE}\"\)\n")
+   string(APPEND GLSL_METADATA_CONTENT "#include \"${GLSL_FILE}.hh\"\n")
+-  string(APPEND GLSL_INFOS_CONTENT "#include \"${GLSL_FILE}.info\"\n")
++  if(EMSCRIPTEN)
++    string(APPEND GLSL_INFOS_CONTENT "[]() __attribute__((noinline)) {\n#include \"${GLSL_FILE}.info\"\n}();\n")
++  else()
++    string(APPEND GLSL_INFOS_CONTENT "#include \"${GLSL_FILE}.info\"\n")
++  endif()
+ endforeach()
+ 
+ set(glsl_source_list_file "${CMAKE_CURRENT_BINARY_DIR}/glsl_compositor_source_list.h")
+--- a/source/blender/gpu/CMakeLists.txt
++++ b/source/blender/gpu/CMakeLists.txt
+@@ -882,7 +882,11 @@
+   string(APPEND GLSL_FILE_NAME_UNDERSCORES "_tmp")
+   string(APPEND GLSL_SOURCE_CONTENT "SHADER_SOURCE\(${GLSL_FILE_NAME_UNDERSCORES}, \"${GLSL_FILE_NAME}\", \"${GLSL_FILE}\"\)\n")
+   string(APPEND GLSL_METADATA_CONTENT "#include \"${GLSL_FILE}.hh\"\n")
+-  string(APPEND GLSL_INFOS_CONTENT "#include \"${GLSL_FILE}.info\"\n")
++  if(EMSCRIPTEN)
++    string(APPEND GLSL_INFOS_CONTENT "[]() __attribute__((noinline)) {\n#include \"${GLSL_FILE}.info\"\n}();\n")
++  else()
++    string(APPEND GLSL_INFOS_CONTENT "#include \"${GLSL_FILE}.info\"\n")
++  endif()
+ endforeach()
+ 
+ set(glsl_source_list_file "${CMAKE_CURRENT_BINARY_DIR}/glsl_gpu_source_list.h")
+--- a/intern/opensubdiv/CMakeLists.txt
++++ b/intern/opensubdiv/CMakeLists.txt
+@@ -117,7 +117,11 @@
+     string(APPEND GLSL_FILE_NAME_UNDERSCORES "_tmp")
+     string(APPEND GLSL_SOURCE_CONTENT "SHADER_SOURCE\(${GLSL_FILE_NAME_UNDERSCORES}, \"${GLSL_FILE_NAME}\", \"${GLSL_FILE}\"\)\n")
+     string(APPEND GLSL_METADATA_CONTENT "#include \"${GLSL_FILE}.hh\"\n")
+-    string(APPEND GLSL_INFOS_CONTENT "#include \"${GLSL_FILE}.info\"\n")
++    if(EMSCRIPTEN)
++      string(APPEND GLSL_INFOS_CONTENT "[]() __attribute__((noinline)) {\n#include \"${GLSL_FILE}.info\"\n}();\n")
++    else()
++      string(APPEND GLSL_INFOS_CONTENT "#include \"${GLSL_FILE}.info\"\n")
++    endif()
+   endforeach()
+ 
+   set(glsl_source_list_file "${CMAKE_CURRENT_BINARY_DIR}/glsl_osd_source_list.h")
+--- a/source/blender/gpu/intern/gpu_shader_create_info.cc
++++ b/source/blender/gpu/intern/gpu_shader_create_info.cc
+@@ -656,6 +656,16 @@
+ #define GPU_SHADER_INTERFACE_END() ;
+ #define GPU_SHADER_CREATE_END() ;
+ 
++#ifdef __EMSCRIPTEN__
++/* Interfaces referenced by another registration unit live in the registry. */
++#  undef VERTEX_OUT
++#  undef GEOMETRY_OUT
++#  undef VERTEX_OUT_SRT
++#  define VERTEX_OUT(stage_interface) .vertex_out(*g_interfaces->lookup(#stage_interface))
++#  define GEOMETRY_OUT(stage_interface) .geometry_out(*g_interfaces->lookup(#stage_interface))
++#  define VERTEX_OUT_SRT(srt) .vertex_out(*g_interfaces->lookup(#srt "_t"))
++#endif
++
+ #ifdef _MSC_VER
+ /* Disable optimization for this function with MSVC. It does not like the fact
+  * shaders info are declared in the same function (same basic block or not does

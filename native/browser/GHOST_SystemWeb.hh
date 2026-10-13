@@ -23,6 +23,10 @@
 
 class GHOST_SystemWeb : public GHOST_System {
  private:
+#ifdef WITH_WEBGPU_BACKEND
+  WGPUInstance graphics_instance_ = nullptr;
+  WGPUDevice graphics_device_ = nullptr;
+#endif
   GHOST_WindowWeb *window_ = nullptr;
   int32_t cursor_x_ = 0, cursor_y_ = 0;
   GHOST_Buttons buttons_;

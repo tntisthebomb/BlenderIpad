@@ -3,6 +3,7 @@
 
 This is deliberately not a GUI build or the downloadable iPad workbench.
 """
+import argparse
 import hashlib
 import json
 import shlex
@@ -11,8 +12,14 @@ import subprocess
 from setup_browser import CACHE, ROOT, toolchain, run
 
 if __name__ == '__main__':
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--webgpu',action='store_true')
+    parser.add_argument('--editor',action='store_true')
+    options=parser.parse_args()
+    if options.editor:
+        options.webgpu=True
     env = toolchain()
-    core = CACHE / 'blender-core-build'
+    core = CACHE / ('blender-webgpu-build' if options.webgpu else 'blender-core-build')
     stamp = core / 'core-validation.json'
     if not stamp.exists():
         raise SystemExit('Build and validate background Blender first.')
@@ -25,7 +32,7 @@ if __name__ == '__main__':
     stdlib = CACHE / 'python-browser/python313.zip'
     if not stdlib.exists():
         raise SystemExit('Build the Python browser probe to package its standard library.')
-    output = CACHE / 'blender-core-browser'
+    output = CACHE / ('blender-webgpu-browser' if options.webgpu else 'blender-core-browser')
     output.mkdir(exist_ok=True)
     commands = subprocess.check_output(['ninja', '-t', 'commands', 'bin/blender.js'],
                                        cwd=core, env=env, text=True).splitlines()
@@ -46,6 +53,27 @@ if __name__ == '__main__':
              '--preload-file', str(CACHE / 'blender-browser/scripts') + '@/blender/scripts',
              '--preload-file', str(CACHE / 'blender-browser/release/datafiles') + '@/blender/datafiles',
              '--preload-file', str(ROOT / 'tests/blender_core_scene.py') + '@/scene_test.py']
+    if options.webgpu:
+        args += ['--preload-file', str(ROOT / 'tests/blender_gpu_scene.py') + '@/gpu_test.py']
+    if options.editor:
+        args += ['-lidbfs.js','--pre-js', str(ROOT / 'native/browser/editor_browser_env.js')]
+        args += ['--preload-file', str(ROOT / 'native/browser/editor_startup.py') + '@/browser_startup.py']
+        args += ['--preload-file', str(ROOT / 'tests/blender_editor_scene.py') + '@/editor_test.py']
     run(*args, cwd=core, env=env)
-    shutil.copyfile(ROOT / 'native/browser/blender_core.html', output / 'core.html')
-    print('Linked browser background Blender. Editor, rendering and durable storage are still pending.')
+    shutil.copyfile(ROOT / ('native/browser/blender_webgpu.html' if options.webgpu else 'native/browser/blender_core.html'), output / 'core.html')
+    if options.editor:
+        shutil.copyfile(ROOT / 'native/browser/blender_editor.html', output / 'editor.html')
+        shutil.copyfile(output / 'editor.html', output / 'index.html')
+        for name in ('manifest.webmanifest','icon.svg','editor_files.js'):
+            shutil.copyfile(ROOT / 'native/browser' / name, output / name)
+        content=hashlib.sha256()
+        for name in ('index.html','editor.html','blender-core.js','blender-core.wasm',
+                     'blender-core.data','manifest.webmanifest','icon.svg','editor_files.js'):
+            content.update(name.encode())
+            with (output / name).open('rb') as stream:
+                while chunk := stream.read(1024*1024):
+                    content.update(chunk)
+        worker=(ROOT / 'native/browser/service-worker.js').read_text()
+        content.update(worker.encode())
+        (output / 'service-worker.js').write_text(worker.replace('__BUILD_CACHE__','blender-ipad-'+content.hexdigest()))
+    print('Linked experimental browser Blender. Editor, renderer and durable-storage acceptance remain outstanding.')

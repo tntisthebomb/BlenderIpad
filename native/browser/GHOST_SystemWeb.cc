@@ -150,6 +150,11 @@ GHOST_SystemWeb::~GHOST_SystemWeb()
   emscripten_set_touchend_callback(WEB_CANVAS, nullptr, false, nullptr);
   emscripten_set_touchcancel_callback(WEB_CANVAS, nullptr, false, nullptr);
   if (window_) disposeWindow(window_);
+#ifdef WITH_WEBGPU_BACKEND
+  GHOST_ContextWebGPU::setBootstrap(nullptr,nullptr);
+  if(graphics_device_) wgpuDeviceRelease(graphics_device_);
+  if(graphics_instance_) wgpuInstanceRelease(graphics_instance_);
+#endif
 }
 GHOST_TSuccess GHOST_SystemWeb::disposeWindow(GHOST_IWindow *window)
 {
@@ -235,6 +240,16 @@ GHOST_IWindow *GHOST_SystemWeb::createWindow(const char *title,
      * supported; return null so WM falls back to opening in the main window. */
     return nullptr;
   }
+#ifdef WITH_WEBGPU_BACKEND
+  if(gpu_settings.context_type==GHOST_kDrawingContextTypeWebGPU && !graphics_device_) {
+    const bool available=EM_ASM_INT({return !!Module['preinitializedWebGPUDevice'];});
+    if(!available) return nullptr;
+    graphics_instance_=wgpuCreateInstance(nullptr);
+    graphics_device_=emscripten_webgpu_get_device();
+    if(!graphics_instance_ || !graphics_device_) return nullptr;
+    GHOST_ContextWebGPU::setBootstrap(graphics_instance_,graphics_device_);
+  }
+#endif
   const GHOST_ContextParams context_params = GHOST_CONTEXT_PARAMS_FROM_GPU_SETTINGS(gpu_settings);
   window_ = new GHOST_WindowWeb(title, canvas_w_, canvas_h_, state, context_params, [this]() {
     pushEvent(std::make_unique<GHOST_Event>(getMilliSeconds(), GHOST_kEventWindowUpdate, window_));

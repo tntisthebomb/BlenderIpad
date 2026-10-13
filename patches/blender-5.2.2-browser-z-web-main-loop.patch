@@ -1,0 +1,102 @@
+--- a/source/blender/windowmanager/intern/wm.cc
++++ b/source/blender/windowmanager/intern/wm.cc
+@@ -13,6 +13,9 @@
+ /* Allow using deprecated functionality for .blend file I/O. */
+ #define DNA_DEPRECATED_ALLOW
+ 
++#ifdef WITH_GHOST_WEB
++#  include <emscripten.h>
++#endif
+ #include <cstring>
+ 
+ #include "DNA_ID_enums.h"
+@@ -602,7 +605,9 @@
+    * This ensures we don't run operators before the depsgraph has been evaluated. */
+   wm_event_do_refresh_wm_and_depsgraph(C);
+ 
+-  while (true) {
++#ifdef WITH_GHOST_WEB
++  emscripten_set_main_loop_arg([](void *context) {
++    bContext *C=static_cast<bContext *>(context);
+ 
+     /* Get events from ghost, handle window events, add to window queues. */
+     wm_window_events_process(C);
+@@ -617,7 +622,25 @@
+     wm_draw_update(C);
+ 
+     PRF_frame_mark;
+-  }
++  },C,0,true);
++#else
++  while (true) {
++
++    /* Get events from ghost, handle window events, add to window queues. */
++    wm_window_events_process(C);
++
++    /* Per window, all events to the window, screen, area and region handlers. */
++    wm_event_do_handlers(C);
++
++    /* Events have left notes about changes, we handle and cache it. */
++    wm_event_do_notifiers(C);
++
++    /* Execute cached changes draw. */
++    wm_draw_update(C);
++
++    PRF_frame_mark;
++  }
++#endif
+ }
+ 
+ }  // namespace blender
+--- a/source/blender/windowmanager/CMakeLists.txt
++++ b/source/blender/windowmanager/CMakeLists.txt
+@@ -220,3 +220,10 @@
+   )
+   blender_add_test_suite_lib(windowmanager "${TEST_SRC}" "${INC};${TEST_INC}" "${INC_SYS}" "${LIB}")
+ endif()
++
++if(WITH_GHOST_WEB)
++  add_definitions(-DWITH_GHOST_WEB)
++endif()
++if(WITH_GHOST_WEBGPU_CONTEXT)
++  add_definitions(-DWITH_GHOST_WEBGPU_CONTEXT)
++endif()
+--- a/intern/ghost/CMakeLists.txt
++++ b/intern/ghost/CMakeLists.txt
+@@ -654,3 +654,7 @@
+   target_compile_options(bf_intern_ghost PUBLIC --use-port=emdawnwebgpu)
+   target_link_options(bf_intern_ghost INTERFACE --use-port=emdawnwebgpu)
+ endif()
++
++if(WITH_WEBGPU_BACKEND AND WITH_GHOST_WEBGPU_CONTEXT)
++  target_compile_definitions(bf_intern_ghost PRIVATE WITH_WEBGPU_BACKEND)
++endif()
+--- a/intern/ghost/intern/GHOST_ISystem.cc
++++ b/intern/ghost/intern/GHOST_ISystem.cc
+@@ -143,8 +143,11 @@
+       system_ = nullptr;
+     }
+ #elif defined(WITH_GHOST_WEB)
+-    backends_attempted.push_back({"WEB"});
+-    system_ = new GHOST_SystemWeb();
++    /* Background Blender has no DOM window. Its GPU contexts still use the
++     * provided WebGPU device, without a canvas presentation surface. */
++    backends_attempted.push_back({background ? "HEADLESS" : "WEB"});
++    system_ = background ? static_cast<GHOST_System *>(new GHOST_SystemHeadless()) :
++                           static_cast<GHOST_System *>(new GHOST_SystemWeb());
+ #elif defined(WITH_GHOST_SDL)
+     backends_attempted.push_back({"SDL"});
+     try {
+--- a/source/blender/windowmanager/intern/wm_window.cc
++++ b/source/blender/windowmanager/intern/wm_window.cc
+@@ -3491,6 +3491,10 @@
+   GHOST_GPUSettings gpu_settings = {0};
+   const GPUBackendType gpu_backend = GPU_backend_type_selection_get();
+   gpu_settings.context_type = wm_ghost_drawing_context_type(gpu_backend);
++  /* Browser offscreen contexts do not acquire a canvas surface. */
++  if (gpu_backend == GPU_BACKEND_WEBGPU) {
++    gpu_settings.context_type = GHOST_kDrawingContextTypeNone;
++  }
+   if (G.debug & G_DEBUG_GPU) {
+     gpu_settings.flags |= GHOST_gpuDebugContext;
+   }

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#252525">
+<title>Blender</title>
+<style>
+html,body {margin:0;width:100%;height:100%;overflow:hidden;background:#252525;color:#ddd;font:16px system-ui}
+#canvas {display:block;width:100%;height:calc(100% - 40px);outline:0;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+header {height:40px;display:flex;gap:12px;align-items:center;padding:0 12px;box-sizing:border-box;font-size:13px}
+button,.file-button {background:#454545;color:#eee;border:1px solid #666;border-radius:4px;padding:5px 10px;font:inherit;cursor:pointer}
+#file-message {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+dialog {background:#303030;color:#eee;border:1px solid #666;border-radius:8px}
+#saved-files {display:block;min-width:260px;margin:12px 0}
+#status {position:fixed;inset:0;display:grid;place-items:center;padding:2rem;background:#252525}
+#status[hidden] {display:none}
+</style>
+<body>
+<header><label class="file-button">Import files<input id="import-files" type="file" multiple hidden></label>
+<button id="export-files" type="button">Export saved file</button><span id="file-message" role="status"></span></header>
+<canvas id="canvas" tabindex="0" aria-label="Blender editor"></canvas>
+<dialog id="file-dialog"><label for="saved-files">Saved files</label><select id="saved-files"></select>
+<button id="download-file" type="button">Download</button><button id="close-files" type="button">Close</button></dialog>
+<div id="status" role="status">Loading Blender…</div>
+<script src="blender-core.js"></script>
+<script>
+window.editorOutput=[];
+window.editorErrors=[];
+function log(message) {
+  editorOutput.push(String(message));
+  if (editorOutput.length>1000) editorOutput.shift();
+}
+const canvas=document.getElementById('canvas');
+const status=document.getElementById('status');
+function fail(error) {
+  const message=String(error);
+  editorErrors.push(message);
+  document.body.dataset.error=message;
+  status.hidden=false;
+  status.textContent=message;
+}
+canvas.addEventListener('pointerdown',()=>canvas.focus({preventScroll:true}));
+canvas.addEventListener('contextmenu',event=>event.preventDefault());
+function resizeCanvas() {
+  const scale=window.devicePixelRatio || 1;
+  canvas.width=Math.max(1,Math.round(canvas.clientWidth*scale));
+  canvas.height=Math.max(1,Math.round(canvas.clientHeight*scale));
+}
+window.addEventListener('resize',resizeCanvas);
+(async()=>{
+  if (!isSecureContext) throw new Error('Open Blender using HTTPS or localhost.');
+  if (!('serviceWorker' in navigator)) throw new Error('Offline installation is unavailable in this browser.');
+  status.textContent='Installing Blender for offline use…';
+  await navigator.serviceWorker.register('./service-worker.js');
+  await navigator.serviceWorker.ready;
+  if (!navigator.serviceWorker.controller) {
+    location.reload();
+    return;
+  }
+  status.textContent='Loading Blender…';
+  if (!crossOriginIsolated) throw new Error('This server must enable cross-origin isolation to run Blender.');
+  if (!navigator.gpu) throw new Error('WebGPU is unavailable. Open Blender in a supported browser using HTTPS or localhost.');
+  const adapter=await navigator.gpu.requestAdapter();
+  if (!adapter) throw new Error('No WebGPU graphics adapter is available.');
+  if (!adapter.features.has('depth32float-stencil8')) throw new Error('This graphics device lacks the depth/stencil format required by this build.');
+  const features=['float32-filterable','depth32float-stencil8'].filter(feature=>adapter.features.has(feature));
+  const device=await adapter.requestDevice({requiredFeatures:features});
+  device.addEventListener('uncapturederror',event=>fail(event.error.message));
+  device.lost.then(info=>fail('Graphics device lost: '+info.message));
+  resizeCanvas();
+  const module=await createBlenderCore({canvas,preinitializedWebGPUDevice:device,noInitialRun:true,
+    print:log,printErr:log,
+    onAbort:fail,onExit:code=>{document.body.dataset.exit=String(code);}
+  });
+  window.blenderEditor=module;
+  document.body.dataset.ready='true';
+  module.callMain(window.editorArguments || ['--offline-mode','--disable-autoexec','--threads','2',
+                   '--python','/browser_startup.py']);
+  canvas.focus({preventScroll:true});
+  status.hidden=true;
+  document.body.dataset.started='true';
+})().catch(fail);
+</script>
+<script src="editor_files.js"></script>
+</body>
+</html>

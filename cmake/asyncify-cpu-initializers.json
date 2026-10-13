@@ -1,0 +1,1 @@
+["blender::init_draw_infos()*", "blender::init_compositor_infos()*", "blender::init_gpu_infos()*", "blender::init_ocio_infos()*", "blender::init_osd_infos()*", "blender::gpu_shader_dependency_init()", "blender::gpu_shader_create_info_init()"]

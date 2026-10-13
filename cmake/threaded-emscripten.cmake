@@ -12,8 +12,23 @@ if(EMSCRIPTEN AND CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
           set_property(TARGET "${target}" APPEND PROPERTY LINK_DEPENDS
             "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../native/browser/core_node_env.js")
         endif()
-        target_link_options("${target}" PRIVATE -sEXIT_RUNTIME=1 -sPTHREAD_POOL_SIZE=2
-          -sPROXY_TO_PTHREAD=1 -sPTHREAD_POOL_SIZE_STRICT=0)
+        target_link_options("${target}" PRIVATE -sEXIT_RUNTIME=1)
+        if(WITH_WEBGPU_BACKEND AND target STREQUAL "blender")
+          set_property(TARGET "${target}" APPEND PROPERTY LINK_DEPENDS
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/asyncify-cpu-initializers.json"
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/python-asyncify-imports.json")
+          # Image libraries retain workers of their own. Prewarm a bounded
+          # pool so a main-thread join never waits for a newly created browser
+          # Worker whose startup requires returning to the event loop.
+          target_link_options("${target}" PRIVATE -sPTHREAD_POOL_SIZE=8
+            -sPTHREAD_POOL_SIZE_STRICT=2)
+        else()
+          target_link_options("${target}" PRIVATE -sPTHREAD_POOL_SIZE=2
+            -sPTHREAD_POOL_SIZE_STRICT=0)
+        endif()
+        if(NOT (WITH_WEBGPU_BACKEND AND target STREQUAL "blender"))
+          target_link_options("${target}" PRIVATE -sPROXY_TO_PTHREAD=1)
+        endif()
         if(NOT BROWSER_RUNTIME_PREFIX)
           target_link_options("${target}" PRIVATE -sINITIAL_MEMORY=67108864)
         endif()

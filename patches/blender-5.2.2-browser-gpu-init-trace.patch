@@ -1,0 +1,55 @@
+--- a/source/blender/gpu/intern/gpu_init_exit.cc
++++ b/source/blender/gpu/intern/gpu_init_exit.cc
+@@ -5,6 +5,9 @@
+ /** \file
+  * \ingroup gpu
+  */
++
++#include <cstdio>
++#include <cstdlib>
+ 
+ #include "BKE_material.hh"
+ 
+@@ -24,6 +27,19 @@
+  */
+ static bool initialized = false;
+ 
++/* Opt-in diagnostics for browser startup; no initialization is skipped. */
++static void gpu_init_trace(const char *stage)
++{
++#ifdef __EMSCRIPTEN__
++  const char *enabled = std::getenv("BLENDER_GPU_INIT_TRACE");
++  if (enabled && enabled[0] == '1') {
++    std::fprintf(stderr, "GPU initialization: %s\n", stage);
++  }
++#else
++  (void)stage;
++#endif
++}
++
+ void GPU_init()
+ {
+   /* can't avoid calling this multiple times, see wm_window_ghostwindow_add */
+@@ -33,15 +49,22 @@
+ 
+   initialized = true;
+ 
++  gpu_init_trace("resources");
+   gpu_backend_init_resources();
+ 
++  gpu_init_trace("source dependencies");
+   gpu_shader_dependency_init();
++  gpu_init_trace("create infos");
+   gpu_shader_create_info_init();
+ 
++  gpu_init_trace("builtin warm-up");
+   GPU_shader_builtin_warm_up();
++  gpu_init_trace("pass cache");
+   GPU_pass_cache_init();
+ 
++  gpu_init_trace("batch resources");
+   gpu_batch_init();
++  gpu_init_trace("complete");
+ }
+ 
+ void GPU_exit()

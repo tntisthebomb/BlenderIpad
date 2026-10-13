@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
 """Test bpy and .blend I/O in the real compiled application; no substitutes."""
+import argparse
 import hashlib
 import json
 from setup_browser import CACHE, ROOT, toolchain, run
 
 if __name__ == "__main__":
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--webgpu',action='store_true')
+    args=parser.parse_args()
     env = toolchain()
-    binary = CACHE / "blender-core-build/bin/blender.js"
+    profile='blender-webgpu' if args.webgpu else 'blender-core'
+    binary = CACHE / (profile+"-build/bin/blender.js")
     if not binary.exists():
         raise SystemExit("The full background application has not linked yet.")
-    output = CACHE / "blender-core-scene-test"
+    output = CACHE / (profile+"-scene-test")
     output.mkdir(exist_ok=True)
     result = output / "result.json"
-    stamp = CACHE / "blender-core-build/core-validation.json"
+    stamp = CACHE / (profile+"-build/core-validation.json")
     if stamp.exists():
         stamp.unlink()
     if result.exists():
         result.unlink()
     source = CACHE / "blender-browser"
-    user_cache = CACHE / "blender-core-user-cache"
+    user_cache = CACHE / (profile+"-user-cache")
     user_cache.mkdir(exist_ok=True)
     env.update({"BLENDER_SYSTEM_RESOURCES": str(source),
                 "BLENDER_SYSTEM_SCRIPTS": str(source / "scripts"),

@@ -20,7 +20,11 @@
 #endif
 
 #include <emscripten/emscripten.h>
+#include <emscripten/html5.h>
 #include <functional>
+#ifdef WITH_WEBGPU_BACKEND
+extern "C" void blender_webgpu_present(int width,int height);
+#endif
 
 class GHOST_WindowWeb : public GHOST_Window {
  private:
@@ -127,6 +131,10 @@ class GHOST_WindowWeb : public GHOST_Window {
   }
   GHOST_TSuccess swapBufferRelease() override
   {
+#ifdef WITH_WEBGPU_BACKEND
+    if (drawing_context_type_ == GHOST_kDrawingContextTypeWebGPU)
+      blender_webgpu_present(width_,height_);
+#endif
     return drawing_context_type_ != GHOST_kDrawingContextTypeNone ?
       GHOST_Window::swapBufferRelease() : GHOST_kFailure;
   }
@@ -143,9 +151,13 @@ class GHOST_WindowWeb : public GHOST_Window {
 #endif
     return nullptr;
   }
-  GHOST_TSuccess activateDrawingContext() override
+  float getNativePixelSize() override
   {
-    return GHOST_Window::activateDrawingContext();
+    return float(emscripten_get_device_pixel_ratio());
+  }
+  uint16_t getDPIHint() override
+  {
+    return uint16_t(96.0*emscripten_get_device_pixel_ratio());
   }
   GHOST_TSuccess setState(GHOST_TWindowState state) override
   {

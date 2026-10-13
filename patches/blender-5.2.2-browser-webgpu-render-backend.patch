@@ -1,0 +1,200 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -339,6 +339,11 @@
+ option(WITH_GHOST_WEBGPU_CONTEXT "Enable the browser WebGPU canvas context" OFF)
+ if(WITH_GHOST_WEBGPU_CONTEXT AND NOT WITH_GHOST_WEB)
+   message(FATAL_ERROR "WITH_GHOST_WEBGPU_CONTEXT requires WITH_GHOST_WEB")
++endif()
++
++option(WITH_WEBGPU_BACKEND "Experimental stable Blender browser GPU backend" OFF)
++if(WITH_WEBGPU_BACKEND AND NOT EMSCRIPTEN)
++  message(FATAL_ERROR "WITH_WEBGPU_BACKEND requires Emscripten")
+ endif()
+ 
+ option(WITH_GHOST_DEBUG "Enable debugging output for the GHOST library" OFF)
+--- a/source/blender/gpu/GPU_platform_backend_enum.h
++++ b/source/blender/gpu/GPU_platform_backend_enum.h
+@@ -16,6 +16,7 @@
+   GPU_BACKEND_OPENGL = 1 << 0,
+   GPU_BACKEND_METAL = 1 << 1,
+   GPU_BACKEND_VULKAN = 1 << 3,
++  GPU_BACKEND_WEBGPU = 1 << 4,
+   GPU_BACKEND_ANY = 0xFFFFFFFFu
+ };
+ 
+--- a/source/blender/gpu/CMakeLists.txt
++++ b/source/blender/gpu/CMakeLists.txt
+@@ -853,6 +853,19 @@
+   list(APPEND SHADER_C ${MSL_C})
+ endif()
+ 
++if(WITH_WEBGPU_BACKEND)
++  file(GLOB WEBGPU_SRC CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/webgpu/*.cc" "${CMAKE_CURRENT_SOURCE_DIR}/webgpu/*.hh")
++  list(APPEND SRC ${WEBGPU_SRC})
++  list(APPEND INC webgpu "${CMAKE_SOURCE_DIR}/intern/ghost/intern")
++  list(APPEND INC_SYS "${BROWSER_DAWN_SOURCE_DIR}" "${BROWSER_DAWN_SOURCE_DIR}/include" "${BROWSER_RUNTIME_PREFIX}/include")
++  file(GLOB_RECURSE WEBGPU_TINT_LIBS "${BROWSER_TINT_BUILD_DIR}/src/tint/*.a" "${BROWSER_TINT_BUILD_DIR}/third_party/abseil/*.a")
++  if(NOT WEBGPU_TINT_LIBS)
++    message(FATAL_ERROR "Build and validate the pinned Tint toolchain first")
++  endif()
++  list(APPEND LIB "-Wl,--start-group" "${BROWSER_RUNTIME_PREFIX}/lib/libshaderc_combined.a" ${WEBGPU_TINT_LIBS} "-Wl,--end-group")
++  add_definitions(-DWITH_WEBGPU_BACKEND)
++endif()
++
+ blender_add_lib(bf_gpu_shaders "${SHADER_C}" "" "" "")
+ blender_set_target_unity_build(bf_gpu_shaders 10)
+ 
+@@ -981,3 +994,11 @@
+     "${TEST_SRC}" "${INC};${TEST_INC}" "${INC_SYS}" "${LIB};${TEST_LIB}" "${TEST_COMMON_SRC}"
+   )
+ endif()
++
++if(WITH_WEBGPU_BACKEND)
++  if(WITH_GHOST_WEBGPU_CONTEXT)
++    target_compile_definitions(bf_gpu PRIVATE WITH_GHOST_WEBGPU_CONTEXT)
++  endif()
++  target_compile_options(bf_gpu PUBLIC --use-port=emdawnwebgpu)
++  target_link_options(bf_gpu INTERFACE --use-port=emdawnwebgpu)
++endif()
+--- a/source/blender/gpu/intern/gpu_context.cc
++++ b/source/blender/gpu/intern/gpu_context.cc
+@@ -46,6 +46,9 @@
+ #  include "mtl_backend.hh"
+ #endif
+ #include "dummy_backend.hh"
++#ifdef WITH_WEBGPU_BACKEND
++#  include "webgpu_backend.hh"
++#endif
+ 
+ #include "draw_debug.hh"
+ 
+@@ -355,7 +358,11 @@
+ /** \name Backend selection
+  * \{ */
+ 
++#ifdef WITH_WEBGPU_BACKEND
++static GPUBackendType g_backend_type = GPU_BACKEND_WEBGPU;
++#else
+ static GPUBackendType g_backend_type = GPU_BACKEND_OPENGL;
++#endif
+ static std::optional<GPUBackendType> g_backend_type_override = std::nullopt;
+ static std::optional<bool> g_backend_type_supported = std::nullopt;
+ static std::optional<GHOST_GPUDevice> g_preferred_device_override = std::nullopt;
+@@ -456,6 +463,8 @@
+       return "Vulkan";
+     case GPU_BACKEND_METAL:
+       return "Metal";
++    case GPU_BACKEND_WEBGPU:
++      return "WebGPU";
+     case GPU_BACKEND_NONE:
+       return "None";
+     case GPU_BACKEND_ANY:
+@@ -486,6 +495,10 @@
+ 
+ #if defined(WITH_VULKAN_BACKEND)
+   backends_to_check.add(GPU_BACKEND_VULKAN);
++#endif
++
++#ifdef WITH_WEBGPU_BACKEND
++  backends_to_check.add(GPU_BACKEND_WEBGPU);
+ #endif
+ 
+   for (const GPUBackendType backend_type : backends_to_check) {
+@@ -529,6 +542,10 @@
+ #else
+       return false;
+ #endif
++#ifdef WITH_WEBGPU_BACKEND
++    case GPU_BACKEND_WEBGPU:
++      return WebGPUBackend::is_supported();
++#endif
+     case GPU_BACKEND_NONE:
+       return true;
+     default:
+@@ -564,6 +581,11 @@
+ #ifdef WITH_METAL_BACKEND
+     case GPU_BACKEND_METAL:
+       g_backend = MEM_new<MTLBackend>(__func__);
++      break;
++#endif
++#ifdef WITH_WEBGPU_BACKEND
++    case GPU_BACKEND_WEBGPU:
++      g_backend = MEM_new<WebGPUBackend>(__func__);
+       break;
+ #endif
+     case GPU_BACKEND_NONE:
+@@ -615,6 +637,9 @@
+   }
+ #endif
+ 
++#ifdef WITH_WEBGPU_BACKEND
++  if (g_backend && dynamic_cast<WebGPUBackend *>(g_backend)) return GPU_BACKEND_WEBGPU;
++#endif
+   return GPU_BACKEND_NONE;
+ }
+ 
+@@ -639,6 +664,8 @@
+ static GHOST_TDrawingContextType ghost_context_type()
+ {
+   switch (GPU_backend_type_selection_get()) {
++    case GPU_BACKEND_WEBGPU:
++      return GHOST_kDrawingContextTypeNone;
+ #ifdef WITH_OPENGL_BACKEND
+     case GPU_BACKEND_OPENGL:
+       return GHOST_kDrawingContextTypeOpenGL;
+--- a/source/blender/windowmanager/intern/wm_window.cc
++++ b/source/blender/windowmanager/intern/wm_window.cc
+@@ -2369,6 +2369,11 @@
+ GHOST_TDrawingContextType wm_ghost_drawing_context_type(const GPUBackendType gpu_backend)
+ {
+   switch (gpu_backend) {
++    case GPU_BACKEND_WEBGPU:
++#ifdef WITH_GHOST_WEBGPU_CONTEXT
++      if (!G.background) return GHOST_kDrawingContextTypeWebGPU;
++#endif
++      return GHOST_kDrawingContextTypeNone;
+     case GPU_BACKEND_NONE:
+       return GHOST_kDrawingContextTypeNone;
+     case GPU_BACKEND_ANY:
+--- a/source/blender/python/gpu/gpu_py_platform.cc
++++ b/source/blender/python/gpu/gpu_py_platform.cc
+@@ -289,6 +289,10 @@
+ 
+   const char *backend = "UNKNOWN";
+   switch (GPU_backend_get_type()) {
++    case GPU_BACKEND_WEBGPU: {
++      backend = "WEBGPU";
++      break;
++    }
+     case GPU_BACKEND_VULKAN: {
+       backend = "VULKAN";
+       break;
+--- a/intern/ghost/intern/GHOST_SystemHeadless.hh
++++ b/intern/ghost/intern/GHOST_SystemHeadless.hh
+@@ -121,6 +121,12 @@
+     (void)context_params_offscreen;
+ 
+     switch (gpu_settings.context_type) {
++#ifdef __EMSCRIPTEN__
++      /* WebGPU owns its device in the Blender backend. Background rendering
++       * requires a valid platform context, but no browser canvas surface. */
++      case GHOST_kDrawingContextTypeNone:
++        return new GHOST_ContextNone(context_params_offscreen);
++#endif
+ #ifdef WITH_VULKAN_BACKEND
+       case GHOST_kDrawingContextTypeVulkan: {
+ #  ifdef _WIN32
+--- a/source/blender/gpu/intern/gpu_shader.cc
++++ b/source/blender/gpu/intern/gpu_shader.cc
+@@ -176,6 +176,11 @@
+     case GPU_BACKEND_VULKAN:
+       sources.append("#define GPU_VULKAN\n");
+       break;
++    case GPU_BACKEND_WEBGPU:
++      /* The browser backend translates Vulkan GLSL through SPIR-V to WGSL. */
++      sources.append("#define GPU_VULKAN\n");
++      sources.append("#define GPU_WEBGPU\n");
++      break;
+     default:
+       BLI_assert_msg(false, "Invalid GPU Backend Type");
+       break;

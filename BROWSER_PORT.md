@@ -144,3 +144,44 @@ The previous clean background-engine workflow reached the final link but exceede
 ## JPEG checksum-helper runtime
 
 A subsequent clean application build failed in one `md5cmp` invocation with a WASM indirect-call signature mismatch; the full 155-test suite passed when rerun locally. The codec library and codec programs remain threaded. The original checksum helper links no JPEG library and performs only synchronous file hashing, so the threaded recipe now builds that helper's unchanged upstream C sources on a synchronous WASM runtime. All 155 upstream tests pass with the separated helper, and explicit correct/incorrect checksum checks confirm that failures are still rejected. This removes unnecessary worker startup from checksum verification without dropping codec checks. Fresh full-application CI remains to be confirmed.
+
+## Experimental application WebGPU profile
+
+```sh
+# Requires the tested threaded runtime and pinned shaderc/Tint toolchains above.
+python3 scripts/build_blender_core.py --webgpu
+python3 scripts/test_blender_core.py --webgpu
+python3 scripts/build_blender_core_browser.py --webgpu
+.cache/browser-tests/bin/python tests/blender_gpu_browser_test.py
+
+# Actual editor profile; acceptance is required before distributing it.
+python3 scripts/build_blender_core.py --editor
+python3 scripts/test_blender_core.py --webgpu
+python3 scripts/build_blender_core_browser.py --editor
+.cache/browser-tests/bin/python tests/blender_gpu_browser_test.py
+.cache/browser-tests/bin/python tests/blender_editor_browser_test.py
+```
+
+This profile adapts the reference WebGPU backend to the stable application and the SDK-matched Tint API. It retains shader and native assertions and removes the reference's internal-compiler-error recovery bypass. The application links on the browser main thread, where the GPU device and canvas live. Asyncify preserves synchronous Blender GPU reads across asynchronous browser mapping. Actual native and CPython C-API probes have passed repeated synchronous GPU readbacks; whole-application graphics acceptance remains outstanding.
+
+The initial application link exceeded engine limits after suspension instrumentation expanded two generated shader-registration functions. Those CPU-only initializers are excluded from Asyncify; GPU waits remain instrumented. Link-time `-O2` also fixes Python startup stack exhaustion with ordinary engine settings and reduced the GPU-profile module from 367 MB to 175 MB. The editor-enabled native test profile is approximately 179 MB and passes the original modeling, animation, image and native project tests.
+
+Browser startup exposed OIIO creating a hardware-sized default thread pool before applying Blender's explicit two-thread setting. Shrinking it synchronously joined workers that could not finish browser startup. `OPENIMAGEIO_THREADS=2` prevents that transient pool. The background browser scene suite passes after network disconnect with this configuration. The application GPU profile separately prewarms eight workers and rejects excess thread creation instead of silently starting workers while the main thread is waiting. This is a development limit, not a claim of eight hardware cores or complete Python process support.
+
+Current application graphics checks require actual texture data, Blender builtin shader compilation, uniforms, vertex batches and framebuffer pixel reads. The editor check additionally exercises actual editor state, keyboard transforms, touch selection, native project files, durable storage and a fresh offline runtime. These checks are not yet recorded as passed. The existing downloadable workbench remains the separate math-only artifact.
+
+The editor packaging stages include a service worker with local assets and isolation response headers, a manifest, IDBFS project storage, and browser file transfer. They require HTTPS or a trustworthy loopback origin, including when using an iPad local server. A `.local` HTTP hostname does not provide that secure browser context. File selection, preferences and render display use Blender's existing maximized editor spaces inside the canvas. Persistent storage and offline reload acceptance remain outstanding, and Safari on the physical iPad has not been tested.
+
+GPU initialization also exposed a wasm32 sentinel mismatch in the stable shader assertions: `StringRef::find` returns signed 64-bit `-1`, while `std::string::npos` is unsigned 32-bit `4294967295`. Comparing these directly rejects every clean source on wasm32. The guarded patch uses `StringRef::not_found` in shader dependency validation, shader preprocessing and shader-name filtering. The comment assertions remain enabled. `python3 scripts/test_browser_string_ref.py` checks actual header semantics, clean text, line/block comment detection and the incompatible old comparison.
+
+The subsequent printf metadata failure has the opposite sentinel mismatch: a `std::string` search result was stored in signed `int64_t` and compared to `-1`. On wasm32 its `npos` becomes positive `4294967295`, so a string without `%` was incorrectly parsed as a formatting argument. The patch uses `size_t` and `std::string::npos`; unsupported real formats still assert. The smaller `scripts/test_browser_shader_registry.py` links the actual compiled application libraries with a CPU registration probe. It initializes all registered source dependencies, printf metadata and shader create infos, resolves the matrix library, frees both registries and passes under the pinned Node runtime (`python3 scripts/test_browser_shader_registry.py --webgpu` for the current experimental graphics profile). The expanded module is approximately 19 MB, allowing this stage to be checked independently of full GUI startup.
+
+The application browser GPU and editor tests currently crash after real device acquisition. Reproducing the GPU crash alone and with the matching Playwright Chromium also failed; no host cgroup OOM kill was recorded. The Asyncify application contains a single draw-registration function with 15,267 Wasm locals, unlike the smaller non-Asyncify registration probe. An Emscripten-only patch gives each generated draw registration include its own non-inlined function scope, preserving the complete include list and the stencil-workaround registration. The actual source and create-info registry passes after this change; browser startup acceptance remains pending. This is a suspected compiler-pressure issue, not yet a verified explanation for the application crash.
+
+The draw-only registration split compiled but did not fix all startup paths. The guarded patch now splits draw, compositor, GPU and optional OpenSubdiv registration includes into individual functions. Shared vertex/geometry interfaces are resolved through the existing interface dictionary, preserving registration order and ownership. Binaryen's one-caller inlining is disabled for the experimental graphics link so it cannot merge those units again. The expanded CPU registry probe passes; the actual browser GPU probe now completes create-info initialization and reaches builtin shader warm-up. The previous oversized registration function had 19,966 Wasm locals; the separated build's largest draw registration unit has 1,204.
+
+The builtin warm-up then exposed an unhandled `GPU_BACKEND_WEBGPU` case in shader standard definitions. The experimental backend patch adds WebGPU identification and the Vulkan GLSL compatibility define, matching its shaderc/SPIR-V/Tint translation path. Validation of this change is in progress. Native assertions and shader validation remain enabled. `BLENDER_GPU_INIT_TRACE=1` enables diagnostic stage messages without skipping initialization.
+
+The isolated graphics startup harness can be built with `python3 scripts/test_browser_shader_registry.py --gpu-runtime` and run with `.cache/browser-tests/bin/python tests/gpu_runtime_browser_test.py`. It initializes the real logging system, backend, context, complete shader registry and builtin warm-up, then performs normal GPU shutdown. Passing this harness does not establish actual drawing or editor acceptance. The harness retains the application's normal O2 optimization setting; the temporary O1 experiment produced excessive locals in other functions and is not used. An experimental whole-module local-coalescing pass was stopped because of excessive build memory and is not part of the build recipe.
+
+Browser acceptance now passes for actual WebGPU GPU startup and shutdown: resource setup, all shader-source registration, create-info registration, builtin warm-up, pass cache and batch resources. The backend standard-definition change is validated by this harness. It does not establish shader translation/drawing, the editor, persistent projects or offline reload. The full application is being rebuilt for those checks.
