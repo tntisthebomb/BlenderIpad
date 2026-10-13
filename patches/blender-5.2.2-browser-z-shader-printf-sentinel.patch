@@ -1,0 +1,13 @@
+--- a/source/blender/gpu/intern/gpu_shader_dependency.cc
++++ b/source/blender/gpu/intern/gpu_shader_dependency.cc
+@@ -242,8 +242,8 @@
+ 
+       shader::PrintfFormat::Block::ArgumentType type =
+           shader::PrintfFormat::Block::ArgumentType::NONE;
+-      int64_t start = 0, end = 0, cursor = -1;
+-      while ((end = format.find_first_of('%', cursor + 1)) != -1) {
++      size_t start = 0, end = 0, cursor = std::string::npos;
++      while ((end = format.find_first_of('%', cursor + 1)) != std::string::npos) {
+         if (end - start > 0) {
+           /* Add the previous block without the newly found % character. */
+           fmt.format_blocks.append({type, format.substr(start, end - start)});
