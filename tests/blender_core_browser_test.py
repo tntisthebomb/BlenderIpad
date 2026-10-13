@@ -20,6 +20,10 @@ class Handler(SimpleHTTPRequestHandler):
 server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler,
     directory=str(ROOT / '.cache/blender-core-browser')))
 Thread(target=server.serve_forever, daemon=True).start()
+diagnostics = (ROOT / '.cache/blender-core-browser-console.log').open('w')
+def record(kind, message):
+    diagnostics.write(kind + ': ' + str(message) + '\n')
+    diagnostics.flush()
 try:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path=os.environ.get(
@@ -27,7 +31,11 @@ try:
         context = browser.new_context()
         page = context.new_page()
         errors = []
+        page.on('console', lambda message: record(message.type, message.text))
+        page.on('requestfailed', lambda request: record('request-failed', request.url + ' ' + str(request.failure)))
+        page.on('crash', lambda: record('crash', 'Browser renderer crashed'))
         page.on('pageerror', lambda error: errors.append(str(error)))
+        page.on('pageerror', lambda error: record('page-error', error))
         page.goto(f'http://127.0.0.1:{server.server_port}/core.html')
         page.wait_for_function("document.body.dataset.ready || document.body.dataset.error", timeout=180000)
         assert page.locator('body').get_attribute('data-ready') == 'true', page.locator('body').get_attribute('data-error')
@@ -47,5 +55,6 @@ try:
         browser.close()
     print('PASS: real browser Blender bpy, modeling, modifier, animation, PNG image I/O, original startup load and native .blend roundtrip after network disconnect.')
 finally:
+    diagnostics.close()
     server.shutdown()
     server.server_close()

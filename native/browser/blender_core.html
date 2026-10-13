@@ -12,6 +12,7 @@ window.coreErrors = [];
 window.coreExit = null;
 const write = message => {
   coreOutput.push(String(message));
+  console.log(String(message));
   document.getElementById('output').textContent = coreOutput.join('\n');
 };
 if (!crossOriginIsolated) {
