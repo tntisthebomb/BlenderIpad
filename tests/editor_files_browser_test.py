@@ -64,6 +64,13 @@ with TemporaryDirectory(dir=ROOT/'.cache') as directory:
                 page.wait_for_function("document.getElementById('file-message').textContent.startsWith('Import failed')")
                 assert not page.evaluate("blenderEditor.FS.analyzePath('/projects/good.png').exists")
                 assert page.evaluate("blenderEditor.FS.analyzePath('/projects/linked-project/scene.blend').exists")
+                # The actual Emscripten module traps access to unexported heap
+                # symbols. Reporting must not invoke that getter and abort it.
+                page.evaluate("Object.defineProperty(blenderEditor,'HEAPU8',{get(){throw Error('Unexported runtime heap accessed')}})")
+                with page.expect_download() as pending: page.locator('#device-report').click()
+                import json
+                report=json.loads(Path(pending.value.path()).read_text())
+                assert report['memoryBytes'] is None,report
             finally: browser.close()
     finally: server.shutdown();server.server_close()
 print('PASS: linked import paths, conflict preservation, partial-import rollback and backup download despite storage failure (transfer fixtures only).')

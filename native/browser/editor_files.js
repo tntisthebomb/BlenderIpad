@@ -75,7 +75,9 @@ async function downloadDeviceReport() {
       installation,
       started:document.body.dataset.started==='true',error:document.body.dataset.error || null,
       persistentStorage:document.body.dataset.persistentStorage || 'unknown',
-      memoryBytes:window.blenderEditor?.HEAPU8?.byteLength || null,
+      // Emscripten installs throwing getters for unexported runtime symbols.
+      // Optional chaining still invokes those getters and can abort Blender.
+      memoryBytes:Object.getOwnPropertyDescriptor(window.blenderEditor || {},'HEAPU8')?.value?.byteLength || null,
       storage:navigator.storage?.estimate ? await navigator.storage.estimate() : null};
     const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));
     const link=document.createElement('a');
