@@ -26,3 +26,9 @@ the corresponding dependency source. The browser overlay builds the real
 scheduler with assertions and pthreads; Node and isolated-browser probes check
 parallel work and task completion before the profile can be enabled. These
 probes do not establish Cycles rendering support.
+
+CPU Subdivision Surface uses Blender's pinned OpenSubdiv 3.7.0 archive. Its
+upstream license is retained in the corresponding dependency source. The build
+keeps its topology and stencil regression tests; the application separately
+checks a native level-two Catmull–Clark modifier. WebGPU uses CPU evaluation
+until the GPU subdivision path has its own acceptance proof.

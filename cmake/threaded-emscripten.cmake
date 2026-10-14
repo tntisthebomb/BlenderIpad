@@ -10,7 +10,8 @@ if(EMSCRIPTEN AND CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
       if(kind STREQUAL "EXECUTABLE")
         if(BROWSER_RUNTIME_PREFIX AND target STREQUAL "blender")
           set_property(TARGET "${target}" APPEND PROPERTY LINK_DEPENDS
-            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../native/browser/core_node_env.js")
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../native/browser/core_node_env.js"
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../scripts/binaryen_memory.py")
         endif()
         target_link_options("${target}" PRIVATE -sEXIT_RUNTIME=1)
         if(WITH_WEBGPU_BACKEND AND target STREQUAL "blender")

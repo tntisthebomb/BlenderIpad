@@ -20,6 +20,18 @@ output=Path('/modeling-output');output.mkdir(exist_ok=True)
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 bpy.ops.mesh.primitive_cube_add()
+subdivided = bpy.context.object
+subdivided.name = 'Subdivision acceptance'
+subsurf = subdivided.modifiers.new('Subdivision acceptance', 'SUBSURF')
+subsurf.levels = 2
+bpy.context.view_layer.update()
+evaluated_subdivision = subdivided.evaluated_get(bpy.context.evaluated_depsgraph_get())
+surface = evaluated_subdivision.to_mesh()
+assert len(surface.vertices) == 98 and len(surface.polygons) == 96
+assert 0.7 < max(abs(vertex.co.x) for vertex in surface.vertices) < 1.0
+assert all(math.isfinite(value) for vertex in surface.vertices for value in vertex.co)
+evaluated_subdivision.to_mesh_clear()
+bpy.ops.mesh.primitive_cube_add()
 mesh=bpy.context.object
 mesh.name='Modeling acceptance'
 # Real edit-mode operators must mutate Blender's mesh, not a JS scene model.
@@ -78,5 +90,5 @@ assert bpy.ops.wm.save_as_mainfile(filepath=str(project),check_existing=False)==
 assert bpy.ops.wm.open_mainfile(filepath=str(project))=={'FINISHED'}
 assert bpy.data.objects.get('Rigged acceptance') and bpy.data.node_groups.get('Browser geometry acceptance')
 (output/'result.json').write_text(json.dumps({'version':list(bpy.app.version),
-    'checks':['embedded_python_threads','edit_mesh','bevel','geometry_nodes','armature_deformation','obj_roundtrip','native_resources']}))
+    'checks':['embedded_python_threads','subdivision_surface','edit_mesh','bevel','geometry_nodes','armature_deformation','obj_roundtrip','native_resources']}))
 print('PASS: native edit mesh, bevel, geometry nodes, armature deformation, OBJ interchange and native project resources.')

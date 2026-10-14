@@ -26,10 +26,19 @@ before packaging. Do not distribute that diagnostic cache.
 Real offline Workbench PNG rendering and modeling/geometry-node/rigging/OBJ
 round trips passed on the baseline engine. Updated storage, failed-install and
 atomic-update fixtures also passed. The new full binary still needs acceptance;
-Eevee and CPU Cycles rendering remain unproven. The full editor compile finished,
-but full-module Asyncify exceeded the builder's 8 GiB memory limit with both
-single-worker and staged optimization. Public-runner CI is now the full-link
-path. Preserve O2, assertions and Asyncify when resolving that build issue.
+Eevee and CPU Cycles rendering in the complete editor remain unproven. The real
+isolated Cycles CPU engine produced correct red and green PNGs offline, which
+does not establish the full editor's rendering or iPad memory suitability.
+OpenSubdiv's five upstream CPU tests and Blender's evaluator library compile
+passed; the application fixture must still prove the Subdivision Surface modifier.
+
+The local 8 GiB builder could compile the editor but exceeded memory at the
+full-module Asyncify link. Public-runner builds at source `f0c26df` linked both
+profiles, then failed native Python startup with a stack overflow. The staged
+optimizer had lost Asyncify's optimization level; its second process now retains
+that level so Asyncify can coalesce locals. Validate both real CPython suspension
+and the complete application before accepting this correction. CI preserves
+incremental objects for follow-up builds. Preserve O2, assertions and Asyncify.
 The real oneTBB Node/browser scheduler probes and CPU Cycles kernel/device/
 utility compilation also pass; actual integrated rendering remains a gate.
 

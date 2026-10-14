@@ -23,6 +23,19 @@ def split(arguments, intermediate):
     prefix = arguments[:boundary]
     suffix = arguments[boundary:output_flag - 1] + arguments[output_flag + 2:]
     common, instrumentation = [], []
+    # -O2 configures Asyncify's own local coalescing as well as scheduling
+    # earlier passes. The second process must retain that configuration even
+    # though it must not repeat the whole optimization pass pipeline.
+    optimize_level, shrink_level = 0, 0
+    levels = {'-O0': (0, 0), '-O1': (1, 0), '-O2': (2, 0),
+              '-O3': (3, 0), '-O4': (4, 0), '-Os': (2, 1), '-Oz': (2, 2)}
+    for option in arguments[:output_flag - 1]:
+        if option in levels:
+            optimize_level, shrink_level = levels[option]
+        elif option.startswith('--optimize-level='):
+            optimize_level = int(option.split('=', 1)[1])
+        elif option.startswith('--shrink-level='):
+            shrink_level = int(option.split('=', 1)[1])
     for option in suffix:
         if option == '--asyncify' or option.startswith('--pass-arg=asyncify-') or option == '--zero-filled-memory':
             instrumentation.append(option)
@@ -33,7 +46,8 @@ def split(arguments, intermediate):
         else:
             raise ValueError('Unrecognized post-Asyncify option: ' + option)
     return (prefix + common + [source, '-o', intermediate],
-            instrumentation + common + [intermediate, '-o', destination])
+            [f'--optimize-level={optimize_level}', f'--shrink-level={shrink_level}']
+            + instrumentation + common + [intermediate, '-o', destination])
 
 
 def main():

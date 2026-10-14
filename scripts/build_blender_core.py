@@ -56,7 +56,14 @@ if __name__ == "__main__":
     graphics = []
     graphics += ["-DWITH_CYCLES=" + ("ON" if args.cycles else "OFF"),
                  "-DWITH_CYCLES_STANDALONE=OFF",
+                 "-DWITH_OPENSUBDIV=ON",
                  "-DWITH_TBB=" + ("ON" if args.cycles else "OFF")]
+    subdivision_proof = CACHE / 'deps-build/opensubdiv-threaded/validation.json'
+    if not subdivision_proof.exists():
+        raise SystemExit('Build and validate browser OpenSubdiv before enabling mesh subdivision.')
+    for name, expected in json.loads(subdivision_proof.read_text())['libraries'].items():
+        if hashlib.sha256((prefix / 'lib' / name).read_bytes()).hexdigest() != expected:
+            raise SystemExit('OpenSubdiv changed after acceptance; revalidate it.')
     if args.cycles:
         proof_path = CACHE / 'tbb-probe/validation.json'
         if not proof_path.exists():

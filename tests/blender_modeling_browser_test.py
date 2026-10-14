@@ -49,7 +49,7 @@ try:
         assert page.evaluate('coreExit')==0,page.evaluate('coreErrors')
         checks=json.loads(page.evaluate("blenderCore.FS.readFile('/modeling-output/result.json',{encoding:'utf8'})"))
         assert checks['version']==[5,2,2],checks
-        assert checks['checks']==['embedded_python_threads','edit_mesh','bevel','geometry_nodes','armature_deformation','obj_roundtrip','native_resources'],checks
+        assert checks['checks']==['embedded_python_threads','subdivision_surface','edit_mesh','bevel','geometry_nodes','armature_deformation','obj_roundtrip','native_resources'],checks
         assert not errors,errors
         diagnostics.write(json.dumps(page.evaluate('({stdout:coreOutput,stderr:coreErrors})'),indent=2))
         diagnostics.close()

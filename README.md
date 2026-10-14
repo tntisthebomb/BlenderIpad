@@ -25,6 +25,7 @@ python3 scripts/build_browser_shaderc.py
 python3 scripts/test_browser_shaderc.py
 python3 scripts/build_browser_tint.py
 python3 scripts/test_browser_tint.py
+python3 scripts/build_browser_opensubdiv.py
 python3 scripts/build_blender_core.py --editor
 python3 scripts/test_blender_core.py --webgpu
 python3 scripts/build_blender_core_browser.py --editor

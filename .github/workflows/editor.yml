@@ -29,6 +29,7 @@ jobs:
           key: browser-v2-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-${{ github.sha }}
           restore-keys: |
             browser-v2-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
+            browser-v2-${{ runner.os }}-${{ matrix.profile }}-
       - name: Prepare pinned browser runtime and graphics compilers
         run: |
           python3 scripts/build_browser_platform.py
@@ -39,6 +40,7 @@ jobs:
           python3 scripts/test_browser_shaderc.py
           python3 scripts/build_browser_tint.py
           python3 scripts/test_browser_tint.py
+          python3 scripts/build_browser_opensubdiv.py
       - name: Validate the real CPU scheduler
         if: matrix.profile == 'cpu-cycles'
         env:
@@ -90,6 +92,8 @@ jobs:
             .cache/blender-render-*.png
             .cache/blender-render-*-console.log
             .cache/blender-modeling-console.log
+            .cache/blender-webgpu-browser/editor-failures.json
+            .cache/blender-webgpu-build/core-validation.json
           if-no-files-found: ignore
       - name: Preserve candidate runtime and corresponding source for failed-test diagnosis
         if: failure()
@@ -99,6 +103,8 @@ jobs:
           path: |
             .cache/blender-webgpu-browser
             .cache/blender-browser
+            .cache/blender-webgpu-build/bin/blender.js
+            .cache/blender-webgpu-build/bin/blender.wasm
             .cache/deps-src
             .cache/graphics-src
             .cache/deps-build/openimageio-threaded/port-source

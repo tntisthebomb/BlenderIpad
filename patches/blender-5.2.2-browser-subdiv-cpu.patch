@@ -1,0 +1,5 @@
+--- a/source/blender/blenkernel/intern/subdiv_modifier.cc
++++ b/source/blender/blenkernel/intern/subdiv_modifier.cc
+@@ -92 +92 @@
+-  if (GPU_backend_get_type() == GPU_BACKEND_NONE) {
++  if (ELEM(GPU_backend_get_type(), GPU_BACKEND_NONE, GPU_BACKEND_WEBGPU)) {
