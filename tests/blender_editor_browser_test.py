@@ -118,6 +118,29 @@ try:
             page.locator('#tablet-keys button').filter(has_text='Enter').click()
             wait_name('Cube')
             page.locator('#tablet-keys button').filter(has_text='Done').click()
+            # Real multi-touch events must change the native viewport, rather
+            # than moving the selected mesh or leaving a selection drag held.
+            native_view=state()['view']
+            region=native_view['region']
+            scale=page.evaluate('devicePixelRatio')
+            cx=box['x']+(region[0]+region[2]*0.5)/scale
+            cy=box['y']+box['height']-(region[1]+region[3]*0.5)/scale
+            touch_session=context.new_cdp_session(page)
+            def two_fingers(kind,half_span,offset=0):
+                points=[] if kind=='touchEnd' else [
+                    {'id':1,'x':cx-half_span+offset,'y':cy},
+                    {'id':2,'x':cx+half_span+offset,'y':cy}]
+                touch_session.send('Input.dispatchTouchEvent',{'type':kind,'touchPoints':points})
+            two_fingers('touchStart',40)
+            two_fingers('touchMove',40,35)
+            two_fingers('touchEnd',40)
+            page.wait_for_function('rotation=>{const v=JSON.parse(blenderEditor.FS.readFile("/editor-state.json",{encoding:"utf8"})).view;return v && v.rotation.some((x,i)=>Math.abs(x-rotation[i])>0.001)}',arg=native_view['rotation'],timeout=30000)
+            distance=state()['view']['distance']
+            two_fingers('touchStart',35)
+            two_fingers('touchMove',65)
+            two_fingers('touchEnd',65)
+            page.wait_for_function('distance=>Math.abs(JSON.parse(blenderEditor.FS.readFile("/editor-state.json",{encoding:"utf8"})).view.distance-distance)>distance*0.01',arg=distance,timeout=30000)
+            assert state()['location']==[1,0,0],state()
             page.evaluate("blenderEditor.FS.writeFile('/editor-command.json',JSON.stringify({operation:'deselect',path:'/projects/keyboard-scene.blend'}))")
             page.wait_for_function("JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).selected.length===0",timeout=30000)
             position=state()['object_position']

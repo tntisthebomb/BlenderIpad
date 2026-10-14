@@ -64,6 +64,26 @@ for name,components in [('R16F',1),('RG16F',2)]:
     checks[name+'_storage']=True
 
 # Exercise the translator corrections through the packaged native backend.
+for name,components in [('R16',1),('RG16',2),('RGBA16',4)]:
+    values=[0.12345,0.54321,0.8,1.0][:components]*64
+    texture=gpu.types.GPUTexture((8,8),format=name,data=gpu.types.Buffer('FLOAT',len(values),values))
+    actual=list(flattened(texture.read()))
+    quantized=lambda value: math.floor(max(0,min(1,value))*65535+0.5)/65535
+    assert len(actual)==len(values),(name,len(actual))
+    assert all(abs(a-quantized(b))<1e-7 for a,b in zip(actual,values)),(name,actual[:8])
+    info=gpu.types.GPUShaderCreateInfo()
+    info.local_group_size(8,8)
+    info.image(0,name,'FLOAT_2D','target',qualifiers={'WRITE'})
+    info.compute_source('void main(){imageStore(target,ivec2(gl_GlobalInvocationID.xy),vec4(0.12345,-0.5,2.0,0.54321));}')
+    shader=gpu.shader.create_from_info(info)
+    shader.image('target',texture)
+    gpu.compute.dispatch(shader,1,1,1)
+    actual=list(flattened(texture.read()))
+    expected=[0.12345,0,1,0.54321][:components]*64
+    assert all(abs(a-quantized(b))<1e-7 for a,b in zip(actual,expected)),(name,actual[:8])
+    gpu.shader.unbind()
+    checks[name+'_storage']=True
+
 info=gpu.types.GPUShaderCreateInfo()
 info.local_group_size(1,1)
 info.image(0,'RGBA32F','FLOAT_2D','target',qualifiers={'WRITE'})

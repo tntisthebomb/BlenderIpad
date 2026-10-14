@@ -1,0 +1,15 @@
+--- a/src/tint/lang/spirv/reader/lower/shader_io.cc
++++ b/src/tint/lang/spirv/reader/lower/shader_io.cc
+@@ -182,9 +182,9 @@
+                    Symbol name,
+                    const core::type::Type* type,
+                    core::IOAttributes& attributes) {
+-        if (!name) {
+-            name = ir.symbols.New();
+-        }
++        // A struct type can back several distinct output variables. Flattening
++        // their members must allocate a fresh symbol for every emitted field.
++        name = name ? ir.symbols.New(name.Name()) : ir.symbols.New();
+ 
+         if ((type->Is<core::type::Vector>() || type->IsScalar()) ||
+             attributes.builtin == core::BuiltinValue::kClipDistances) {

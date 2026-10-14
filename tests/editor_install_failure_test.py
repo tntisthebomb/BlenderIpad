@@ -34,6 +34,23 @@ with TemporaryDirectory(dir=ROOT/'.cache') as directory:
                 assert page.locator('#error-device-report').is_visible()
                 assert not page.evaluate('!!window.blenderEditor')
                 assert not page.evaluate('async()=> (await caches.keys()).some(key=>key.endsWith("failed-first-install"))')
+                # The iPad local-server address must offer usable loopback
+                # links with the same port and nested extraction path.
+                insecure=browser.new_page()
+                def route_local(route):
+                    path=route.request.url.split('?',1)[0]
+                    if path.endswith('.js'):
+                        route.fulfill(status=200,content_type='application/javascript',body='')
+                    else:
+                        route.fulfill(status=200,content_type='text/html',body=(base/'index.html').read_text())
+                insecure.route('http://tablet.local:8765/**',route_local)
+                insecure.goto('http://tablet.local:8765/editor/index.html?preview=1#start')
+                insecure.wait_for_function('document.body.dataset.error')
+                assert not insecure.evaluate('isSecureContext')
+                assert insecure.locator('#local-addresses').is_visible()
+                assert insecure.locator('#try-localhost').get_attribute('href')=='http://localhost:8765/editor/index.html?preview=1#start'
+                assert insecure.locator('#try-loopback').get_attribute('href')=='http://127.0.0.1:8765/editor/index.html?preview=1#start'
+                assert insecure.url.startswith('http://tablet.local:8765/'),insecure.url
             finally: browser.close()
     finally: server.shutdown();server.server_close()
 print('PASS: failed first installation reports the missing build and offers retry/report; incomplete cache discarded.')

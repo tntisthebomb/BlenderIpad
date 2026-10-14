@@ -11,6 +11,7 @@
 
 #include <cstring>
 #include <cstdlib>
+#include <cmath>
 
 #include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
@@ -18,6 +19,7 @@
 #include "GHOST_EventButton.hh"
 #include "GHOST_EventCursor.hh"
 #include "GHOST_EventKey.hh"
+#include "GHOST_EventTrackpad.hh"
 #include "GHOST_EventWheel.hh"
 #include "GHOST_SystemWeb.hh"
 #include "GHOST_TimerManager.hh"
@@ -163,6 +165,7 @@ GHOST_TSuccess GHOST_SystemWeb::disposeWindow(GHOST_IWindow *window)
   if (is_browser_window && success == GHOST_kSuccess) {
     window_ = nullptr;
     pressed_keys_.clear(); buttons_.clear(); modifiers_.clear(); touch_id_ = -1;
+    touches_.clear(); touch_gesture_ = false;
   }
   return success;
 }
@@ -407,21 +410,76 @@ bool GHOST_SystemWeb::handleBlur()
       getMilliSeconds(), GHOST_kEventButtonUp, window_, button, GHOST_TABLET_DATA_NONE));
   }
   buttons_.clear(); touch_id_ = -1;
+  touches_.clear(); touch_gesture_ = false;
   return false; // Allow normal browser focus navigation.
 }
 
 bool GHOST_SystemWeb::handleTouch(int type, const EmscriptenTouchEvent *event)
 {
   if (!window_) return false;
+  if (type == EMSCRIPTEN_EVENT_TOUCHCANCEL) {
+    handleBlur(); return true;
+  }
+  const size_t previous_count = touches_.size();
+  for (int i = 0; i < event->numTouches; ++i) {
+    const auto &point = event->touches[i];
+    if (!point.isChanged) continue;
+    if (type == EMSCRIPTEN_EVENT_TOUCHEND) touches_.erase(point.identifier);
+    else touches_[point.identifier] = {double(point.targetX), double(point.targetY)};
+  }
+  if (touches_.size() >= 2) {
+    // Release the initial selection press before forwarding native trackpad
+    // gestures. Keep the remaining finger released until the whole gesture ends.
+    if (buttons_.get(GHOST_kButtonMaskLeft)) {
+      buttons_.set(GHOST_kButtonMaskLeft, false);
+      pushEvent(std::make_unique<GHOST_EventButton>(getMilliSeconds(),
+          GHOST_kEventButtonUp, window_, GHOST_kButtonMaskLeft, GHOST_TABLET_DATA_NONE));
+    }
+    touch_id_ = -1;
+    auto points = touches_.begin();
+    const auto first = (points++)->second;
+    const auto second = points->second;
+    const double center_x = (first.x + second.x) * 0.5;
+    const double center_y = (first.y + second.y) * 0.5;
+    const double distance = std::hypot(first.x - second.x, first.y - second.y);
+    if (touch_gesture_ && previous_count == touches_.size() &&
+        type == EMSCRIPTEN_EVENT_TOUCHMOVE) {
+      touch_pan_x_ += center_x - touch_center_x_;
+      touch_pan_y_ += center_y - touch_center_y_;
+      if (distance > 0 && touch_distance_ > 0) {
+        touch_zoom_ += std::log(distance / touch_distance_) * 125.0;
+      }
+      cursor_x_ = int32_t(center_x); cursor_y_ = int32_t(center_y);
+      const int dx = int(std::round(touch_pan_x_)), dy = int(std::round(touch_pan_y_));
+      const int zoom = int(std::round(touch_zoom_));
+      touch_pan_x_ -= dx; touch_pan_y_ -= dy; touch_zoom_ -= zoom;
+      if (dx || dy) {
+        pushEvent(std::make_unique<GHOST_EventTrackpad>(getMilliSeconds(), window_,
+            GHOST_kTrackpadEventScroll, cursor_x_, cursor_y_, dx, dy, false));
+      }
+      if (zoom) {
+        pushEvent(std::make_unique<GHOST_EventTrackpad>(getMilliSeconds(), window_,
+            GHOST_kTrackpadEventMagnify, cursor_x_, cursor_y_, zoom, 0, false));
+      }
+    }
+    else {
+      touch_pan_x_ = touch_pan_y_ = touch_zoom_ = 0;
+    }
+    touch_center_x_ = center_x; touch_center_y_ = center_y; touch_distance_ = distance;
+    touch_gesture_ = true;
+    MAIN_THREAD_EM_ASM({ Module.canvas.focus({preventScroll:true}); });
+    return true;
+  }
+  if (touch_gesture_) {
+    if (touches_.empty()) touch_gesture_ = false;
+    return true;
+  }
   const EmscriptenTouchPoint *point = nullptr;
   for (int i = 0; i < event->numTouches; ++i) {
     const auto &candidate = event->touches[i];
     if (candidate.isChanged && (touch_id_ == -1 || candidate.identifier == touch_id_)) {
       point = &candidate; break;
     }
-  }
-  if (type == EMSCRIPTEN_EVENT_TOUCHCANCEL) {
-    handleBlur(); return true;
   }
   if (!point) return false;
   if (type == EMSCRIPTEN_EVENT_TOUCHSTART) {

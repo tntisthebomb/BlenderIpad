@@ -39,6 +39,7 @@ jobs:
           CHROMIUM_PATH: /usr/bin/google-chrome
         run: |
           python3 scripts/build_browser_platform.py
+          .cache/browser-tests/bin/python tests/ghost_platform_test.py
           python3 scripts/build_browser_core_deps.py
           python3 scripts/build_browser_python.py
           python3 scripts/build_browser_python_probe.py

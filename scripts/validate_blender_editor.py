@@ -20,7 +20,9 @@ TESTS = ('tests/blender_gpu_browser_test.py', 'tests/blender_gpu_scene.py',
          'tests/shader_switch_phi.comp', 'tests/shader_volume_query.comp',
          'tests/shader_atomic_image.comp', 'tests/shader_readwrite_texture.comp',
          'tests/shader_zbin_range.comp', 'tests/shader_interface_names.vert',
-         'scripts/test_browser_lifecycle.py', 'tests/browser_lifecycle_probe.cc')
+         'tests/shader_unorm16_image.comp',
+         'scripts/test_browser_lifecycle.py', 'tests/browser_lifecycle_probe.cc',
+         'tests/ghost_platform_test.py', 'native/browser/ghost_probe.cc')
 
 def digest(path):
     checksum = hashlib.sha256()
@@ -70,14 +72,16 @@ if __name__ == '__main__':
     stamp.write_text(json.dumps({'version': [5, 2, 2], 'profile': 'experimental-editor',
         'render_engines': engines,
         'checks': ['gpu_resources', 'font_pixels', 'native_viewport', 'keyboard_transform',
-                   'touch_selection', 'native_save_load', 'durable_projects', 'offline_reload',
+                   'touch_selection', 'touch_viewport_navigation', 'tablet_keyboard_unicode',
+                   'native_save_load', 'durable_projects', 'offline_reload',
                    'workbench_render_png', 'suspension_orientation', 'device_loss_backup',
                    'atomic_updates', 'linked_asset_import', 'storage_failure_backup',
                    'modeling_geometry_nodes', 'armature_deformation', 'obj_interchange',
                    'embedded_python_threads',
                    'subdivision_surface',
                    'shader_switch_fallthrough', 'volume_texture_queries',
-                   'atomic_image_coherence',
+                   'atomic_image_coherence', 'normalized_storage_images', 'shader_output_names',
+                   'localhost_recovery_links',
                    'adapter_unavailable_backup', 'initial_install_failure_recovery'],
         **before}, indent=2) + '\n')
     print('PASS: editor acceptance recorded for the exact browser assets and fixtures.')

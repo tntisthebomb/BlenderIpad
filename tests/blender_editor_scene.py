@@ -32,11 +32,15 @@ def observe():
         windows=bpy.context.window_manager.windows
         active=windows[0].view_layer.objects.active if windows else None
         position=None
+        view=None
         if windows and active:
             from bpy_extras.view3d_utils import location_3d_to_region_2d
             for area in windows[0].screen.areas:
                 if area.type!='VIEW_3D': continue
                 region=next(region for region in area.regions if region.type=='WINDOW')
+                view={'rotation':list(area.spaces.active.region_3d.view_rotation),
+                      'distance':area.spaces.active.region_3d.view_distance,
+                      'region':[region.x,region.y,region.width,region.height]}
                 point=location_3d_to_region_2d(region,area.spaces.active.region_3d,active.matrix_world.translation)
                 if point:
                     position=[region.x+point.x,region.y+point.y]
@@ -52,6 +56,7 @@ def observe():
             'mode':active.mode if active else None,
             'selected':[obj.name for obj in windows[0].view_layer.objects if obj.select_get()] if windows else [],
             'object_position':position,
+            'view':view,
             'filepath':bpy.data.filepath,
             'last_operation':last_operation,
             'errors':errors,

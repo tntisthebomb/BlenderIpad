@@ -11,6 +11,7 @@
 #include <vector>
 #include "../native/browser/webgpu/shader_prepare.hh"
 #include "../native/browser/webgpu/shader_atomic_image.hh"
+#include "../native/browser/webgpu/shader_unorm16_image.hh"
 
 static std::string read_file(const std::filesystem::path &path)
 {
@@ -89,9 +90,9 @@ void main() {
                                                      "blender-matrix.comp", options);
     if (preprocessed.GetCompilationStatus() != shaderc_compilation_status_success)
       throw std::runtime_error(preprocessed.GetErrorMessage());
-    const auto prepared = blender::gpu::webgpu_prepare::lower_atomic_images(
+    const auto prepared = blender::gpu::webgpu_prepare::lower_unorm16_images(blender::gpu::webgpu_prepare::lower_atomic_images(
         blender::gpu::webgpu_prepare::lower_switches(
-        std::string(preprocessed.cbegin(), preprocessed.cend())));
+        std::string(preprocessed.cbegin(), preprocessed.cend()))));
     const auto result = compiler.CompileGlslToSpv(prepared, kind,
                                                "blender-matrix.comp", options);
     if (result.GetCompilationStatus() != shaderc_compilation_status_success)

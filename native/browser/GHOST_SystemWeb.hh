@@ -9,9 +9,9 @@
  * \ingroup GHOST
  * Browser (Emscripten) GHOST system. Input arrives through emscripten/html5.h
  * callbacks registered on the browser thread. The caller must yield between
- * event-processing iterations. The current target is single-threaded; threaded
- * dispatch and the full WM main loop remain unimplemented. Exactly one window
- * exists, mapped to the page's #canvas.
+ * event-processing iterations. The editor yields from its native WM main loop;
+ * the CPU-render profile additionally runs worker tasks through oneTBB. Exactly
+ * one window exists, mapped to the page's #canvas.
  */
 
 #pragma once
@@ -20,6 +20,7 @@
 #include "GHOST_System.hh"
 #include "GHOST_WindowWeb.hh"
 #include <set>
+#include <map>
 
 class GHOST_SystemWeb : public GHOST_System {
  private:
@@ -33,6 +34,11 @@ class GHOST_SystemWeb : public GHOST_System {
   GHOST_ModifierKeys modifiers_;
   std::set<GHOST_TKey> pressed_keys_;
   int touch_id_ = -1;
+  struct TouchPoint { double x, y; };
+  std::map<int, TouchPoint> touches_;
+  bool touch_gesture_ = false;
+  double touch_center_x_ = 0, touch_center_y_ = 0, touch_distance_ = 0;
+  double touch_pan_x_ = 0, touch_pan_y_ = 0, touch_zoom_ = 0;
   uint32_t canvas_w_ = 1280, canvas_h_ = 720;
 
  public:

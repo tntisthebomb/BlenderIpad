@@ -29,6 +29,10 @@ required. The application reports this rather than repeatedly reloading.
 ## Acceptance
 
 - Confirm readable native menus, Cube, grid and properties in landscape and portrait.
+- In the completion candidate, drag with two fingers to orbit the 3D view and
+  spread/pinch to zoom. Confirm the Cube stays in place and a subsequent
+  one-finger tap selects normally. These gestures follow Blender's trackpad
+  keymap; Shift plus the two-finger drag pans with the default preferences.
 - Without a physical keyboard, tap a Blender text field, choose **Keyboard** in
   the header, enter text, and use Enter or Done. Check a filename and a Unicode
   object name. Ctrl/Shift/Alt and editing keys are available in that panel.

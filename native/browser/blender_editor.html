@@ -17,6 +17,7 @@ dialog {background:#303030;color:#eee;border:1px solid #666;border-radius:8px}
 #saved-files {display:block;min-width:260px;margin:12px 0}
 #status {position:fixed;inset:0;display:grid;place-items:center;padding:2rem;background:#252525;text-align:center}
 #status[hidden] {display:none}
+#local-addresses a {display:inline-block;color:#a9d4ff;padding:12px}
 </style>
 <body>
 <header><label class="file-button">Import files<input id="import-files" type="file" multiple hidden></label>
@@ -27,8 +28,10 @@ dialog {background:#303030;color:#eee;border:1px solid #666;border-radius:8px}
 <dialog id="file-dialog"><label for="saved-files">Saved files</label><select id="saved-files"></select>
 <button id="download-file" type="button">Download</button><button id="close-files" type="button">Close</button></dialog>
 <div id="status" role="status"><div><p id="status-message">Loading Blender…</p>
+<p id="local-addresses" hidden>Keep WorldWideWeb running and open in Safari:<br>
+<a id="try-localhost">Try localhost</a><a id="try-loopback">Try 127.0.0.1</a></p>
 <button id="recover-files" type="button" hidden>Export saved files</button>
-<button id="error-device-report" type="button" hidden>Download device report</button>
+<button id="error-device-report" type="button">Download device report</button>
 <button id="retry-startup" type="button" hidden>Reload Blender</button></div></div>
 <script src="blender-core.js"></script>
 <script>
@@ -122,7 +125,18 @@ function waitForInstallation(registration) {
   window.blenderDeviceReport={secureContext:isSecureContext,crossOriginIsolated,
     standalone:matchMedia('(display-mode: standalone)').matches,devicePixelRatio,
     userAgent:navigator.userAgent,webGPU:!!navigator.gpu};
-  if (!isSecureContext) throw new Error('Open Blender using HTTPS or localhost.');
+  if (!isSecureContext) {
+    const address=new URL(location.href);
+    if (address.protocol==='http:' && !['localhost','127.0.0.1','[::1]'].includes(address.hostname)) {
+      // Keep the actual server port and extracted folder path. Let the user
+      // choose the new origin explicitly; never move their project storage.
+      address.username='';address.password='';
+      address.hostname='localhost';document.getElementById('try-localhost').href=address.href;
+      address.hostname='127.0.0.1';document.getElementById('try-loopback').href=address.href;
+      document.getElementById('local-addresses').hidden=false;
+    }
+    throw new Error('Open Blender in Safari using HTTPS or localhost. Keep WorldWideWeb running and preserve its port and folder path.');
+  }
   if (!('serviceWorker' in navigator)) throw new Error('Offline installation is unavailable in this browser.');
   statusMessage.textContent='Installing Blender for offline use…';
   const registration=await navigator.serviceWorker.register('./service-worker.js');

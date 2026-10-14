@@ -773,16 +773,17 @@
  
    [[image(0, read_write, UINT_32)]] uimage2D tilemaps_img;
  };
-@@ -49,6 +49,8 @@
+@@ -49,6 +49,9 @@
      int lod_max = light.sun().clipmap_lod_max - light.sun().clipmap_lod_min;
      /* Iterate in reverse. */
      for (int lod = lod_max; lod >= 0; lod--) {
++      /* One invocation visits every tile; sequential stores need no workgroup barrier. */
 +      for (int tile_index = 0; tile_index < SHADOW_TILEMAP_LOD0_LEN; tile_index++) {
 +        tile_co = int2(tile_index % SHADOW_TILEMAP_RES, tile_index / SHADOW_TILEMAP_RES);
        int tilemap_index = light.tilemap_index + lod;
        uint2 atlas_texel = shadow_tile_coord_in_atlas(uint2(tile_co), tilemap_index);
  
-@@ -63,7 +65,7 @@
+@@ -63,7 +66,7 @@
  
          /* Load tile from the previous LOD. */
          ShadowSamplingTilePacked tile_prev_packed =
@@ -791,19 +792,21 @@
          ShadowSamplingTile tile_prev = shadow_sampling_tile_unpack(tile_prev_packed);
  
          /* We can only propagate LODs up to a certain level.
-@@ -96,9 +98,9 @@
+@@ -96,9 +99,10 @@
          }
        }
  
-+      srt.tiles_local[(lod & 1) * SHADOW_TILEMAP_LOD0_LEN + tile_co.y * SHADOW_TILEMAP_RES + tile_co.x] = (tile.is_valid) ? tile_packed : SHADOW_NO_DATA;
-       barrier();
+-      barrier();
 -      srt.tiles_local[tile_co.y][tile_co.x] = (tile.is_valid) ? tile_packed : SHADOW_NO_DATA;
 -      barrier();
++
++      srt.tiles_local[(lod & 1) * SHADOW_TILEMAP_LOD0_LEN + tile_co.y * SHADOW_TILEMAP_RES + tile_co.x] = (tile.is_valid) ? tile_packed : SHADOW_NO_DATA;
++
 +      }
      }
    }
  
-@@ -128,7 +130,7 @@
+@@ -128,7 +132,7 @@
                                                       AmendCtx &,
                                                       TilemapAmend &);
  

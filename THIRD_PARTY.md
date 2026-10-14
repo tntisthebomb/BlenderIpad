@@ -50,6 +50,19 @@ unsafe for actual Eevee light-culling shaders. Tint IR validation stays enabled.
 Numeric browser regressions cover fallthrough, nested loops/switches, conditional
 calls, scoped names, 3D dimensions, texel fetch and read/write storage textures.
 
+`patches/tint-shader-io-output-names.patch` corrects the pinned Tint shader-I/O
+lowering to allocate fresh symbols for flattened output fields. Original
+private struct types can retain their member symbols; reusing those symbols
+in the generated entry-point result caused actual Eevee vertex shaders to fail
+WGSL emission. The guarded overlay retains the upstream BSD-3-Clause header.
+
+`native/browser/webgpu/shader_unorm16_image.hh` lowers normalized 16-bit and
+packed RGB10_A2 storage-image writes to baseline RGBA32F storage, preserving
+their channel-specific clamping, quantization and missing-channel values.
+CPU uploads, clears and packed readback use the corresponding physical format.
+The numeric GPU fixture verifies both exact normalized integers and values
+outside the logical range. The larger allocation still needs iPad memory tests.
+
 `native/browser/webgpu/shader_atomic_image.hh` maps direct R32I/R32UI image
 atomics to storage-buffer atomics. The WebGPU texture backend synchronizes a
 padded buffer with the physical texture before subsequent texture access.

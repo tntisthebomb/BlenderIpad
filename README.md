@@ -7,6 +7,31 @@ latest successful editor workflow, recovered artifacts and remaining work.
 
 **Current status: the real Blender 5.2.2 editor passes Chromium acceptance.** Its solid viewport, grid, fonts and native UI render; physical-keyboard transforms and touch selection work; native projects save, persist and reload after an offline application restart. This is an experimental port: render-engine validation, disabled optional features and acceptance on the target iPad remain outstanding. The older `ipad-workbench` download is still a separate math demo. See [BROWSER_PORT.md](BROWSER_PORT.md) for scope and reproducible commands.
 
+## Run the existing preview on iPad
+
+1. While signed into GitHub, download
+   [blender-editor-preview-with-source](https://github.com/tntisthebomb/BlenderIpad/actions/runs/38463349693/artifacts/11852511697).
+   This is the verified baseline preview; completion candidates are tracked in
+   [PR #1](https://github.com/tntisthebomb/BlenderIpad/pull/1).
+2. Unzip the download in Files, then unzip the inner
+   `BlenderIpad-5.2.2-editor-preview.zip`. Keep the corresponding source archive.
+3. In WorldWideWeb, serve the extracted folder containing `index.html`,
+   `blender-core.wasm` and `blender-core.data`.
+4. Open WorldWideWeb's address in Safari, replacing its hostname with `localhost`
+   and preserving its port and folder path. For example,
+   `http://users-ipad.local:8080/editor/` becomes
+   `http://localhost:8080/editor/`. Try `127.0.0.1` if localhost fails.
+5. Keep WorldWideWeb running until the actual Blender interface and offline-ready
+   message appear. Choose Share → Add to Home Screen. Open that installed app
+   once with WorldWideWeb still running and wait for it to become ready too.
+
+The baseline preview has physical-keyboard input and single-finger selection.
+The on-screen keyboard, two-finger navigation and newer renderer changes belong
+to the completion candidate and require its own accepted build. The full port
+is not complete, and the WorldWideWeb/Safari route still needs the physical
+device checks in [IPAD_ACCEPTANCE.md](IPAD_ACCEPTANCE.md). Download **Device report**
+from the application if startup fails.
+
 ## Experimental editor build
 
 The actual editor is built separately from the legacy math workbench:
@@ -31,7 +56,7 @@ python3 scripts/test_blender_core.py --webgpu
 python3 scripts/build_blender_core_browser.py --editor
 python3 -m venv .cache/browser-tests
 .cache/browser-tests/bin/python -m pip install playwright==1.62.0 Pillow==12.0.0
-python3 scripts/validate_blender_editor.py
+python3 scripts/validate_blender_editor.py --eevee
 python3 scripts/package_blender_editor.py
 ```
 

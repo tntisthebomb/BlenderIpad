@@ -61,6 +61,33 @@ Shader destruction also clears pipeline caches: pointer reuse had selected an
 older shader's storage format during actual GPU diagnosis. Full source-matched
 acceptance must validate these changes before distribution.
 
+The tablet-input follow-up adds two-finger drag and pinch through real native
+GHOST trackpad events, releases the first finger's selection press when a
+gesture starts, and suppresses a new selection drag until all fingers lift.
+The compiled native platform probe passes pan/zoom deltas, cancellation,
+selection release and a subsequent tap. The full editor fixture additionally
+requires actual viewport rotation/zoom with unchanged Cube coordinates; that
+new full-module check has not passed yet. A residual barrier was removed from
+the serial shadow-amend scan; the focused translator accepts both variants, so
+this cleanup is not evidence that the remaining Eevee gate passes.
+README.md now links the verified baseline download and explains extracting and
+serving it through WorldWideWeb. Its newer keyboard/gesture controls are not in
+that old preview.
+
+Candidate `daad706f751469f64888a86a6002ae5704ccd604` (run 38647318419)
+passed GPU resources, the shader lifetime/cache regression, Workbench, modeling,
+native keyboard/Unicode, persistence and recovery; both profiles still failed
+Eevee. Its captured inputs exposed residual Tint output-symbol reuse and
+unsupported normalized image formats. The follow-up patches Tint's output
+flattening directly and maps normalized storage to quantized float32 backing.
+All 44 captured native shaders now compile/translate and pass actual WebGPU
+shader-module validation; their compute pipelines also create successfully.
+Numeric GPU tests pass normalized RG16 and RGB10_A2 clamping/quantization.
+These shader checks still require the full source-matched rendering test.
+The startup screen now provides explicit same-port/path loopback links for
+insecure local-server addresses and keeps Device report accessible while loading.
+The real-browser insecure-origin recovery test passes.
+
 ## Authoritative state
 
 - Repository: https://github.com/tntisthebomb/BlenderIpad

@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Relink the actual background Blender objects for a browser integration test.
-
-This is deliberately not a GUI build or the downloadable iPad workbench.
-"""
+"""Relink native Blender for the browser, including its GUI with --editor."""
 import argparse
 import hashlib
 import json
