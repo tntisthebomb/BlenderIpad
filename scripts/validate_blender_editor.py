@@ -60,6 +60,7 @@ if __name__ == '__main__':
                    'workbench_render_png', 'suspension_orientation', 'device_loss_backup',
                    'atomic_updates', 'linked_asset_import', 'storage_failure_backup',
                    'modeling_geometry_nodes', 'armature_deformation', 'obj_interchange',
+                   'embedded_python_threads',
                    'adapter_unavailable_backup', 'initial_install_failure_recovery'],
         **before}, indent=2) + '\n')
     print('PASS: editor acceptance recorded for the exact browser assets and fixtures.')

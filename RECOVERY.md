@@ -6,9 +6,15 @@ Recovered October 13, 2026 (America/New_York). Start here when resuming this pro
 
 The user authorized finishing the port and will test on an iPad 10th generation
 with iPadOS 26, served by WorldWideWeb. Use `IPAD_ACCEPTANCE.md` for that path.
-Source changes after the baseline below are in the working tree and have not
-yet been packaged or published. `work/SESSION_STATE.md` records active build
-processes and diagnostic results for a resumed local session.
+The latest engineering candidate is the head of `codex/ipad-port-completion`,
+preserved in [draft PR #1](https://github.com/tntisthebomb/BlenderIpad/pull/1).
+Use its latest editor workflow result, checking the run's source SHA against the
+branch head. The first candidate run is
+[38521444931](https://github.com/tntisthebomb/BlenderIpad/actions/runs/38521444931).
+The candidate is not an accepted distribution. The baseline below remains the
+latest verified downloadable editor until the new engine gates pass.
+`work/SESSION_STATE.md` records active processes, local follow-up changes and
+diagnostic results for a resumed local session.
 
 The baseline distribution in `dist/` remains intact. The current
 `.cache/blender-webgpu-browser/` is a diagnostic runtime with updated frontend
@@ -21,9 +27,11 @@ Real offline Workbench PNG rendering and modeling/geometry-node/rigging/OBJ
 round trips passed on the baseline engine. Updated storage, failed-install and
 atomic-update fixtures also passed. The new full binary still needs acceptance;
 Eevee and CPU Cycles rendering remain unproven. The full editor compile finished,
-but linking first exceeded the builder's 8 GiB memory limit. A single-worker
-Binaryen retry is in progress. Preserve O2, assertions and Asyncify when resolving
-that build issue.
+but full-module Asyncify exceeded the builder's 8 GiB memory limit with both
+single-worker and staged optimization. Public-runner CI is now the full-link
+path. Preserve O2, assertions and Asyncify when resolving that build issue.
+The real oneTBB Node/browser scheduler probes and CPU Cycles kernel/device/
+utility compilation also pass; actual integrated rendering remains a gate.
 
 ## Authoritative state
 

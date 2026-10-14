@@ -44,7 +44,11 @@ try:
         assert page.evaluate('crossOriginIsolated')
         page.evaluate('source=>blenderCore.FS.writeFile("/gpu_test.py",source)',(ROOT/'tests/blender_render_scene.py').read_text())
         context.set_offline(True)
-        page.evaluate("engine=>blenderCore.runBlenderMain(['--background','--factory-startup','--offline-mode','--disable-autoexec','--threads','2','--python-exit-code','1','--python','/gpu_test.py','--',engine])",options.engine)
+        page.evaluate("""engine=>{setTimeout(()=>{
+            blenderCore.runBlenderMain(['--background','--factory-startup','--offline-mode',
+                '--disable-autoexec','--threads','2','--python-exit-code','1','--python','/gpu_test.py','--',engine])
+                .catch(error=>document.body.dataset.error=String(error));
+        },0);} """,options.engine)
         page.wait_for_function('coreExit !== null || document.body.dataset.error',timeout=300000)
         assert page.evaluate('coreExit')==0,page.evaluate('coreErrors')
         checks=json.loads(page.evaluate("blenderCore.FS.readFile('/render-output/result.json',{encoding:'utf8'})"))

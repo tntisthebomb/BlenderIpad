@@ -89,7 +89,7 @@ jobs:
             .cache/blender-editor-frame.png
             .cache/blender-render-*.png
             .cache/blender-render-*-console.log
-            .cache/blender-modeling-browser-console.log
+            .cache/blender-modeling-console.log
           if-no-files-found: ignore
       - name: Preserve candidate runtime and corresponding source for failed-test diagnosis
         if: failure()

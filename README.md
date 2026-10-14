@@ -11,6 +11,11 @@ latest successful editor workflow, recovered artifacts and remaining work.
 
 The actual editor is built separately from the legacy math workbench:
 
+Use a Linux builder with at least 16 GiB RAM. Compilation fits in 8 GiB, but
+full-editor Asyncify linking exceeded that limit even with staged optimization.
+The editor CI workflow provides separate graphics and CPU Cycles candidates;
+each must pass its actual engine render checks before producing an accepted ZIP.
+
 ```sh
 python3 scripts/build_browser_platform.py
 python3 scripts/build_browser_core_deps.py

@@ -4,6 +4,17 @@ import json
 import math
 from mathutils import Vector
 from pathlib import Path
+import threading
+
+# Exercise actual embedded CPython pthreads in the complete offline module.
+thread_results = []
+workers = [threading.Thread(target=lambda n=n: thread_results.append(sum(range(n))))
+           for n in (513, 1025)]
+for worker in workers:
+    worker.start()
+for worker in workers:
+    worker.join()
+assert sorted(thread_results) == [512 * 513 // 2, 1024 * 1025 // 2]
 
 output=Path('/modeling-output');output.mkdir(exist_ok=True)
 bpy.ops.object.select_all(action='SELECT')
@@ -67,5 +78,5 @@ assert bpy.ops.wm.save_as_mainfile(filepath=str(project),check_existing=False)==
 assert bpy.ops.wm.open_mainfile(filepath=str(project))=={'FINISHED'}
 assert bpy.data.objects.get('Rigged acceptance') and bpy.data.node_groups.get('Browser geometry acceptance')
 (output/'result.json').write_text(json.dumps({'version':list(bpy.app.version),
-    'checks':['edit_mesh','bevel','geometry_nodes','armature_deformation','obj_roundtrip','native_resources']}))
+    'checks':['embedded_python_threads','edit_mesh','bevel','geometry_nodes','armature_deformation','obj_roundtrip','native_resources']}))
 print('PASS: native edit mesh, bevel, geometry nodes, armature deformation, OBJ interchange and native project resources.')

@@ -51,10 +51,11 @@ def toolchain():
                 "EMCC_CORES": "4", "PATH": str(tools / "bin") + os.pathsep +
                 str(sdk / "upstream/emscripten") + os.pathsep + env["PATH"]})
     # Asyncify expands the complete editor substantially. Parallel Binaryen
-    # function passes exceed an 8 GiB builder's memory; serialize those passes
-    # without changing optimization, assertions or suspension instrumentation.
+    # function passes raise peak memory; serialize those passes without changing
+    # optimization, assertions or suspension instrumentation.
     env["BINARYEN_CORES"] = "1"
-    # Keep optimization and Asyncify IR in separate processes on 8 GiB builders.
+    # Separate optimization/Asyncify IR. The complete editor still needs more
+    # than 8 GiB; the public CI runner supplies the larger build environment.
     # The pinned SDK remains pristine; other Binaryen tools use direct symlinks.
     binaryen = CACHE / "binaryen-memory/bin"
     binaryen.mkdir(parents=True, exist_ok=True)

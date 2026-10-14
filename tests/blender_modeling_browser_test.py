@@ -40,12 +40,16 @@ try:
         assert page.evaluate('crossOriginIsolated')
         page.evaluate('source=>blenderCore.FS.writeFile("/gpu_test.py",source)',(ROOT/'tests/blender_modeling_scene.py').read_text())
         context.set_offline(True)
-        page.evaluate("engine=>blenderCore.runBlenderMain(['--background','--factory-startup','--offline-mode','--disable-autoexec','--threads','2','--python-exit-code','1','--python','/gpu_test.py',] )",'modeling')
+        page.evaluate("""()=>{setTimeout(()=>{
+            blenderCore.runBlenderMain(['--background','--factory-startup','--offline-mode',
+                '--disable-autoexec','--threads','2','--python-exit-code','1','--python','/gpu_test.py'])
+                .catch(error=>document.body.dataset.error=String(error));
+        },0);} """)
         page.wait_for_function('coreExit !== null || document.body.dataset.error',timeout=300000)
         assert page.evaluate('coreExit')==0,page.evaluate('coreErrors')
         checks=json.loads(page.evaluate("blenderCore.FS.readFile('/modeling-output/result.json',{encoding:'utf8'})"))
         assert checks['version']==[5,2,2],checks
-        assert checks['checks']==['edit_mesh','bevel','geometry_nodes','armature_deformation','obj_roundtrip','native_resources'],checks
+        assert checks['checks']==['embedded_python_threads','edit_mesh','bevel','geometry_nodes','armature_deformation','obj_roundtrip','native_resources'],checks
         assert not errors,errors
         diagnostics.write(json.dumps(page.evaluate('({stdout:coreOutput,stderr:coreErrors})'),indent=2))
         diagnostics.close()
