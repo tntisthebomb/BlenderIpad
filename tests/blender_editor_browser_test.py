@@ -82,6 +82,42 @@ try:
             for key in ['g','x','1','Enter']: page.keyboard.press(key)
             page.wait_for_function("JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).location[0]===1",timeout=30000)
             assert not state()['errors'],state()
+            # The on-screen bridge preserves Blender's active native text field.
+            def keyboard_text(text, composing=False):
+                page.evaluate('''({text,composing})=>{
+                  const input=document.getElementById('tablet-text');
+                  if(composing) input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+                  input.value='\ufeff'+text;
+                  input.dispatchEvent(new InputEvent('input',{inputType:composing?'insertCompositionText':'insertText',
+                    data:text,isComposing:composing,bubbles:true}));
+                  if(composing) {
+                    input.dispatchEvent(new CompositionEvent('compositionend',{data:text,bubbles:true}));
+                    input.dispatchEvent(new InputEvent('input',{inputType:'insertText',data:text,bubbles:true}));
+                  }
+                }''',{'text':text,'composing':composing})
+            def wait_name(name):
+                page.wait_for_function("name=>JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).active===name",arg=name,timeout=30000)
+            page.keyboard.press('F2')
+            page.locator('#tablet-keyboard').click()
+            keyboard_text('TabletCube')
+            page.locator('#tablet-keys button').filter(has_text='Enter').click()
+            wait_name('TabletCube')
+            page.locator('#tablet-keys button').filter(has_text='Done').click()
+            page.keyboard.press('F2')
+            page.locator('#tablet-keyboard').click()
+            # Ctrl+A is forwarded to Blender, rather than selecting the sentinel.
+            page.locator('#tablet-text').press('Control+a')
+            keyboard_text('CubeΩ',composing=True)
+            page.locator('#tablet-keys button').filter(has_text='Enter').click()
+            wait_name('CubeΩ')
+            page.locator('#tablet-keys button').filter(has_text='Done').click()
+            page.keyboard.press('F2')
+            page.locator('#tablet-keyboard').click()
+            page.locator('#tablet-keys').get_by_role('button',name='→',exact=True).click()
+            page.locator('#tablet-keys').get_by_role('button',name='⌫',exact=True).click()
+            page.locator('#tablet-keys button').filter(has_text='Enter').click()
+            wait_name('Cube')
+            page.locator('#tablet-keys button').filter(has_text='Done').click()
             page.evaluate("blenderEditor.FS.writeFile('/editor-command.json',JSON.stringify({operation:'deselect',path:'/projects/keyboard-scene.blend'}))")
             page.wait_for_function("JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).selected.length===0",timeout=30000)
             position=state()['object_position']

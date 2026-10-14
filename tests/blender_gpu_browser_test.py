@@ -48,7 +48,7 @@ try:
         assert checks['checks']=={'RGBA8':True,'RGBA16F':True,'RGBA32F':True,'packed_hdr':True,
                                  'R16F_storage':True,'RG16F_storage':True,
                                  'switch_fallthrough':True,'volume_query':True,
-                                 'atomic_image_coherence':True,
+                                 'atomic_image_coherence':True,'shader_lifetime_cache':True,
                                  'array_layers':True,'cube_faces':True,'builtin_shader_triangle':True,
                                  'font_storage_shader':True},checks
         assert not errors,errors

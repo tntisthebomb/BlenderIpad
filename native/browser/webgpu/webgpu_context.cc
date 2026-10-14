@@ -86,6 +86,22 @@ void WebGPUContext::scrub_texture_all_contexts(WebGPUTexture *tex)
   }
 }
 
+void WebGPUContext::clear_pipeline_cache_all_contexts()
+{
+  /* Pipeline keys include shader addresses. Retaining them after a shader is
+   * freed lets allocator reuse select a different shader's layout and code. */
+  for (WebGPUContext *ctx : g_all_contexts) {
+    for (auto &entry : ctx->render_pipelines_) {
+      if (entry.second) wgpuRenderPipelineRelease(entry.second);
+    }
+    for (auto &entry : ctx->compute_pipelines_) {
+      if (entry.second) wgpuComputePipelineRelease(entry.second);
+    }
+    ctx->render_pipelines_.clear();
+    ctx->compute_pipelines_.clear();
+  }
+}
+
 void WebGPUContext::clear_bind_group_cache_all_contexts()
 {
   for (WebGPUContext *ctx : g_all_contexts) {

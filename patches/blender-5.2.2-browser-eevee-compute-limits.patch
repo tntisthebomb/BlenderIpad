@@ -769,7 +769,7 @@
    [[storage(5, read_write)]] LightData (&light_buf_write)[];
  
 -  [[shared]] uint tiles_local[SHADOW_TILEMAP_RES][SHADOW_TILEMAP_RES];
-+  [[shared]] uint tiles_local[2][SHADOW_TILEMAP_RES][SHADOW_TILEMAP_RES];
++  [[shared]] uint tiles_local[2 * SHADOW_TILEMAP_LOD0_LEN];
  
    [[image(0, read_write, UINT_32)]] uimage2D tilemaps_img;
  };
@@ -787,7 +787,7 @@
          /* Load tile from the previous LOD. */
          ShadowSamplingTilePacked tile_prev_packed =
 -            srt.tiles_local[tile_co_prev.y][tile_co_prev.x];
-+            srt.tiles_local[(lod + 1) & 1][tile_co_prev.y][tile_co_prev.x];
++            srt.tiles_local[((lod + 1) & 1) * SHADOW_TILEMAP_LOD0_LEN + tile_co_prev.y * SHADOW_TILEMAP_RES + tile_co_prev.x];
          ShadowSamplingTile tile_prev = shadow_sampling_tile_unpack(tile_prev_packed);
  
          /* We can only propagate LODs up to a certain level.
@@ -795,7 +795,7 @@
          }
        }
  
-+      srt.tiles_local[lod & 1][tile_co.y][tile_co.x] = (tile.is_valid) ? tile_packed : SHADOW_NO_DATA;
++      srt.tiles_local[(lod & 1) * SHADOW_TILEMAP_LOD0_LEN + tile_co.y * SHADOW_TILEMAP_RES + tile_co.x] = (tile.is_valid) ? tile_packed : SHADOW_NO_DATA;
        barrier();
 -      srt.tiles_local[tile_co.y][tile_co.x] = (tile.is_valid) ? tile_packed : SHADOW_NO_DATA;
 -      barrier();
@@ -1174,4 +1174,14 @@
 +  }
    shadow_page_len_ = int(divide_ceil_ul(pool_byte_size, page_byte_size));
    shadow_page_len_ = min_ii(shadow_page_len_, SHADOW_MAX_PAGE);
+ 
+--- a/source/blender/draw/engines/eevee/shaders/eevee_gbuffer_write.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_gbuffer_write.bsl.hh
+@@ -38,6 +38,7 @@
+ 
+ /* WORKAROUND: Arrays cannot be sized using compilation_constant. */
+ #ifdef SRT_CONSTANT_gbuffer_layer_max
++#  undef GBUFFER_LAYER_MAX
+ #  define GBUFFER_LAYER_MAX SRT_CONSTANT_gbuffer_layer_max
+ #endif
  

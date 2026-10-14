@@ -29,6 +29,9 @@ required. The application reports this rather than repeatedly reloading.
 ## Acceptance
 
 - Confirm readable native menus, Cube, grid and properties in landscape and portrait.
+- Without a physical keyboard, tap a Blender text field, choose **Keyboard** in
+  the header, enter text, and use Enter or Done. Check a filename and a Unicode
+  object name. Ctrl/Shift/Alt and editing keys are available in that panel.
 - With a keyboard, move the Cube using `G`, `X`, `1`, Enter. Cancel another transform
   with Escape, then confirm touch selection and the trackpad input you use.
 - Subdivide or bevel a mesh, evaluate a geometry-node modifier, and animate a pose.

@@ -50,6 +50,17 @@ requires those world-probe paths from Eevee too. Preserve assertions, O2,
 Asyncify and the real Emscripten runtime keepalive around scheduler suspension.
 Never package the manually corrected diagnostic runtime in the local cache.
 
+The next follow-up also corrects the three remaining a19580bf shader failures:
+interface fields with identical names flattening into one WGSL output struct,
+a multidimensional shared array unsupported by Blender's BSL preprocessor,
+and G-buffer macro redefinition. A focused vertex/fragment test reproduced the
+name failure and now renders the expected pixel after member disambiguation.
+Native on-screen keyboard tests pass ASCII, Ctrl+A, Unicode composition, arrow
+movement and backspace; the control is included in offline cache validation.
+Shader destruction also clears pipeline caches: pointer reuse had selected an
+older shader's storage format during actual GPU diagnosis. Full source-matched
+acceptance must validate these changes before distribution.
+
 ## Authoritative state
 
 - Repository: https://github.com/tntisthebomb/BlenderIpad

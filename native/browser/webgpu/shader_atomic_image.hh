@@ -69,8 +69,8 @@ inline std::string lower_atomic_images(const std::string &source)
           op.second + "(" + data + "[i],v" + (compare ? ",replacement" : "") + "); }\n";
     }
     out += vector + " " + prefix + "_imageLoad(" + coord + " p) { uint i=" + prefix +
-        "_index(p); return " + vector + "(i==0xffffffffu ? " + scalar + "(0) : " + data +
-        "[i],0,0,0); }\n";
+        "_index(p); if(i==0xffffffffu) return " + vector + "(0); return " + vector +
+        "(" + data + "[i],0,0,1); }\n";
     out += "void " + prefix + "_imageStore(" + coord + " p," + vector + " v) { uint i=" +
         prefix + "_index(p); if(i!=0xffffffffu) atomicExchange(" + data + "[i],v.x); }\n";
     out += coord + " " + prefix + "_imageSize() { return " + coord + "(" + meta +

@@ -279,8 +279,11 @@ WGPUBuffer WebGPUTexture::atomic_image_buffer()
   WebGPUContext *ctx = ctx_get();
   if (!texture_ || !ctx || !ctx->device()) return nullptr;
   if ((wgpu_format_ != WGPUTextureFormat_R32Uint &&
-       wgpu_format_ != WGPUTextureFormat_R32Sint) || view_mip_ != 0 || view_layer_ != 0) {
-    throw std::runtime_error("WebGPU atomic images require an R32I/R32UI base-level view");
+       wgpu_format_ != WGPUTextureFormat_R32Sint) || view_mip_ != 0 || view_layer_ != 0 ||
+      (is_view_ && (uint32_t(w_) != wgpuTextureGetWidth(texture_) ||
+                    uint32_t(h_) != wgpuTextureGetHeight(texture_) ||
+                    uint32_t(layer_count()) != wgpuTextureGetDepthOrArrayLayers(texture_)))) {
+    throw std::runtime_error("WebGPU atomic images require a complete R32I/R32UI base-level view");
   }
   auto &state = *atomic_image_;
   if (!state.buffer) {

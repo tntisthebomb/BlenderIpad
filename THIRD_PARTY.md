@@ -43,7 +43,8 @@ the generated table and does not add a Go dependency to the port build.
 
 `native/browser/webgpu/shader_prepare.hh` lowers switch fallthrough in
 preprocessed GLSL, before glslang creates SSA IDs, and removes local debug names
-that collide in WGSL. Buffer block and interface names remain intact. The
+that collide in WGSL. Buffer block names remain intact. Interface member names are disambiguated
+across types before Tint flattens them into entry-point outputs. The
 original Tint switch parser is retained: duplicating its SPIR-V blocks proved
 unsafe for actual Eevee light-culling shaders. Tint IR validation stays enabled.
 Numeric browser regressions cover fallthrough, nested loops/switches, conditional

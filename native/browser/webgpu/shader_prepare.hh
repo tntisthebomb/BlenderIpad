@@ -162,7 +162,23 @@ inline void unique_local_names(std::vector<uint32_t> &words)
   std::vector<uint32_t> result(words.begin(), words.begin() + 5);
   for (size_t i = 5; i < words.size();) {
     const uint32_t count = words[i] >> 16, op = words[i] & 0xffff;
-    if (op != 5 || count < 2 || preserve.count(words[i + 1])) {
+    if (op == 6 && count >= 4) {
+      /* Tint flattens separate interface blocks into one entry-point output.
+       * Their identically named fields must be unique across those blocks,
+       * including names such as `position` also used for a builtin. */
+      const std::string name = "member_" + std::to_string(words[i + 1]) + "_" +
+                               std::to_string(words[i + 2]);
+      const size_t name_words = (name.size() + 4) / 4;
+      result.push_back((uint32_t(3 + name_words) << 16) | 6);
+      result.push_back(words[i + 1]);
+      result.push_back(words[i + 2]);
+      const size_t start = result.size();
+      result.resize(start + name_words, 0);
+      for (size_t j = 0; j < name.size(); j++) {
+        result[start + j / 4] |= uint32_t(uint8_t(name[j])) << ((j % 4) * 8);
+      }
+    }
+    else if (op != 5 || count < 2 || preserve.count(words[i + 1])) {
       result.insert(result.end(), words.begin() + i, words.begin() + i + count);
     }
     i += count;

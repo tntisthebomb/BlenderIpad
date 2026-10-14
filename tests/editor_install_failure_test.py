@@ -14,6 +14,7 @@ with TemporaryDirectory(dir=ROOT/'.cache') as directory:
     (base/'index.html').write_bytes((ROOT/'native/browser/blender_editor.html').read_bytes())
     (base/'editor.html').write_bytes((base/'index.html').read_bytes())
     (base/'editor_files.js').write_bytes((ROOT/'native/browser/editor_files.js').read_bytes())
+    (base/'editor_input.js').write_bytes((ROOT/'native/browser/editor_input.js').read_bytes())
     (base/'service-worker.js').write_text((ROOT/'native/browser/service-worker.js').read_text().replace('__BUILD_CACHE__','failed-first-install'))
     (base/'blender-core.js').write_text('window.createBlenderCore=()=>{throw new Error("This fixture has no engine")};')
     for name in ('blender-core.data','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png'):

@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 from setup_browser import CACHE, ROOT
 
-ASSETS = ('index.html', 'editor.html', 'editor_files.js', 'blender-core.js',
+ASSETS = ('index.html', 'editor.html', 'editor_files.js', 'editor_input.js', 'blender-core.js',
           'blender-core.wasm', 'blender-core.data', 'manifest.webmanifest',
           'icon.svg', 'icon-192.png', 'icon-512.png', 'service-worker.js')
 TESTS = ('tests/blender_gpu_browser_test.py', 'tests/blender_gpu_scene.py',
@@ -19,7 +19,7 @@ TESTS = ('tests/blender_gpu_browser_test.py', 'tests/blender_gpu_scene.py',
          'tests/shader_semantics_browser_test.py', 'tests/shader_switch_fallthrough.comp',
          'tests/shader_switch_phi.comp', 'tests/shader_volume_query.comp',
          'tests/shader_atomic_image.comp', 'tests/shader_readwrite_texture.comp',
-         'tests/shader_zbin_range.comp',
+         'tests/shader_zbin_range.comp', 'tests/shader_interface_names.vert',
          'scripts/test_browser_lifecycle.py', 'tests/browser_lifecycle_probe.cc')
 
 def digest(path):

@@ -31,7 +31,7 @@ try:
         page.goto(f'http://127.0.0.1:{server.server_port}/')
         sources = {name: (directory / (name + '.wgsl')).read_text()
                    for name in ('switch-fallthrough', 'switch-phi', 'volume-query',
-                                'readwrite-texture', 'atomic-image', 'zbin-range')}
+                                'readwrite-texture', 'atomic-image', 'zbin-range', 'interface-names')}
         context.set_offline(True)
         results = page.evaluate('''async sources => {
           const adapter = await navigator.gpu.requestAdapter();
@@ -46,6 +46,33 @@ try:
             const info = await shader.getCompilationInfo();
             const failures = info.messages.filter(message => message.type === 'error');
             if (failures.length) throw Error(JSON.stringify(failures));
+            if (name === 'interface-names') {
+              const fragment = device.createShaderModule({code: `
+                struct Inputs { @location(0) first:vec3f, @location(1) second:vec3f,
+                  @location(2) position:vec4f }
+                @fragment fn main(input:Inputs)->@location(0) vec4f {
+                  return vec4f(input.first.x,input.second.y*0.5,input.position.z*0.25,1);
+                }`});
+              const pipeline = await device.createRenderPipelineAsync({layout:'auto',
+                vertex:{module:shader,entryPoint:'main',buffers:[{arrayStride:12,
+                  attributes:[{shaderLocation:0,offset:0,format:'float32x3'}]}]},
+                fragment:{module:fragment,entryPoint:'main',targets:[{format:'rgba8unorm'}]}});
+              const vertices=device.createBuffer({size:36,
+                usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});
+              device.queue.writeBuffer(vertices,0,new Float32Array([-1,-1,0,3,-1,0,-1,3,0]));
+              const texture=device.createTexture({size:[1,1],format:'rgba8unorm',
+                usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.COPY_SRC});
+              const read=device.createBuffer({size:256,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+              const encoder=device.createCommandEncoder();
+              const pass=encoder.beginRenderPass({colorAttachments:[{view:texture.createView(),
+                loadOp:'clear',storeOp:'store',clearValue:[0,0,0,0]}]});
+              pass.setPipeline(pipeline);pass.setVertexBuffer(0,vertices);pass.draw(3);pass.end();
+              encoder.copyTextureToBuffer({texture},{buffer:read,bytesPerRow:256},[1,1,1]);
+              device.queue.submit([encoder.finish()]);await read.mapAsync(GPUMapMode.READ);
+              results[name]=Array.from(new Uint8Array(read.getMappedRange())).slice(0,4);read.unmap();
+              const error=await device.popErrorScope();if(error)throw Error(error.message);
+              continue;
+            }
             const pipeline = await device.createComputePipelineAsync({
               layout: 'auto', compute: {module: shader, entryPoint: 'main'}});
             const size = name === 'zbin-range' ? 16384 : name === 'atomic-image' ? 272 :
@@ -53,7 +80,7 @@ try:
             const output = device.createBuffer({size,
               usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST});
             if (name === 'atomic-image') {
-              device.queue.writeBuffer(output, 0, new Uint32Array([2, 1, 1, 64, 0xffffffff, 0]));
+              device.queue.writeBuffer(output, 0, new Uint32Array([4, 1, 1, 64, 0xffffffff, 0]));
             }
             const read = device.createBuffer({size,
               usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST});
@@ -80,17 +107,17 @@ try:
             pass.dispatchWorkgroups(name === 'atomic-image' ? 16 :
               name === 'zbin-range' || size === 16 ? 1 : 6); pass.end();
             if (name === 'atomic-image') {
-              const texture = device.createTexture({size: [2, 1], format: 'r32uint',
+              const texture = device.createTexture({size: [4, 1], format: 'r32uint',
                 usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC});
               encoder.copyBufferToTexture({buffer: output, offset: 16, bytesPerRow: 256,
-                rowsPerImage: 1}, {texture}, [2, 1, 1]);
+                rowsPerImage: 1}, {texture}, [4, 1, 1]);
               encoder.copyTextureToBuffer({texture}, {buffer: read, bytesPerRow: 256,
-                rowsPerImage: 1}, [2, 1, 1]);
+                rowsPerImage: 1}, [4, 1, 1]);
             } else encoder.copyBufferToBuffer(output, 0, read, 0, size);
             device.queue.submit([encoder.finish()]);
             await read.mapAsync(GPUMapMode.READ);
             results[name] = Array.from(new Int32Array(read.getMappedRange())).slice(
-              0, name === 'atomic-image' ? 2 : size / 4);
+              0, name === 'atomic-image' ? 4 : size / 4);
             read.unmap();
             const error = await device.popErrorScope();
             if (error) throw Error(error.message);
@@ -103,7 +130,8 @@ try:
         assert results['switch-phi'] == [9, 3, 13, 8, -5, -5], results
         assert results['volume-query'] == [2, 3, 4, 42], results
         assert results['readwrite-texture'] == [7, 0, 0, 0], results
-        assert results['atomic-image'] == [1, 1024], results
+        assert results['atomic-image'] == [1, 1024, 1, 0], results
+        assert results['interface-names'] == [255, 128, 64, 255], results
         bins = [[] for _ in range(4096)]
         for index in range(256):
             for bin_index in range(index * 13, index * 13 + index % 31 + 1):
