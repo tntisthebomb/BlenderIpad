@@ -1,11 +1,16 @@
 const CACHE_PREFIX=`blender-ipad:${self.registration.scope}:`;
 const CACHE=`${CACHE_PREFIX}__BUILD_CACHE__`;
-const FILES=['./','editor.html','blender-core.js','blender-core.wasm','blender-core.data','manifest.webmanifest','icon.svg','editor_files.js'];
+const FILES=['./','index.html','editor.html','blender-core.js','blender-core.wasm','blender-core.data','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js'];
+self.addEventListener('message',event=>{
+  if (event.data?.type==='BUILD_INFO') event.ports[0]?.postMessage({cache:CACHE});
+});
 self.addEventListener('install',event=>event.waitUntil((async()=>{
   try {
     const cache=await caches.open(CACHE);
     for (const path of FILES) await cache.add(new Request(new URL(path,self.location),{cache:'reload'}));
-    await self.skipWaiting();
+    // An update must wait until the old application's tabs are closed. Claiming
+    // an active runtime here could mix its JS with the next build's WASM/data.
+    if (!self.registration.active) await self.skipWaiting();
   } catch(error) {
     await caches.delete(CACHE);
     throw error;

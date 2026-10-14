@@ -50,6 +50,24 @@ def toolchain():
     env.update({"EMSDK": str(sdk), "EM_CONFIG": str(sdk / ".emscripten"),
                 "EMCC_CORES": "4", "PATH": str(tools / "bin") + os.pathsep +
                 str(sdk / "upstream/emscripten") + os.pathsep + env["PATH"]})
+    # Asyncify expands the complete editor substantially. Parallel Binaryen
+    # function passes exceed an 8 GiB builder's memory; serialize those passes
+    # without changing optimization, assertions or suspension instrumentation.
+    env["BINARYEN_CORES"] = "1"
+    # Keep optimization and Asyncify IR in separate processes on 8 GiB builders.
+    # The pinned SDK remains pristine; other Binaryen tools use direct symlinks.
+    binaryen = CACHE / "binaryen-memory/bin"
+    binaryen.mkdir(parents=True, exist_ok=True)
+    wrapper = ROOT / "scripts/binaryen_memory.py"
+    wrapper.chmod(0o755)
+    for executable in (sdk / "upstream/bin").iterdir():
+        if executable.is_file():
+            target = wrapper if executable.name == "wasm-opt" else executable
+            link = binaryen / executable.name
+            if not link.exists():
+                link.symlink_to(target)
+    env["EM_BINARYEN_ROOT"] = str(binaryen.parent)
+    env["BLENDER_BINARYEN_WASM_OPT"] = str(sdk / "upstream/bin/wasm-opt")
     version_output = subprocess.check_output([str(sdk / "upstream/emscripten/emcc"), "--version"],
                                              env=env, text=True)
     if not re.search(r"\b" + re.escape(LOCK["emsdk"]["version"]) + r"\b", version_output):

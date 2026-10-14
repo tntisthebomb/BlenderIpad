@@ -34,6 +34,7 @@ if __name__ == "__main__":
     parser.add_argument("--webgpu", action="store_true", help="Experimental GPU backend integration profile; editor remains headless")
     parser.add_argument("--gpu-library-only", action="store_true", help="Compile real GPU interfaces before application linking")
     parser.add_argument("--editor",action="store_true",help="Experimental actual editor with GHOST WebGPU window")
+    parser.add_argument("--cycles",action="store_true",help="Experimental scalar CPU Cycles with the validated browser oneTBB scheduler")
     args = parser.parse_args()
     if args.editor: args.webgpu=True
     env = toolchain()
@@ -53,8 +54,23 @@ if __name__ == "__main__":
         # together, creating functions too large for browser compilers.
         link += " -sBINARYEN_EXTRA_PASSES=--one-caller-inline-max-function-size=0"
     graphics = []
+    graphics += ["-DWITH_CYCLES=" + ("ON" if args.cycles else "OFF"),
+                 "-DWITH_TBB=" + ("ON" if args.cycles else "OFF")]
+    if args.cycles:
+        proof_path = CACHE / 'tbb-probe/validation.json'
+        if not proof_path.exists():
+            raise SystemExit('Build and validate browser oneTBB before enabling CPU Cycles.')
+        proof = json.loads(proof_path.read_text())
+        if (proof.get('library_sha256') != hashlib.sha256((prefix / 'lib/libtbb.a').read_bytes()).hexdigest()
+            or proof.get('probe_sha256') != hashlib.sha256((ROOT / 'tests/tbb_runtime_probe.cc').read_bytes()).hexdigest()):
+            raise SystemExit('Browser oneTBB changed after acceptance; revalidate it before enabling Cycles.')
+        graphics += ["-DWITH_CYCLES_OSL=OFF", "-DWITH_CYCLES_EMBREE=OFF",
+                     "-DWITH_CYCLES_PATH_GUIDING=OFF", "-DWITH_CYCLES_NATIVE_ONLY=OFF",
+                     "-DCXX_HAS_SSE42=FALSE", "-DCXX_HAS_AVX2=FALSE", "-DCXX_HAS_F16C=FALSE"]
+        graphics += ["-DWITH_CYCLES_DEVICE_" + backend + "=OFF" for backend in
+                     ("CUDA", "OPTIX", "HIP", "HIPRT", "METAL", "ONEAPI")]
     if args.webgpu:
-        graphics = ["-DWITH_WEBGPU_BACKEND=ON", "-DBROWSER_DAWN_SOURCE_DIR=" + str(CACHE / "graphics-src/dawn"),
+        graphics += ["-DWITH_WEBGPU_BACKEND=ON", "-DBROWSER_DAWN_SOURCE_DIR=" + str(CACHE / "graphics-src/dawn"),
                     "-DBROWSER_TINT_BUILD_DIR=" + str(CACHE / "deps-build/tint-threaded")]
     if args.editor:
         graphics += ["-DWITH_HEADLESS=OFF", "-DWITH_GHOST_WEB=ON", "-DWITH_GHOST_WEBGPU_CONTEXT=ON"]

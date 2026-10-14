@@ -64,11 +64,11 @@ if __name__ == '__main__':
     if options.editor:
         shutil.copyfile(ROOT / 'native/browser/blender_editor.html', output / 'editor.html')
         shutil.copyfile(output / 'editor.html', output / 'index.html')
-        for name in ('manifest.webmanifest','icon.svg','editor_files.js'):
+        for name in ('manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js'):
             shutil.copyfile(ROOT / 'native/browser' / name, output / name)
         content=hashlib.sha256()
         for name in ('index.html','editor.html','blender-core.js','blender-core.wasm',
-                     'blender-core.data','manifest.webmanifest','icon.svg','editor_files.js'):
+                     'blender-core.data','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js'):
             content.update(name.encode())
             with (output / name).open('rb') as stream:
                 while chunk := stream.read(1024*1024):

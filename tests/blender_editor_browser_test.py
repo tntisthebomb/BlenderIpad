@@ -24,7 +24,17 @@ try:
         browser=playwright.chromium.launch(executable_path=executable,env=environment,args=[
             '--no-sandbox','--enable-unsafe-webgpu','--enable-features=Vulkan',
             '--use-angle=swiftshader','--enable-unsafe-swiftshader'])
-        context=browser.new_context(viewport={'width':1024,'height':768},has_touch=True)
+        context=browser.new_context(viewport={'width':1024,'height':768},has_touch=True,
+            device_scale_factor=float(os.environ.get('EDITOR_DEVICE_SCALE','2')))
+        context.add_init_script('''
+            const requestAdapter=navigator.gpu.requestAdapter.bind(navigator.gpu);
+            navigator.gpu.requestAdapter=async(...args)=>{
+                const adapter=await requestAdapter(...args);
+                if(adapter){const requestDevice=adapter.requestDevice.bind(adapter);
+                    adapter.requestDevice=async(...args)=>window.testDevice=await requestDevice(...args);}
+                return adapter;
+            };
+        ''')
         arguments=['--factory-startup','--offline-mode','--disable-autoexec','--threads','2',
                    '--python','/browser_startup.py','--python-expr',
                    (ROOT/'tests/blender_editor_scene.py').read_text()]
@@ -39,6 +49,8 @@ try:
         try:
             page.goto(f'http://127.0.0.1:{server.server_port}/')
             page.wait_for_function("document.body.dataset.started || document.body.dataset.error",timeout=300000)
+            assert not page.locator('body').get_attribute('data-error'),page.locator('body').get_attribute('data-error')
+            page.wait_for_function("document.body.dataset.rendered==='true' || document.body.dataset.error",timeout=300000)
             assert not page.locator('body').get_attribute('data-error'),page.locator('body').get_attribute('data-error')
             assert page.evaluate('crossOriginIsolated && !!navigator.serviceWorker.controller')
             page.wait_for_function("blenderEditor.FS.analyzePath('/editor-state.json').exists",timeout=120000)
@@ -95,12 +107,46 @@ try:
             page.evaluate("blenderEditor.FS.writeFile('/editor-command.json',JSON.stringify({operation:'load',path:'/projects/keyboard-scene.blend'}))")
             page.wait_for_function("blenderEditor.FS.analyzePath('/editor-state.json').exists && JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).filepath==='/projects/keyboard-scene.blend'",timeout=60000)
             assert state()['location']==[1,0,0] and not state()['errors'],state()
+            # Suspension releases input, stops drawing, and resumes the same
+            # scene; orientation changes must preserve a working native editor.
+            page.keyboard.down('Shift')
+            page.evaluate("Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'))")
+            page.wait_for_timeout(300)
+            suspended=state()['observations']
+            page.wait_for_timeout(500)
+            assert state()['observations']==suspended,'Native main loop kept running while hidden'
+            page.evaluate("delete document.hidden;document.dispatchEvent(new Event('visibilitychange'))")
+            page.wait_for_function("count=>JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).observations>count",arg=suspended,timeout=30000)
+            page.keyboard.up('Shift')
+            page.set_viewport_size({'width':768,'height':1024})
+            page.wait_for_function("JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).location[0]===1")
+            assert not state()['errors'],state()
+            # Native memory/files remain accessible after a real GPU device
+            # loss. Export must still return the exact project bytes.
+            page.evaluate('testDevice.destroy()')
+            page.wait_for_function("document.body.dataset.error?.startsWith('Graphics device lost')")
+            page.locator('#recover-files').click()
+            page.locator('#saved-files').select_option('/projects/keyboard-scene.blend')
+            with page.expect_download() as pending:
+                page.locator('#download-file').click()
+            assert Path(pending.value.path()).read_bytes()==bytes(saved)
             assert not errors,errors
+            # Simulate an unavailable adapter on the next boot. Recovery reads
+            # the real IDBFS records without instantiating the native engine.
+            context.add_init_script('navigator.gpu.requestAdapter=async()=>null;')
+            page.reload()
+            page.wait_for_function("document.body.dataset.error?.includes('No WebGPU graphics adapter')")
+            assert not page.evaluate('!!window.blenderEditor')
+            page.locator('#recover-files').click()
+            page.locator('#saved-files').select_option('/projects/keyboard-scene.blend')
+            with page.expect_download() as pending:
+                page.locator('#download-file').click()
+            assert Path(pending.value.path()).read_bytes()==bytes(saved)
         finally:
             try:
                 (ROOT/'.cache/blender-editor-browser-log.json').write_text(json.dumps(page.evaluate('({output:window.editorOutput,errors:window.editorErrors})'),indent=2))
             except Exception: pass
             browser.close()
-    print('PASS: actual Blender editor canvas, GHOST keyboard transform and touch selection, native project save/load, durable files and offline application reload.')
+    print('PASS: native editor, high-density input, native project persistence/offline reload, suspension/orientation and exact backup after GPU device loss.')
 finally:
     server.shutdown();server.server_close()

@@ -152,7 +152,7 @@ static const char *to_string(const TextureFormat &type)
     case TextureFormat::SINT_16_16:
       return "rg16i";
     case TextureFormat::SFLOAT_16_16:
-      return "rg16f";
+      return "rgba16f";
     case TextureFormat::UNORM_16_16:
       return "rg16";
     case TextureFormat::UINT_8:
@@ -172,11 +172,14 @@ static const char *to_string(const TextureFormat &type)
     case TextureFormat::SINT_16:
       return "r16i";
     case TextureFormat::SFLOAT_16:
-      return "r16f";
+      return "rgba16f";
     case TextureFormat::UNORM_16:
       return "r16";
     case TextureFormat::UFLOAT_11_11_10:
-      return "r11f_g11f_b10f";
+      /* The SDK-matched Tint reader and baseline WebGPU storage textures do
+       * not support the packed RGB image format. Match the expanded texture
+       * allocation, retaining all three HDR channels at greater precision. */
+      return "rgba16f";
     case TextureFormat::UNORM_10_10_10_2:
       return "rgb10_a2";
     default:

@@ -45,7 +45,8 @@ try:
         assert page.evaluate('coreExit')==0,page.evaluate('coreErrors')
         checks=json.loads(page.evaluate("blenderCore.FS.readFile('/gpu-output/result.json',{encoding:'utf8'})"))
         assert checks['version']==[5,2,2],checks
-        assert checks['checks']=={'RGBA8':True,'RGBA16F':True,'RGBA32F':True,
+        assert checks['checks']=={'RGBA8':True,'RGBA16F':True,'RGBA32F':True,'packed_hdr':True,
+                                 'R16F_storage':True,'RG16F_storage':True,
                                  'array_layers':True,'cube_faces':True,'builtin_shader_triangle':True,
                                  'font_storage_shader':True},checks
         assert not errors,errors

@@ -19,3 +19,10 @@ CPython 3.13.13 retains its PSF license, copied beside the local browser runtime
 Blender's original GHOST, allocator, logging and dependency code is fetched from the immutable release pin in `port.lock.json`. Dependency archive hashes are taken from that release's `build_files/build_environment/cmake/versions.cmake` and are retained in `browser-port.lock.json`. No checksums or assertions are weakened to accept a build.
 
 Tint atomic composite lowering includes a narrow backport of upstream Dawn fixes. [Patch provenance](patches/tint-atomics-composite.md) records the original commits and retained BSD-3-Clause licensing. The SDK-matched source pin and compiler validation remain in place.
+
+The optional CPU Cycles profile uses oneTBB 2022.3.0, pinned to the archive checksum
+in Blender's stable dependency manifest. Its Apache-2.0 license is retained in
+the corresponding dependency source. The browser overlay builds the real
+scheduler with assertions and pthreads; Node and isolated-browser probes check
+parallel work and task completion before the profile can be enabled. These
+probes do not establish Cycles rendering support.

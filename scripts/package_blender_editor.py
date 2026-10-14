@@ -17,8 +17,9 @@ NOTICE = '''Experimental Blender 5.2.2 browser editor
 
 This is an incomplete browser port. The native editor, viewport, keyboard,
 touch selection, project save/load and offline reload passed Chromium tests.
-Cycles and several optional features are disabled. Safari/iPad acceptance and
-render engine validation remain outstanding. Initial shader compilation is slow.
+Validated render engines are listed in editor-validation.json. Several optional
+features remain disabled. Safari/iPad acceptance remains outstanding.
+Initial shader compilation is slow.
 
 Serve these files from HTTPS with these response headers:
 Cross-Origin-Opener-Policy: same-origin
@@ -28,6 +29,8 @@ Cross-Origin-Resource-Policy: same-origin
 WebGPU and cross-origin isolation are required. Plain HTTP .local hosting is
 insufficient. An installed offline application computes locally on your device.
 Keep backups of exported projects; browsers can evict site storage.
+For WorldWideWeb on the target iPad, follow IPAD_ACCEPTANCE.md using a stable
+localhost or 127.0.0.1 address with the server's port and path.
 
 The combined application is distributed under GPL-3.0-or-later. See LICENSE.txt
 and THIRD_PARTY.md. Corresponding source accompanies this build separately.
@@ -105,6 +108,7 @@ def main():
         archive.writestr('README.txt', NOTICE + '\nCorresponding source: ' + source_name + '\n')
         archive.write(ROOT / 'native/browser/LICENSE-GPL-3.0.txt', 'LICENSE.txt')
         archive.write(ROOT / 'THIRD_PARTY.md', 'THIRD_PARTY.md')
+        archive.write(ROOT / 'IPAD_ACCEPTANCE.md', 'IPAD_ACCEPTANCE.md')
         archive.write(directory / 'editor-validation.json', 'editor-validation.json')
     if snapshot() != {key: proof[key] for key in ('assets', 'tests')}:
         temporary_app.unlink()

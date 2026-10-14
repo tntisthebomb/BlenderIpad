@@ -156,6 +156,13 @@
       "source": "tiff-4.7.1",
       "hash_type": "md5",
       "hash": "f1044dd3b4466cc53464210148e08146"
+    },
+    "tbb": {
+      "url": "https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2022.3.0.tar.gz",
+      "archive": "oneTBB-v2022.3.0.tar.gz",
+      "source": "oneTBB-2022.3.0",
+      "hash_type": "md5",
+      "hash": "2b242c465b194ac8e1451ea1354873ae"
     }
   },
   "graphics_dependencies": {

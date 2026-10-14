@@ -30,3 +30,12 @@ Module['runBlenderMain'] = async function (args) {
     throw error;
   }
 };
+
+// Stop scheduling draws while the page is suspended or its device is lost.
+// The filesystem remains available for downloading already-saved projects.
+Module['pauseBlenderLoop'] = function () {
+  Module['pauseMainLoop']?.();
+};
+Module['resumeBlenderLoop'] = function () {
+  Module['resumeMainLoop']?.();
+};

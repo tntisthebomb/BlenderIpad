@@ -8,9 +8,11 @@ command=Path('/editor-command.json')
 state=Path('/editor-state.json')
 errors=[]
 last_operation=None
+observations=0
 
 def observe():
-    global last_operation
+    global last_operation, observations
+    observations += 1
     try:
         if command.exists():
             request=json.loads(command.read_text())
@@ -41,6 +43,7 @@ def observe():
                 break
         state.write_text(json.dumps({
             'version':list(bpy.app.version),
+            'observations':observations,
             'backend':__import__('gpu').platform.backend_type_get(),
             'windows':len(windows),
             'areas':[area.type for area in windows[0].screen.areas] if windows else [],

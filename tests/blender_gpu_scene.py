@@ -4,6 +4,7 @@ import gpu
 import json
 import math
 import os
+import struct
 from gpu_extras.batch import batch_for_shader
 from mathutils import Matrix
 
@@ -29,6 +30,37 @@ for name in ['RGBA8','RGBA16F','RGBA32F']:
     tolerance=1/255 if name=='RGBA8' else 1e-6
     assert all(math.isclose(a,b,rel_tol=0,abs_tol=tolerance) for a,b in zip(actual,expected)),(name,actual[:8])
     checks[name]=True
+
+# Eevee's packed HDR images use portable padded storage in WebGPU. Exercise
+# public upload and packed readback, including the exact logical buffer size.
+hdr_values=[1.0,0.5,0.25]*64
+texture=gpu.types.GPUTexture((8,8),format='R11F_G11F_B10F',
+    data=gpu.types.Buffer('FLOAT',len(hdr_values),hdr_values))
+actual=list(flattened(texture.read()))
+half=lambda value: struct.unpack('<H',struct.pack('<e',value))[0]
+packed=(half(1.0)>>4) | ((half(0.5)>>4)<<11) | ((half(0.25)>>5)<<22)
+assert len(actual)==64 and all(value==packed for value in actual),(len(actual),actual[:8])
+checks['packed_hdr']=True
+
+# Include equal-sized source/destination encodings: RG float32 uploads have
+# eight bytes per pixel, just like the padded four-component half-float target.
+for name,components in [('R16F',1),('RG16F',2)]:
+    values=[0.25,0.5][:components]*64
+    texture=gpu.types.GPUTexture((8,8),format=name,data=gpu.types.Buffer('FLOAT',len(values),values))
+    actual=list(flattened(texture.read()))
+    assert len(actual)==len(values),(name,len(actual))
+    assert all(math.isclose(a,b,rel_tol=0,abs_tol=1e-6) for a,b in zip(actual,values)),(name,actual[:8])
+    info=gpu.types.GPUShaderCreateInfo()
+    info.local_group_size(8,8)
+    info.image(0,name,'FLOAT_2D','target',qualifiers={'WRITE'})
+    info.compute_source('void main(){imageStore(target,ivec2(gl_GlobalInvocationID.xy),vec4(0.5,0.25,0.75,1.0));}')
+    shader=gpu.shader.create_from_info(info)
+    shader.image('target',texture)
+    gpu.compute.dispatch(shader,1,1,1)
+    actual=list(flattened(texture.read()))
+    expected=[0.5,0.25][:components]*64
+    assert actual==expected,(name,actual[:8])
+    checks[name+'_storage']=True
 
 # Distinct layer colours ensure readback does not silently return only layer 0.
 for label,options,layers in [
