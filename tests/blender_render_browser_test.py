@@ -54,10 +54,15 @@ try:
         checks=json.loads(page.evaluate("blenderCore.FS.readFile('/render-output/result.json',{encoding:'utf8'})"))
         assert checks['version']==[5,2,2],checks
         assert checks['engine']==options.engine,checks
-        assert set(checks['checks'])=={'red','green','empty'},checks
+        labels={'red','green','empty'}
+        if options.engine!='BLENDER_WORKBENCH':
+            labels.update({'world_specular_red','world_specular_green','world_diffuse_red','world_diffuse_green'})
+        if options.engine=='BLENDER_EEVEE':
+            labels.update({'shadow_sun_off','shadow_sun_on','shadow_point_off','shadow_point_on'})
+        assert set(checks['checks'])==labels,checks
         from PIL import Image
         import io
-        for label in ('red','green','empty'):
+        for label in sorted(labels):
             data=bytes(page.evaluate("path=>Array.from(blenderCore.FS.readFile(path))",'/render-output/'+label+'.png'))
             picture=Image.open(io.BytesIO(data)).convert('RGBA')
             assert picture.size==(64,64),picture.size

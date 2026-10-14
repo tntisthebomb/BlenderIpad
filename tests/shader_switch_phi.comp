@@ -5,6 +5,9 @@ int bump(inout int value) { value += 2; return value; }
 int triple(inout int value) { value *= 3; return value; }
 int calculate(int selector) {
   int value = 1;
+  // These scoped names must remain distinct after Tint emits WGSL.
+  { int prev = selector + 1; value += prev - selector - 1; }
+  { int prev = selector + 2; value += prev - selector - 2; }
   switch (selector) {
     case 0: value += 2;
     case 1:

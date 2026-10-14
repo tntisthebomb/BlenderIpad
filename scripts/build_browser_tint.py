@@ -60,8 +60,6 @@ if __name__ == '__main__':
     source, abseil = pinned_git('dawn'), pinned_git('abseil')
     atomics = patched_source(source, 'src/tint/lang/spirv/reader/lower/atomics.cc',
                              'tint-atomics-composite.patch')
-    parser_source = patched_source(source, 'src/tint/lang/spirv/reader/parser/parser.cc',
-                                   'tint-image-switch-parser.patch')
     intrinsic_source = patched_source(source, 'src/tint/lang/spirv/intrinsic/data.cc',
                                       'tint-image-overloads.patch')
     patched_source(source, 'src/tint/lang/spirv/spirv.def', 'tint-image-overloads.patch')
@@ -93,7 +91,6 @@ if __name__ == '__main__':
         '-DDAWN_JINJA2_DIR=' + packages, '-DDAWN_MARKUPSAFE_DIR=' + packages,
         '-DBLENDER_SHADER_PROBE_SOURCE=' + str(ROOT / 'tests/shader_translation_probe.cc'),
         '-DBLENDER_TINT_ATOMICS_SOURCE=' + str(atomics),
-        '-DBLENDER_TINT_PARSER_SOURCE=' + str(parser_source),
         '-DBLENDER_TINT_INTRINSIC_SOURCE=' + str(intrinsic_source),
         '-DCMAKE_EXE_LINKER_FLAGS=-pthread -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=2 -sDISABLE_EXCEPTION_CATCHING=0 -sSTACK_SIZE=8388608',
         '-DDAWN_ABSEIL_DIR=' + str(abseil), '-DDAWN_SPIRV_TOOLS_DIR=' + str(spirv),

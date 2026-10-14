@@ -23,35 +23,32 @@ files, not an accepted distribution; its old proof was moved to
 run CLI acceptance, relink the browser application and validate its exact assets
 before packaging. Do not distribute that diagnostic cache.
 
-Real offline Workbench PNG rendering and modeling/geometry-node/rigging/OBJ
-round trips passed on the baseline engine. Updated storage, failed-install and
-atomic-update fixtures also passed. The new full binary still needs acceptance;
-Eevee and CPU Cycles rendering in the complete editor remain unproven. The real
-isolated Cycles CPU engine produced correct red and green PNGs offline, which
-does not establish the full editor's rendering or iPad memory suitability.
-OpenSubdiv's five upstream CPU tests and Blender's evaluator library compile
-passed; the application fixture must still prove the Subdivision Surface modifier.
+The full-source candidate `2c90fac911f1ec4ee4eb9d394cb9ff229ad46422`,
+[run 38629226031](https://github.com/tntisthebomb/BlenderIpad/actions/runs/38629226031),
+linked both profiles and passed actual native CLI validation. Browser tests
+passed GPU resources, offline Workbench rendering, modeling/geometry nodes,
+rigging, CPU Subdivision Surface, embedded Python threads, storage/install/update
+handling and the complete editor lifecycle, including actual scheduler pause
+and device-loss backup. The CPU profile also passed real native Cycles PNG
+rendering. Both profiles failed Eevee; this candidate is not a distribution.
 
-The local 8 GiB builder could compile the editor but exceeded memory at the
-full-module Asyncify link. Public-runner builds at source `f0c26df` linked both
-profiles, then failed native Python startup with a stack overflow. The staged
-optimizer had lost Asyncify's optimization level; source `5999676` retains it,
-and both profiles passed native CLI acceptance. That run also passed offline
-Workbench and modeling, including actual Subdivision Surface, but failed GPU,
-Eevee, Cycles registration and device-loss checks. It is not a distribution.
+Current follow-ups replace the unsafe Tint switch-parser patch with GLSL
+fallthrough lowering before SSA construction, preserve binding names while
+removing colliding local debug names, enable the WGSL read/write storage
+language feature, implement coherent atomic images using real buffer atomics,
+and adapt Eevee workgroups, z bins, hierarchical depth and mip copies to portable
+hardware limits. Shadow pool allocation respects the atomic backing capacity.
+The actual failing light-culling shader now translates. Numeric WebGPU tests
+pass switches, nested control flow, scoped names, 3D dimensions/texels,
+read/write storage and 1,024 contending atomic-image invocations. These isolated
+results do not establish a complete Eevee render. Both source profiles must
+pass all gates again before packaging.
 
-Follow-up fixes stage Cycles' upstream delayed-install Python add-on, correct
-Tint image overloads and scoped switch fallthrough, explicitly unbind a test
-shader before releasing it, and retain the Emscripten runtime while pausing its
-scheduler. Actual full-engine Cycles PNGs passed with the missing scripts
-supplied. The complete editor lifecycle and backup checks passed with corrected
-JavaScript on the recovered real engine; a fresh full source-matched build is
-still required. Standalone translator regressions verify numeric switch/loop/
-conditional-call results and 3D dimensions/texel fetch on WebGPU. Preserve O2,
-assertions and Asyncify. The recovered failed engine plus corrected JavaScript
-in `.cache/blender-webgpu-browser` is diagnostic, not an accepted package.
-The real oneTBB Node/browser scheduler probes and CPU Cycles kernel/device/
-utility compilation also pass; actual integrated rendering remains a gate.
+Extended full-engine Cycles diagnostics passed world diffuse and rough-metal
+red/green lighting, with direct lights disabled. The updated renderer fixture
+requires those world-probe paths from Eevee too. Preserve assertions, O2,
+Asyncify and the real Emscripten runtime keepalive around scheduler suspension.
+Never package the manually corrected diagnostic runtime in the local cache.
 
 ## Authoritative state
 
@@ -79,7 +76,7 @@ Recovered outputs:
 
 - `dist/BlenderIpad-5.2.2-editor-preview.zip`
 - `dist/BlenderIpad-5.2.2-editor-preview-source.tar.gz`
-- `.cache/blender-webgpu-browser/`: extracted accepted runtime and CI acceptance proof.
+- `.cache/blender-webgpu-browser/`: currently an unaccepted diagnostic runtime; original proof is preserved separately.
 - `work/recovery/ci-diagnostics/`: original CI screenshot and logs.
 - `work/recovery/artifact-verification.json`: recovery verification record.
 
@@ -114,18 +111,17 @@ Background modeling, modifiers, animation and image operations also passed.
 
 Remaining full-port gates:
 
-1. Validate real offline scene rendering and output images. Workbench/Eevee
-   rendering is not established by viewport acceptance. Cycles is disabled.
+1. Complete actual offline Eevee rendering, including world lighting and shadows,
+   and rerun all checks against freshly linked source-matched profiles.
 2. Verify Safari and Home Screen operation on the target iPad 10th generation,
-   iPadOS 26, including adapter features, actual memory limits and usable input.
-3. Exercise suspension/resumption, graphics device loss, storage eviction/quota,
-   interrupted installation and coherent application updates.
-4. Audit disabled optional features, extensions, textures/linked projects,
-   clipboard/IME and browser-specific input limitations against the full goal.
-5. Establish a usable HTTPS installation path with the necessary isolation
-   headers. The Pages workflow and older WorldWideWeb ZIPs are the math demo.
+   iPadOS 26, including actual memory limits, rendering and usable input.
+3. Repeat suspension, rotation, device loss and file recovery on that iPad.
+4. Audit disabled optional features, extensions, linked projects, clipboard/IME
+   and browser-specific input limitations against the full goal.
+5. Validate the actual editor through WorldWideWeb at a trusted localhost URL,
+   including isolation, installation and disconnected launch. Older Pages and
+   WorldWideWeb ZIPs may contain the earlier math demo; verify build identity.
 
 Keep Blender's source and dependency pins unchanged unless intentionally
-updating the release. Render validation is the next independent engineering
-step; physical-device acceptance requires an actual iPad and cannot be inferred
-from the cloud browser.
+updating the release. Physical-device acceptance requires the actual iPad and
+cannot be inferred from the cloud browser.

@@ -7,6 +7,7 @@
  */
 
 #include <cstring>
+#include <stdexcept>
 
 #include "BLI_math_half.hh"
 #include <cstdlib>
@@ -268,6 +269,67 @@ WebGPUTexture::~WebGPUTexture()
   }
 }
 
+WebGPUAtomicImage::~WebGPUAtomicImage()
+{
+  if (buffer) wgpuBufferRelease(buffer);
+}
+
+WGPUBuffer WebGPUTexture::atomic_image_buffer()
+{
+  WebGPUContext *ctx = ctx_get();
+  if (!texture_ || !ctx || !ctx->device()) return nullptr;
+  if ((wgpu_format_ != WGPUTextureFormat_R32Uint &&
+       wgpu_format_ != WGPUTextureFormat_R32Sint) || view_mip_ != 0 || view_layer_ != 0) {
+    throw std::runtime_error("WebGPU atomic images require an R32I/R32UI base-level view");
+  }
+  auto &state = *atomic_image_;
+  if (!state.buffer) {
+    state.width = wgpuTextureGetWidth(texture_);
+    state.height = wgpuTextureGetHeight(texture_);
+    state.depth = wgpuTextureGetDepthOrArrayLayers(texture_);
+    state.row_bytes = (state.width * 4u + 255u) & ~255u;
+    WGPUBufferDescriptor descriptor = {};
+    descriptor.size = 16u + uint64_t(state.row_bytes) * state.height * state.depth;
+    descriptor.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst;
+    state.buffer = wgpuDeviceCreateBuffer(ctx->device(), &descriptor);
+    const uint32_t header[] = {state.width, state.height, state.depth, state.row_bytes / 4u};
+    wgpuQueueWriteBuffer(ctx->queue(), state.buffer, 0, header, sizeof(header));
+  }
+  if (!state.dirty) {
+    ctx->render_pass_end();
+    WGPUTexelCopyTextureInfo source = {};
+    source.texture = texture_;
+    WGPUTexelCopyBufferInfo destination = {};
+    destination.buffer = state.buffer;
+    destination.layout.offset = 16;
+    destination.layout.bytesPerRow = state.row_bytes;
+    destination.layout.rowsPerImage = state.height;
+    const WGPUExtent3D extent = {state.width, state.height, state.depth};
+    wgpuCommandEncoderCopyTextureToBuffer(ctx->ensure_encoder(), &source, &destination, &extent);
+  }
+  state.dirty = true;
+  return state.buffer;
+}
+
+void WebGPUTexture::sync_atomic_image() const
+{
+  auto &state = *atomic_image_;
+  if (!state.buffer || !state.dirty || !texture_) return;
+  WebGPUContext *ctx = ctx_get();
+  if (!ctx || !ctx->device()) return;
+  ctx->render_pass_end();
+  WGPUTexelCopyBufferInfo source = {};
+  source.buffer = state.buffer;
+  source.layout.offset = 16;
+  source.layout.bytesPerRow = state.row_bytes;
+  source.layout.rowsPerImage = state.height;
+  WGPUTexelCopyTextureInfo destination = {};
+  destination.texture = texture_;
+  const WGPUExtent3D extent = {state.width, state.height, state.depth};
+  wgpuCommandEncoderCopyBufferToTexture(ctx->ensure_encoder(), &source, &destination, &extent);
+  state.dirty = false;
+}
+
 bool WebGPUTexture::init_internal()
 {
   wgpu_format_ = webgpu_texture_format(format_);
@@ -368,6 +430,7 @@ static bool webgpu_format_has_stencil(WGPUTextureFormat f)
 
 WGPUTextureView WebGPUTexture::wgpu_attachment_view(int layer, int mip)
 {
+  sync_atomic_image();
   if (texture_ == nullptr) {
     return nullptr;
   }
@@ -406,6 +469,7 @@ void WebGPUTexture::mip_range_set(int min, int max)
 
 WGPUTextureView WebGPUTexture::wgpu_sample_view()
 {
+  sync_atomic_image();
   if (!webgpu_format_has_stencil(wgpu_format_)) {
     /* Honor the sampling mip window: Blender clamps to the mips it actually
        uploaded/generated; the default view spans the full chain and samples
@@ -475,6 +539,7 @@ WGPUTextureView WebGPUTexture::make_view_of(WGPUTexture other)
 
 WGPUTextureView WebGPUTexture::wgpu_storage_view()
 {
+  sync_atomic_image();
   if (mipmaps_ <= 1 && !is_view_) {
     return view_; /* Default view already spans exactly one mip. */
   }
@@ -518,6 +583,7 @@ bool WebGPUTexture::init_internal(gpu::Texture *src,
     return true;
   }
   texture_ = s->texture_;
+  atomic_image_ = s->atomic_image_;
   wgpuTextureAddRef(texture_);
   is_view_ = true;
   view_layer_ = std::max(layer_offset, 0);
@@ -550,6 +616,7 @@ void WebGPUTexture::update_sub(int mip,
   if (!texture_ || !ctx || !ctx->queue() || !data) {
     return;
   }
+  sync_atomic_image();
   if (is_depth_format()) {
     /* WebGPU forbids writing the depth aspect via WriteTexture. */
     static int s_depth_up = 0;
@@ -825,6 +892,7 @@ void WebGPUTexture::update_sub(int mip,
 
 void WebGPUTexture::generate_mipmap()
 {
+  sync_atomic_image();
   WebGPUContext *ctx = ctx_get();
   if (ctx != nullptr) {
     ctx->generate_mipmaps(this);
@@ -834,6 +902,8 @@ void WebGPUTexture::generate_mipmap()
 void WebGPUTexture::copy_to(Texture *dst_tex, IndexRange mip_levels)
 {
   WebGPUTexture *dst = static_cast<WebGPUTexture *>(dst_tex);
+  sync_atomic_image();
+  if (dst) dst->sync_atomic_image();
   WebGPUContext *ctx = ctx_get();
   if (ctx == nullptr || texture_ == nullptr || dst == nullptr || dst->texture_ == nullptr) {
     return;
@@ -869,6 +939,7 @@ void WebGPUTexture::copy_to(Texture *dst_tex, IndexRange mip_levels)
 
 void WebGPUTexture::clear(const double4 source)
 {
+  sync_atomic_image();
   double4 data = source;
   const int components = to_component_len(format_);
   if (wgpu_format_ == WGPUTextureFormat_RGBA16Float && components < 4) {
@@ -1063,6 +1134,7 @@ void WebGPUTexture::update_sub(int offset[3],int extent[3],eGPUDataFormat format
 
 void WebGPUTexture::read(int mip, eGPUDataFormat format, void *dst)
 {
+  sync_atomic_image();
   WebGPUContext *ctx = ctx_get();
   if (ctx == nullptr || texture_ == nullptr || dst == nullptr || mip < 0 || mip >= mipmaps_) {
     throw std::runtime_error("WebGPU texture readback resource or mip is invalid");

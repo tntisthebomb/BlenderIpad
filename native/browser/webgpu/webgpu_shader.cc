@@ -30,6 +30,8 @@
 
 #include "webgpu_context.hh"
 #include "webgpu_shader.hh"
+#include "shader_prepare.hh"
+#include "shader_atomic_image.hh"
 #include "webgpu_shader_interface.hh"
 
 namespace blender::gpu {
@@ -507,7 +509,7 @@ static std::string webgpu_glsl_patch(const char *stage_define)
  * interaction hitches the first time any shader variant is used. The page
  * (blender-gui.html) preloads previously translated WGSL from IndexedDB into
  * globalThis.__WGSL_CACHE__ before main() runs; lookups here are synchronous.
- * Keys: "v2:<stage>:<fnv1a64 of the joined GLSL>". The version salt must be
+ * Keys: "v4:<stage>:<fnv1a64 of the joined GLSL>". The version salt must be
  * bumped whenever the translator or the GLSL patching changes output. */
 EM_JS(int, wgpu_wgsl_cache_query, (const char *key), {
   const m = globalThis.__WGSL_CACHE__;
@@ -546,7 +548,7 @@ static std::string wgsl_cache_key(const char *stage, const std::string &glsl)
     h = (h ^ uint8_t(c)) * 1099511628211ull;
   }
   char key[64];
-  snprintf(key, sizeof(key), "v2:%s:%016llx:%zu", stage, (unsigned long long)h, glsl.size());
+  snprintf(key, sizeof(key), "v4:%s:%016llx:%zu", stage, (unsigned long long)h, glsl.size());
   return key;
 }
 
@@ -588,7 +590,22 @@ static bool glsl_to_wgsl(const std::string &glsl,
   shaderc::Compiler compiler;
   shaderc::CompileOptions opts;
   opts.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_0);
-  shaderc::SpvCompilationResult spv = compiler.CompileGlslToSpv(glsl, kind, name, opts);
+  const auto preprocessed = compiler.PreprocessGlsl(glsl, kind, name, opts);
+  if (preprocessed.GetCompilationStatus() != shaderc_compilation_status_success) {
+    fprintf(stderr, "WGPU_SH preprocess FAIL %s: %s\n", name,
+            preprocessed.GetErrorMessage().c_str());
+    return false;
+  }
+  std::string prepared;
+  try {
+    prepared = webgpu_prepare::lower_atomic_images(webgpu_prepare::lower_switches(
+        std::string(preprocessed.cbegin(), preprocessed.cend())));
+  }
+  catch (const std::exception &error) {
+    fprintf(stderr, "WGPU_SH preparation FAIL %s: %s\n", name, error.what());
+    return false;
+  }
+  shaderc::SpvCompilationResult spv = compiler.CompileGlslToSpv(prepared, kind, name, opts);
   if (spv.GetCompilationStatus() != shaderc_compilation_status_success) {
     fprintf(stderr, "WGPU_SH shaderc FAIL %s: %s\n", name, spv.GetErrorMessage().c_str());
     if (getenv("WGPU_DUMP_GLSL")) {
@@ -601,6 +618,7 @@ static bool glsl_to_wgsl(const std::string &glsl,
     return false;
   }
   std::vector<uint32_t> words(spv.cbegin(), spv.cend());
+  webgpu_prepare::unique_local_names(words);
   /* Capture the actual compiler input before Tint runs, including shaders
    * whose translation fails. This is opt-in and does not change compilation. */
   if (getenv("WGPU_DUMP_SPIRV")) {
@@ -643,6 +661,7 @@ static bool glsl_to_wgsl(const std::string &glsl,
    * storage textures). Allow them all here so the WGSL is produced; the browser
    * device must in turn expose the matching WebGPU features at module use. */
   tint::wgsl::writer::Options wopts;
+  wopts.allowed_features = tint::wgsl::AllowedFeatures::Everything();
   wopts.allow_non_uniform_derivatives = true;
   wopts.allow_non_uniform_subgroup_operations = true;
   auto out = tint::wgsl::writer::WgslFromIR(ir.Get(), wopts);
@@ -855,6 +874,11 @@ static void parse_wgsl_bindings(const std::string &wgsl, std::vector<WgslResourc
     else if (decl.compare(0, 11, "var<storage") == 0) {
       b.kind = WgslResourceBinding::SSBO;
       b.res_name = strip_buffer_typename(type);
+      const std::string atomic_prefix = "wgpu_atomic_image_";
+      if (b.res_name.rfind(atomic_prefix, 0) == 0) {
+        b.kind = WgslResourceBinding::ATOMIC_IMAGE;
+        b.res_name.erase(0, atomic_prefix.size());
+      }
       /* `var<storage, read>` = read-only; `read_write` (or bare) = writable. */
       const std::string head = decl.substr(0, decl.find('>'));
       if (has(head, "read_write")) {
@@ -1562,6 +1586,18 @@ void WebGPUShader::ensure_translated()
     parse_wgsl_bindings(vertex_wgsl_, render_bindings_);
     parse_wgsl_bindings(fragment_wgsl_, render_bindings_);
     parse_wgsl_bindings(compute_wgsl_, compute_bindings_);
+    /* Tint's atomics transform can rename the buffer's struct. Recover image
+     * bindings from create-info rather than relying on the generated type name. */
+    auto mark_atomic_images = [&](std::vector<WgslResourceBinding> &bindings) {
+      auto *iface = static_cast<WebGPUShaderInterface *>(interface);
+      for (auto &binding : bindings) {
+        if (binding.kind == WgslResourceBinding::SSBO && iface->is_image_binding(binding.binding)) {
+          binding.kind = WgslResourceBinding::ATOMIC_IMAGE;
+        }
+      }
+    };
+    mark_atomic_images(render_bindings_);
+    mark_atomic_images(compute_bindings_);
     frag_output_mask_ = parse_fragment_output_mask(fragment_wgsl_);
     parse_vertex_inputs(vertex_wgsl_, vertex_inputs_);
   }

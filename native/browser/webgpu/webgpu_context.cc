@@ -1334,6 +1334,7 @@ WGPUBindGroupLayout WebGPUContext::make_bind_group_layout(
         e.buffer.type = WGPUBufferBindingType_Uniform;
         break;
       case WgslResourceBinding::SSBO:
+      case WgslResourceBinding::ATOMIC_IMAGE:
         e.buffer.type = b.buffer_type;
         break;
       case WgslResourceBinding::TEXTURE: {
@@ -1455,6 +1456,14 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
         const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->ssbo_get_by_wgsl_binding(b.binding);
         int slot = in ? in->binding : -1;
         e.buffer = (slot >= 0 && slot < WEBGPU_MAX_SSBO) ? bound_ssbo_[slot] : nullptr;
+        e.size = WGPU_WHOLE_SIZE;
+        break;
+      }
+      case WgslResourceBinding::ATOMIC_IMAGE: {
+        const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(b.binding);
+        int slot = in ? in->binding : -1;
+        WebGPUTexture *t = (slot >= 0 && slot < WEBGPU_MAX_IMAGE) ? bound_image_[slot] : nullptr;
+        e.buffer = t ? t->atomic_image_buffer() : nullptr;
         e.size = WGPU_WHOLE_SIZE;
         break;
       }
@@ -1675,7 +1684,9 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
    * bound buffer). See pass_buffer_usage_. */
   pending_draw_buffers_.clear();
   for (size_t i = 0; i < entries.size(); i++) {
-    if (entries[i].buffer != nullptr && bindings[i].kind == WgslResourceBinding::SSBO) {
+    if (entries[i].buffer != nullptr &&
+        (bindings[i].kind == WgslResourceBinding::SSBO ||
+         bindings[i].kind == WgslResourceBinding::ATOMIC_IMAGE)) {
       const bool writable = bindings[i].buffer_type == WGPUBufferBindingType_Storage;
       pending_draw_buffers_.emplace_back(entries[i].buffer, writable);
       if (getenv("WGPU_LOG_SSBOUSE") && strstr(shader->name_get().c_str(), "MAV") != nullptr) {

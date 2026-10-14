@@ -112,6 +112,42 @@ assert list(flattened(target.read()))==[2,3,4,42]
 gpu.shader.unbind()
 checks['volume_query']=True
 
+# Eevee's virtual shadow atlas needs contended atomic min/add and coherent
+# texture readback, followed by a normal texture write and another atomic pass.
+atlas=gpu.types.GPUTexture((2,1),layers=1,format='R32UI',
+    data=gpu.types.Buffer('UINT',2,[0xffffffff,0]))
+info=gpu.types.GPUShaderCreateInfo()
+info.local_group_size(64,1)
+info.image(0,'R32UI','UINT_2D_ARRAY','atlas',qualifiers={'READ','WRITE'})
+info.compute_source('''void main(){
+  uint index=gl_GlobalInvocationID.x;
+  imageAtomicMin(atlas,ivec3(0,0,0),1024u-index);
+  imageAtomicAdd(atlas,ivec3(1,0,0),1u);
+  imageAtomicMin(atlas,ivec3(0,0,-1),0u);
+  imageAtomicAdd(atlas,ivec3(0,0,1),1u);
+}''')
+atomic_shader=gpu.shader.create_from_info(info)
+atomic_shader.image('atlas',atlas)
+gpu.compute.dispatch(atomic_shader,16,1,1)
+assert list(flattened(atlas.read()))==[1,1024]
+gpu.shader.unbind()
+info=gpu.types.GPUShaderCreateInfo()
+info.local_group_size(1,1)
+info.image(0,'R32UI','UINT_2D_ARRAY','atlas',qualifiers={'WRITE'})
+info.compute_source('''void main(){
+  imageStore(atlas,ivec3(0,0,0),uvec4(0xffffffffu));
+  imageStore(atlas,ivec3(1,0,0),uvec4(0u));
+}''')
+clear_shader=gpu.shader.create_from_info(info)
+clear_shader.image('atlas',atlas)
+gpu.compute.dispatch(clear_shader,1,1,1)
+gpu.shader.unbind()
+atomic_shader.image('atlas',atlas)
+gpu.compute.dispatch(atomic_shader,16,1,1)
+assert list(flattened(atlas.read()))==[1,1024]
+gpu.shader.unbind()
+checks['atomic_image_coherence']=True
+
 # Distinct layer colours ensure readback does not silently return only layer 0.
 for label,options,layers in [
     ('array_layers',{'size':(8,8),'layers':3},3),

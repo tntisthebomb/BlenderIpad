@@ -19,7 +19,7 @@ if __name__ == '__main__':
     run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node',
         build / 'blender_shader_translation_probe.js', probe / 'portable-math.spv',
         probe / 'portable-math.wgsl', env=env)
-    for name in ('switch-fallthrough', 'switch-phi', 'volume-query'):
+    for name in ('switch-fallthrough', 'switch-phi', 'volume-query', 'readwrite-texture', 'atomic-image', 'zbin-range'):
         run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node',
             build / 'blender_shader_translation_probe.js', probe / (name + '.spv'),
             probe / (name + '.wgsl'), env=env)
@@ -29,5 +29,8 @@ if __name__ == '__main__':
                           'portable-math.spv', 'portable-math.wgsl',
                           'switch-fallthrough.spv', 'switch-fallthrough.wgsl',
                           'switch-phi.spv', 'switch-phi.wgsl',
-                          'volume-query.spv', 'volume-query.wgsl']}
+                          'volume-query.spv', 'volume-query.wgsl',
+                          'readwrite-texture.spv', 'readwrite-texture.wgsl',
+                          'atomic-image.spv', 'atomic-image.wgsl',
+                          'zbin-range.spv', 'zbin-range.wgsl']}
     (probe / 'translation-validation.json').write_text(json.dumps(stamp, indent=2) + '\n')

@@ -190,6 +190,7 @@ void WebGPUShaderInterface::init(const shader::ShaderCreateInfo &info)
       input++;
     }
     else if (res->bind_type == ShaderCreateInfo::Resource::BindType::IMAGE) {
+      image_bindings_.insert(resource_binding(info, *res));
       copy_input_name(input, res->image.name, name_buffer_, name_offset);
       resource_names_[resource_binding(info, *res)] = name_buffer_ + input->name_offset;
       input->binding = res->slot;

@@ -26,7 +26,20 @@ if (!crossOriginIsolated) {
     if (!adapter) throw new Error('WebGPU adapter unavailable');
     const wanted=['float32-filterable','depth32float-stencil8'];
     const features=wanted.filter(feature=>adapter.features.has(feature));
-    const device=await adapter.requestDevice({requiredFeatures:features});
+    const requiredLimits={};
+    const backendLimits={maxStorageTexturesPerShaderStage:16,maxStorageBuffersPerShaderStage:32,
+      maxUniformBuffersPerShaderStage:32,maxSampledTexturesPerShaderStage:32,maxSamplersPerShaderStage:32,
+      maxBufferSize:1073741824,maxStorageBufferBindingSize:1073741824};
+    for (const name of ['maxComputeInvocationsPerWorkgroup','maxComputeWorkgroupSizeX',
+      'maxComputeWorkgroupSizeY','maxComputeWorkgroupSizeZ','maxComputeWorkgroupStorageSize',
+      'maxStorageTexturesPerShaderStage','maxStorageBuffersPerShaderStage',
+      'maxUniformBuffersPerShaderStage','maxSampledTexturesPerShaderStage',
+      'maxSamplersPerShaderStage','maxColorAttachments','maxColorAttachmentBytesPerSample',
+      'maxStorageBufferBindingSize','maxUniformBufferBindingSize','maxBufferSize']) {
+      if (typeof adapter.limits[name]==='number') requiredLimits[name]=Math.min(
+        adapter.limits[name],backendLimits[name] ?? adapter.limits[name]);
+    }
+    const device=await adapter.requestDevice({requiredFeatures:features,requiredLimits});
     device.addEventListener('uncapturederror',event=>document.body.dataset.error=event.error.message);
     return createBlenderCore({preinitializedWebGPUDevice:device,noInitialRun: true, print: write,
     printErr: message => {coreErrors.push(String(message)); write(message);},

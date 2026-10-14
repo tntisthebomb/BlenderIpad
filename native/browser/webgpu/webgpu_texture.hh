@@ -16,10 +16,18 @@
 #include "gpu_texture_private.hh"
 
 #include <map>
+#include <memory>
 
 #include <webgpu/webgpu.h>
 
 namespace blender::gpu {
+
+struct WebGPUAtomicImage {
+  WGPUBuffer buffer = nullptr;
+  bool dirty = false;
+  uint32_t width = 0, height = 0, depth = 0, row_bytes = 0;
+  ~WebGPUAtomicImage();
+};
 
 class WebGPUTexture : public Texture {
  private:
@@ -45,6 +53,8 @@ class WebGPUTexture : public Texture {
   int view_layer_ = 0;
   int view_mip_ = 0;
   long long alloc_bytes_ = 0;
+  /* Texture views share the same atomic backing and coherence state. */
+  std::shared_ptr<WebGPUAtomicImage> atomic_image_ = std::make_shared<WebGPUAtomicImage>();
 
  public:
   WebGPUTexture(const char *name);
@@ -76,6 +86,7 @@ class WebGPUTexture : public Texture {
   }
   WGPUTexture wgpu_texture() const
   {
+    sync_atomic_image();
     return texture_;
   }
   int view_mip() const
@@ -98,8 +109,11 @@ class WebGPUTexture : public Texture {
   bool wgpu_usage_covers(eGPUTextureUsage req) const;
   WGPUTextureView wgpu_view() const
   {
+    sync_atomic_image();
     return view_;
   }
+  WGPUBuffer atomic_image_buffer();
+  void sync_atomic_image() const;
   /* View for use as a render-pass attachment: a single mip of a single layer
    * (WebGPU render attachments must have exactly one layer). layer < 0 = 0. */
   WGPUTextureView wgpu_attachment_view(int layer, int mip);

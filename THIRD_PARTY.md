@@ -41,8 +41,27 @@ was regenerated from the corrected `spirv.def` using that same pinned checkout's
 with Go 1.23.12. Go is only a development generator; the guarded patch includes
 the generated table and does not add a Go dependency to the port build.
 
-`patches/tint-image-switch-parser.patch` lowers validated switch fallthrough by
-emitting the shared tail in each entry case, with separate nested control-flow
-state. Numeric WebGPU regressions check all entry cases, loops, conditional
-function calls, nested switches, 3D dimensions and texel fetches. The Dawn
-checkout remains pristine and Tint IR validation remains enabled.
+`native/browser/webgpu/shader_prepare.hh` lowers switch fallthrough in
+preprocessed GLSL, before glslang creates SSA IDs, and removes local debug names
+that collide in WGSL. Buffer block and interface names remain intact. The
+original Tint switch parser is retained: duplicating its SPIR-V blocks proved
+unsafe for actual Eevee light-culling shaders. Tint IR validation stays enabled.
+Numeric browser regressions cover fallthrough, nested loops/switches, conditional
+calls, scoped names, 3D dimensions, texel fetch and read/write storage textures.
+
+`native/browser/webgpu/shader_atomic_image.hh` maps direct R32I/R32UI image
+atomics to storage-buffer atomics. The WebGPU texture backend synchronizes a
+padded buffer with the physical texture before subsequent texture access.
+The numeric regression checks 1,024 contending invocations, minimum/addition,
+out-of-bounds virtual pages and independent texture-copy readback. A full native
+GPU fixture additionally checks intervening ordinary image writes.
+
+`patches/blender-5.2.2-browser-eevee-compute-limits.patch` adapts Eevee to
+256-invocation groups and four writable textures per stage. Shadow kernels
+visit every original tile with fewer physical lanes. Z bins pack the existing
+16-bit min/max indices into one atomic word, retaining 4,096 bins within 16KiB
+of shared storage. The directional shadow amendment serializes its dependent
+levels in one invocation with ping-pong shared planes; its performance on the
+target iPad remains to be measured. World mips and hierarchical depth levels are built in separate passes. The
+shadow pool also respects the adapter's storage-buffer capacity, reserving the
+atomic header and rounding to whole atlas layers.

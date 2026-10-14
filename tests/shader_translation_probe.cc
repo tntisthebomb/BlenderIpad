@@ -3,9 +3,11 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include "../native/browser/webgpu/shader_prepare.hh"
 #include "src/tint/lang/core/ir/module.h"
 #include "src/tint/lang/spirv/reader/reader.h"
 #include "src/tint/lang/wgsl/reader/reader.h"
+#include "src/tint/lang/wgsl/reader/options.h"
 #include "src/tint/lang/wgsl/writer/writer.h"
 
 int main(int argc, char **argv)
@@ -20,6 +22,7 @@ int main(int argc, char **argv)
     file.seekg(0);
     file.read(reinterpret_cast<char *>(words.data()), bytes);
     if (!file) throw std::runtime_error("SPIR-V input read failed");
+    blender::gpu::webgpu_prepare::unique_local_names(words);
     tint::spirv::reader::Options reader_options;
     // Match the application's stable texture/sampler binding pairs. Tint's
     // default mapping can renumber subsequent resources when splitting them.
@@ -29,10 +32,16 @@ int main(int argc, char **argv)
     }
     auto ir = tint::spirv::reader::ReadIR(words, reader_options);
     if (ir != tint::Success) throw std::runtime_error(ir.Failure().reason);
-    auto wgsl = tint::wgsl::writer::WgslFromIR(ir.Get(), {});
+    tint::wgsl::writer::Options writer_options;
+    writer_options.allowed_features = tint::wgsl::AllowedFeatures::Everything();
+    writer_options.allow_non_uniform_derivatives = true;
+    writer_options.allow_non_uniform_subgroup_operations = true;
+    auto wgsl = tint::wgsl::writer::WgslFromIR(ir.Get(), writer_options);
     if (wgsl != tint::Success) throw std::runtime_error(wgsl.Failure().reason);
     tint::Source::File source("blender-matrix.wgsl", wgsl.Get().wgsl);
-    auto parsed = tint::wgsl::reader::Parse(&source);
+    tint::wgsl::reader::Options wgsl_reader_options;
+    wgsl_reader_options.allowed_features = tint::wgsl::AllowedFeatures::Everything();
+    auto parsed = tint::wgsl::reader::Parse(&source, wgsl_reader_options);
     if (!parsed.IsValid()) throw std::runtime_error(parsed.Diagnostics().Str());
     std::ofstream output(argv[2]);
     output << wgsl.Get().wgsl;

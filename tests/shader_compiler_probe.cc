@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
+#include "../native/browser/webgpu/shader_prepare.hh"
+#include "../native/browser/webgpu/shader_atomic_image.hh"
 
 static std::string read_file(const std::filesystem::path &path)
 {
@@ -80,11 +82,19 @@ void main() {
   output_data.values[4] = float4(success ? 1.0f : 0.0f);
 }
 )glsl";
-    const auto result = compiler.CompileGlslToSpv(compute, shaderc_compute_shader,
+    const auto preprocessed = compiler.PreprocessGlsl(compute, shaderc_compute_shader,
+                                                     "blender-matrix.comp", options);
+    if (preprocessed.GetCompilationStatus() != shaderc_compilation_status_success)
+      throw std::runtime_error(preprocessed.GetErrorMessage());
+    const auto prepared = blender::gpu::webgpu_prepare::lower_atomic_images(
+        blender::gpu::webgpu_prepare::lower_switches(
+        std::string(preprocessed.cbegin(), preprocessed.cend())));
+    const auto result = compiler.CompileGlslToSpv(prepared, shaderc_compute_shader,
                                                "blender-matrix.comp", options);
     if (result.GetCompilationStatus() != shaderc_compilation_status_success)
       throw std::runtime_error(result.GetErrorMessage());
-    const std::vector<uint32_t> words(result.cbegin(), result.cend());
+    std::vector<uint32_t> words(result.cbegin(), result.cend());
+    blender::gpu::webgpu_prepare::unique_local_names(words);
     spvtools::SpirvTools validator(SPV_ENV_VULKAN_1_0);
     validator.SetMessageConsumer([](spv_message_level_t, const char *, const spv_position_t &,
                                     const char *message) { std::cerr << message << '\n'; });

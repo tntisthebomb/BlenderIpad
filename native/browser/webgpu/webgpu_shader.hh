@@ -5,13 +5,7 @@
 /** \file
  * \ingroup gpu
  *
- * WebGPU shader. SCAFFOLD STAGE: implements the gpu::Shader interface so
- * shader_alloc() returns a real object (the previous nullptr stub crashed the
- * compiler worker). The GLSL→WGSL compiler is not wired yet, so finalize()
- * currently fails gracefully (ShaderCompiler::compile then deletes the shader
- * and returns null, which the caller treats as a failed compile). This lets the
- * render pipeline proceed far enough to enumerate the shaders EEVEE needs and
- * the exact GLSL it emits — the input to the real WGSL backend.
+ * WebGPU shader compilation, WGSL resource reflection and native binding.
  */
 
 #pragma once
@@ -33,7 +27,7 @@ namespace blender::gpu {
  * against the ShaderInterface to find the app binding slot. */
 struct WgslResourceBinding {
   uint32_t binding;
-  enum Kind { UBO, SSBO, TEXTURE, SAMPLER, STORAGE_TEXTURE, PUSH_CONST } kind;
+  enum Kind { UBO, SSBO, TEXTURE, SAMPLER, STORAGE_TEXTURE, PUSH_CONST, ATOMIC_IMAGE } kind;
   std::string res_name;
   /* Type detail parsed from the WGSL declaration, used to build an explicit
    * bind-group layout (auto-layout strips declared-but-unused bindings, which

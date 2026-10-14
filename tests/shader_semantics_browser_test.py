@@ -30,7 +30,8 @@ try:
         page = context.new_page()
         page.goto(f'http://127.0.0.1:{server.server_port}/')
         sources = {name: (directory / (name + '.wgsl')).read_text()
-                   for name in ('switch-fallthrough', 'switch-phi', 'volume-query')}
+                   for name in ('switch-fallthrough', 'switch-phi', 'volume-query',
+                                'readwrite-texture', 'atomic-image', 'zbin-range')}
         context.set_offline(True)
         results = page.evaluate('''async sources => {
           const adapter = await navigator.gpu.requestAdapter();
@@ -47,9 +48,13 @@ try:
             if (failures.length) throw Error(JSON.stringify(failures));
             const pipeline = await device.createComputePipelineAsync({
               layout: 'auto', compute: {module: shader, entryPoint: 'main'}});
-            const size = name === 'volume-query' ? 16 : 24;
+            const size = name === 'zbin-range' ? 16384 : name === 'atomic-image' ? 272 :
+              name.endsWith('texture') || name === 'volume-query' ? 16 : 24;
             const output = device.createBuffer({size,
-              usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC});
+              usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST});
+            if (name === 'atomic-image') {
+              device.queue.writeBuffer(output, 0, new Uint32Array([2, 1, 1, 64, 0xffffffff, 0]));
+            }
             const read = device.createBuffer({size,
               usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST});
             const entries = [{binding: 0, resource: {buffer: output}}];
@@ -62,15 +67,30 @@ try:
               entries.push({binding: 1, resource: texture.createView()});
               entries.push({binding: 129, resource: device.createSampler()});
             }
+            if (name === 'readwrite-texture') {
+              const texture = device.createTexture({size: [1, 1], format: 'r32uint',
+                usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST});
+              device.queue.writeTexture({texture}, new Uint32Array([3]), {bytesPerRow: 4}, [1, 1]);
+              entries.push({binding: 1, resource: texture.createView()});
+            }
             const group = device.createBindGroup({layout: pipeline.getBindGroupLayout(0), entries});
             const encoder = device.createCommandEncoder();
             const pass = encoder.beginComputePass();
             pass.setPipeline(pipeline); pass.setBindGroup(0, group);
-            pass.dispatchWorkgroups(name === 'volume-query' ? 1 : 6); pass.end();
-            encoder.copyBufferToBuffer(output, 0, read, 0, size);
+            pass.dispatchWorkgroups(name === 'atomic-image' ? 16 :
+              name === 'zbin-range' || size === 16 ? 1 : 6); pass.end();
+            if (name === 'atomic-image') {
+              const texture = device.createTexture({size: [2, 1], format: 'r32uint',
+                usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC});
+              encoder.copyBufferToTexture({buffer: output, offset: 16, bytesPerRow: 256,
+                rowsPerImage: 1}, {texture}, [2, 1, 1]);
+              encoder.copyTextureToBuffer({texture}, {buffer: read, bytesPerRow: 256,
+                rowsPerImage: 1}, [2, 1, 1]);
+            } else encoder.copyBufferToBuffer(output, 0, read, 0, size);
             device.queue.submit([encoder.finish()]);
             await read.mapAsync(GPUMapMode.READ);
-            results[name] = Array.from(new Int32Array(read.getMappedRange()));
+            results[name] = Array.from(new Int32Array(read.getMappedRange())).slice(
+              0, name === 'atomic-image' ? 2 : size / 4);
             read.unmap();
             const error = await device.popErrorScope();
             if (error) throw Error(error.message);
@@ -82,12 +102,21 @@ try:
         assert results['switch-fallthrough'] == [9, 3, 13, 8, -5, -5], results
         assert results['switch-phi'] == [9, 3, 13, 8, -5, -5], results
         assert results['volume-query'] == [2, 3, 4, 42], results
+        assert results['readwrite-texture'] == [7, 0, 0, 0], results
+        assert results['atomic-image'] == [1, 1024], results
+        bins = [[] for _ in range(4096)]
+        for index in range(256):
+            for bin_index in range(index * 13, index * 13 + index % 31 + 1):
+                bins[bin_index].append(index)
+        expected = [(max(indices) << 16) | min(indices) if indices else 0xffff
+                    for indices in bins]
+        assert results['zbin-range'] == expected, 'packed light-bin extrema differ from CPU reference'
         (directory / 'semantics-validation.json').write_text(json.dumps({
             'results': results,
             'wgsl_sha256': {name: hashlib.sha256(code.encode()).hexdigest()
                             for name, code in sources.items()}}, indent=2) + '\n')
         browser.close()
-    print('PASS: real WebGPU switch fallthrough, nested control flow, 3D dimensions and texel fetch offline.')
+    print('PASS: offline WebGPU switch control flow, 3D texel fetch, read/write storage and contended atomic images.')
 finally:
     server.shutdown()
     server.server_close()

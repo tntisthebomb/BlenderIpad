@@ -18,6 +18,8 @@ TESTS = ('tests/blender_gpu_browser_test.py', 'tests/blender_gpu_scene.py',
          'tests/editor_install_failure_test.py',
          'tests/shader_semantics_browser_test.py', 'tests/shader_switch_fallthrough.comp',
          'tests/shader_switch_phi.comp', 'tests/shader_volume_query.comp',
+         'tests/shader_atomic_image.comp', 'tests/shader_readwrite_texture.comp',
+         'tests/shader_zbin_range.comp',
          'scripts/test_browser_lifecycle.py', 'tests/browser_lifecycle_probe.cc')
 
 def digest(path):
@@ -75,6 +77,7 @@ if __name__ == '__main__':
                    'embedded_python_threads',
                    'subdivision_surface',
                    'shader_switch_fallthrough', 'volume_texture_queries',
+                   'atomic_image_coherence',
                    'adapter_unavailable_backup', 'initial_install_failure_recovery'],
         **before}, indent=2) + '\n')
     print('PASS: editor acceptance recorded for the exact browser assets and fixtures.')
