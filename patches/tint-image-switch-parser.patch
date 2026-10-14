@@ -1,0 +1,54 @@
+--- a/src/tint/lang/spirv/reader/parser/parser.cc
++++ b/src/tint/lang/spirv/reader/parser/parser.cc
+@@ -3333,12 +3333,9 @@
+     void EmitBranch(spvtools::opt::Instruction& inst) {
+         auto dest_id = inst.GetSingleWordInOperand(0);
+ 
+-        // Disallow fallthrough
+-        for (auto& switch_blocks : current_switch_blocks_) {
+-            if (switch_blocks.count(dest_id) != 0) {
+-                TINT_ICE() << "switch fallthrough not supported by the SPIR-V reader";
+-            }
+-        }
++        // Validated structured SPIR-V may branch into the next switch case.
++        // EmitBranch below appends that block into the current IR case,
++        // duplicating the tail while retaining loop and merge boundaries.
+ 
+         // The destination is a continuing block, so insert a `continue`
+         if (auto* loop = ContinueTarget(dest_id)) {
+@@ -3684,6 +3681,17 @@
+         // instructions in the loop header are emitted.
+     }
+ 
++    void EmitSwitchCase(core::ir::Block* dst, spvtools::opt::BasicBlock& src) {
++        // A fallthrough tail is emitted once for each possible entry case.
++        // Its loop/if boundaries belong to this emission, not a preceding
++        // copy of the same SPIR-V labels in another IR case.
++        TINT_SCOPED_ASSIGNMENT(walk_stop_blocks_, walk_stop_blocks_);
++        TINT_SCOPED_ASSIGNMENT(continue_targets_, continue_targets_);
++        TINT_SCOPED_ASSIGNMENT(loop_headers_, loop_headers_);
++        TINT_SCOPED_ASSIGNMENT(merge_to_premerge_, merge_to_premerge_);
++        EmitBlockParent(dst, src);
++    }
++
+     void EmitSwitch(const spvtools::opt::BasicBlock& bb, const spvtools::opt::Instruction& inst) {
+         auto* selector = Value(inst.GetSingleWordInOperand(0));
+         auto default_id = inst.GetSingleWordInOperand(1);
+@@ -3705,7 +3713,7 @@
+             current_switch_blocks_[switch_blocks_id].emplace(default_id);
+ 
+             const auto& bb_default = current_spirv_function_->FindBlock(default_id);
+-            EmitBlockParent(default_blk, *bb_default);
++            EmitSwitchCase(default_blk, *bb_default);
+         }
+         if (!default_blk->Terminator()) {
+             default_blk->Append(b_.ExitSwitch(switch_));
+@@ -3744,7 +3752,7 @@
+             core::ir::Block* blk = b_.Case(switch_, Vector{sel});
+             if (blk_id != merge_id) {
+                 const auto& basic_block = current_spirv_function_->FindBlock(blk_id);
+-                EmitBlockParent(blk, *basic_block);
++                EmitSwitchCase(blk, *basic_block);
+             }
+             if (!blk->Terminator()) {
+                 blk->Append(b_.ExitSwitch(switch_));

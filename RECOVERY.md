@@ -35,10 +35,21 @@ passed; the application fixture must still prove the Subdivision Surface modifie
 The local 8 GiB builder could compile the editor but exceeded memory at the
 full-module Asyncify link. Public-runner builds at source `f0c26df` linked both
 profiles, then failed native Python startup with a stack overflow. The staged
-optimizer had lost Asyncify's optimization level; its second process now retains
-that level so Asyncify can coalesce locals. Validate both real CPython suspension
-and the complete application before accepting this correction. CI preserves
-incremental objects for follow-up builds. Preserve O2, assertions and Asyncify.
+optimizer had lost Asyncify's optimization level; source `5999676` retains it,
+and both profiles passed native CLI acceptance. That run also passed offline
+Workbench and modeling, including actual Subdivision Surface, but failed GPU,
+Eevee, Cycles registration and device-loss checks. It is not a distribution.
+
+Follow-up fixes stage Cycles' upstream delayed-install Python add-on, correct
+Tint image overloads and scoped switch fallthrough, explicitly unbind a test
+shader before releasing it, and retain the Emscripten runtime while pausing its
+scheduler. Actual full-engine Cycles PNGs passed with the missing scripts
+supplied. The complete editor lifecycle and backup checks passed with corrected
+JavaScript on the recovered real engine; a fresh full source-matched build is
+still required. Standalone translator regressions verify numeric switch/loop/
+conditional-call results and 3D dimensions/texel fetch on WebGPU. Preserve O2,
+assertions and Asyncify. The recovered failed engine plus corrected JavaScript
+in `.cache/blender-webgpu-browser` is diagnostic, not an accepted package.
 The real oneTBB Node/browser scheduler probes and CPU Cycles kernel/device/
 utility compilation also pass; actual integrated rendering remains a gate.
 

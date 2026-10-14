@@ -47,16 +47,22 @@ function log(message) {
 const canvas=document.getElementById('canvas');
 const status=document.getElementById('status');
 const statusMessage=document.getElementById('status-message');
-function fail(error) {
+function fail(error,kind) {
   const message=String(error);
+  // Keep the recovery screen stable when an already-failed device reports
+  // further errors from queued native draws. Device loss is the useful cause.
+  if (document.body.dataset.deviceLost ||
+      (document.body.dataset.error && kind!=='device-loss')) return;
+  if (kind==='device-loss') document.body.dataset.deviceLost='true';
   editorErrors.push(message);
-  window.blenderEditor?.pauseBlenderLoop();
   document.body.dataset.error=message;
   status.hidden=false;
   statusMessage.textContent=message;
   document.getElementById('retry-startup').hidden=false;
   document.getElementById('error-device-report').hidden=false;
   document.getElementById('recover-files').hidden=false;
+  try {window.blenderEditor?.pauseBlenderLoop();}
+  catch (pauseError) {console.error('Unable to pause failed Blender runtime',pauseError);}
 }
 document.getElementById('retry-startup').addEventListener('click',()=>location.reload());
 document.getElementById('recover-files').addEventListener('click',()=>{
@@ -148,7 +154,7 @@ function waitForInstallation(registration) {
   const features=['float32-filterable','depth32float-stencil8'].filter(feature=>adapter.features.has(feature));
   const device=await adapter.requestDevice({requiredFeatures:features});
   device.addEventListener('uncapturederror',event=>fail(event.error.message));
-  device.lost.then(info=>fail('Graphics device lost: '+info.message));
+  device.lost.then(info=>fail('Graphics device lost: '+info.message,'device-loss'));
   resizeCanvas();
   const module=await createBlenderCore({canvas,preinitializedWebGPUDevice:device,noInitialRun:true,
     print:log,printErr:log,
@@ -156,6 +162,7 @@ function waitForInstallation(registration) {
   });
   window.blenderEditor=module;
   window.blenderDeviceReport={
+    ...window.blenderDeviceReport,
     secureContext:isSecureContext,crossOriginIsolated,standalone:matchMedia('(display-mode: standalone)').matches,
     devicePixelRatio,features:[...device.features],limits:{maxBufferSize:device.limits.maxBufferSize,
       maxTextureDimension2D:device.limits.maxTextureDimension2D,

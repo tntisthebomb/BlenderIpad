@@ -60,7 +60,57 @@ for name,components in [('R16F',1),('RG16F',2)]:
     actual=list(flattened(texture.read()))
     expected=[0.5,0.25][:components]*64
     assert actual==expected,(name,actual[:8])
+    gpu.shader.unbind()
     checks[name+'_storage']=True
+
+# Exercise the translator corrections through the packaged native backend.
+info=gpu.types.GPUShaderCreateInfo()
+info.local_group_size(1,1)
+info.image(0,'RGBA32F','FLOAT_2D','target',qualifiers={'WRITE'})
+info.compute_source('''
+int calculate(int selector) {
+  int value=1;
+  switch(selector) {
+    case 0: value+=2;
+    case 1: value*=3; break;
+    case 2: if(selector>=1 && selector<4) value+=5;
+    case 3: for(int i=0;i<7;i++) value++; break;
+    default: value=-5;
+  }
+  return value;
+}
+void main() {
+  imageStore(target,ivec2(gl_GlobalInvocationID.xy),
+             vec4(float(calculate(int(gl_GlobalInvocationID.x))),0,0,1));
+}''')
+shader=gpu.shader.create_from_info(info)
+target=gpu.types.GPUTexture((6,1),format='RGBA32F')
+shader.image('target',target)
+gpu.compute.dispatch(shader,6,1,1)
+assert list(flattened(target.read()))[::4]==[9,3,13,8,-5,-5]
+gpu.shader.unbind()
+checks['switch_fallthrough']=True
+
+info=gpu.types.GPUShaderCreateInfo()
+info.local_group_size(1,1)
+info.sampler(0,'FLOAT_3D','volume_texture')
+info.image(1,'RGBA32F','FLOAT_2D','target',qualifiers={'WRITE'})
+info.compute_source('''void main(){
+  ivec3 dimensions=textureSize(volume_texture,0);
+  float texel=round(texelFetch(volume_texture,ivec3(1,2,3),0).r*255.0);
+  imageStore(target,ivec2(0),vec4(vec3(dimensions),texel));
+}''')
+values=[0.0]*(2*3*4*4);values[92]=42/255
+volume=gpu.types.GPUTexture((2,3,4),format='RGBA8',
+    data=gpu.types.Buffer('FLOAT',len(values),values))
+shader=gpu.shader.create_from_info(info)
+target=gpu.types.GPUTexture((1,1),format='RGBA32F')
+shader.uniform_sampler('volume_texture',volume)
+shader.image('target',target)
+gpu.compute.dispatch(shader,1,1,1)
+assert list(flattened(target.read()))==[2,3,4,42]
+gpu.shader.unbind()
+checks['volume_query']=True
 
 # Distinct layer colours ensure readback does not silently return only layer 0.
 for label,options,layers in [

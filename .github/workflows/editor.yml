@@ -30,7 +30,13 @@ jobs:
           restore-keys: |
             browser-v2-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
             browser-v2-${{ runner.os }}-${{ matrix.profile }}-
+      - name: Install browser acceptance runner
+        run: |
+          python3 -m venv .cache/browser-tests
+          .cache/browser-tests/bin/python -m pip install playwright==1.62.0 Pillow==12.0.0
       - name: Prepare pinned browser runtime and graphics compilers
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
         run: |
           python3 scripts/build_browser_platform.py
           python3 scripts/build_browser_core_deps.py
@@ -40,14 +46,14 @@ jobs:
           python3 scripts/test_browser_shaderc.py
           python3 scripts/build_browser_tint.py
           python3 scripts/test_browser_tint.py
+          .cache/browser-tests/bin/python tests/shader_semantics_browser_test.py
+          .cache/browser-tests/bin/python scripts/test_browser_lifecycle.py
           python3 scripts/build_browser_opensubdiv.py
       - name: Validate the real CPU scheduler
         if: matrix.profile == 'cpu-cycles'
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
         run: |
-          python3 -m venv .cache/browser-tests
-          .cache/browser-tests/bin/python -m pip install playwright==1.62.0 Pillow==12.0.0
           python3 scripts/build_browser_tbb.py
       - name: Build and validate the actual native application
         run: |
@@ -59,10 +65,6 @@ jobs:
           fi
           python3 scripts/test_blender_core.py --webgpu
           python3 scripts/build_blender_core_browser.py --editor
-      - name: Install browser acceptance runner
-        run: |
-          python3 -m venv .cache/browser-tests
-          .cache/browser-tests/bin/python -m pip install playwright==1.62.0 Pillow==12.0.0
       - name: Validate and record the exact editor assets
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
@@ -85,6 +87,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: blender-editor-${{ matrix.profile }}-diagnostics
+          include-hidden-files: true
           path: |
             .cache/blender-gpu-browser-console.log
             .cache/blender-editor-browser-log.json
@@ -99,12 +102,20 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: unaccepted-debug-${{ matrix.profile }}
+          name: unaccepted-runtime-${{ matrix.profile }}
+          include-hidden-files: true
           path: |
             .cache/blender-webgpu-browser
-            .cache/blender-browser
             .cache/blender-webgpu-build/bin/blender.js
             .cache/blender-webgpu-build/bin/blender.wasm
+          if-no-files-found: ignore
+      - name: Preserve corresponding prepared source for failed-test diagnosis
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unaccepted-source-${{ matrix.profile }}
+          path: |
+            .cache/blender-browser
             .cache/deps-src
             .cache/graphics-src
             .cache/deps-build/openimageio-threaded/port-source

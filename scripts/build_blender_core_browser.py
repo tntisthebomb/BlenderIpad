@@ -10,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 from setup_browser import CACHE, ROOT, toolchain, run
+from browser_runtime_scripts import stage_runtime_scripts
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser()
@@ -47,10 +48,11 @@ if __name__ == '__main__':
     args[args.index('-sENVIRONMENT=node')] = '-sENVIRONMENT=web,worker'
     args[args.index('--pre-js') + 1] = str(ROOT / 'native/browser/core_browser_env.js')
     args[args.index('-o') + 1] = str(output / 'blender-core.js')
+    scripts = stage_runtime_scripts(core)
     args += ['-sMODULARIZE=1', '-sEXPORT_NAME=createBlenderCore',
-             "-sEXPORTED_RUNTIME_METHODS=['callMain','FS']", '-sFORCE_FILESYSTEM=1',
+             "-sEXPORTED_RUNTIME_METHODS=['callMain','FS','runtimeKeepalivePush','runtimeKeepalivePop']", '-sFORCE_FILESYSTEM=1',
              '--preload-file', str(stdlib) + '@/python/lib/python313.zip',
-             '--preload-file', str(CACHE / 'blender-browser/scripts') + '@/blender/scripts',
+             '--preload-file', str(scripts) + '@/blender/scripts',
              '--preload-file', str(CACHE / 'blender-browser/release/datafiles') + '@/blender/datafiles',
              '--preload-file', str(ROOT / 'tests/blender_core_scene.py') + '@/scene_test.py']
     if options.webgpu:

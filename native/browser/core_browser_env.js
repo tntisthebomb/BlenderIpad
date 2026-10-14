@@ -33,9 +33,19 @@ Module['runBlenderMain'] = async function (args) {
 
 // Stop scheduling draws while the page is suspended or its device is lost.
 // The filesystem remains available for downloading already-saved projects.
+let blenderLoopPaused = false;
 Module['pauseBlenderLoop'] = function () {
+  if (blenderLoopPaused) return;
+  // A paused scheduler releases its own keepalive token. Hold one explicitly
+  // so EXIT_RUNTIME cannot run Blender's static destructors during suspension
+  // or destroy project recovery state after GPU loss.
+  Module['runtimeKeepalivePush']();
+  blenderLoopPaused = true;
   Module['pauseMainLoop']?.();
 };
 Module['resumeBlenderLoop'] = function () {
+  if (!blenderLoopPaused) return;
   Module['resumeMainLoop']?.();
+  blenderLoopPaused = false;
+  Module['runtimeKeepalivePop']();
 };

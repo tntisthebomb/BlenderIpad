@@ -507,7 +507,7 @@ static std::string webgpu_glsl_patch(const char *stage_define)
  * interaction hitches the first time any shader variant is used. The page
  * (blender-gui.html) preloads previously translated WGSL from IndexedDB into
  * globalThis.__WGSL_CACHE__ before main() runs; lookups here are synchronous.
- * Keys: "v1:<stage>:<fnv1a64 of the joined GLSL>". The version salt must be
+ * Keys: "v2:<stage>:<fnv1a64 of the joined GLSL>". The version salt must be
  * bumped whenever the translator or the GLSL patching changes output. */
 EM_JS(int, wgpu_wgsl_cache_query, (const char *key), {
   const m = globalThis.__WGSL_CACHE__;
@@ -546,7 +546,7 @@ static std::string wgsl_cache_key(const char *stage, const std::string &glsl)
     h = (h ^ uint8_t(c)) * 1099511628211ull;
   }
   char key[64];
-  snprintf(key, sizeof(key), "v1:%s:%016llx:%zu", stage, (unsigned long long)h, glsl.size());
+  snprintf(key, sizeof(key), "v2:%s:%016llx:%zu", stage, (unsigned long long)h, glsl.size());
   return key;
 }
 

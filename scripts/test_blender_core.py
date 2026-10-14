@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 from setup_browser import CACHE, ROOT, toolchain, run
+from browser_runtime_scripts import stage_runtime_scripts
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser()
@@ -23,10 +24,11 @@ if __name__ == "__main__":
     if result.exists():
         result.unlink()
     source = CACHE / "blender-browser"
+    scripts = stage_runtime_scripts(binary.parent.parent)
     user_cache = CACHE / (profile+"-user-cache")
     user_cache.mkdir(exist_ok=True)
     env.update({"BLENDER_SYSTEM_RESOURCES": str(source),
-                "BLENDER_SYSTEM_SCRIPTS": str(source / "scripts"),
+                "BLENDER_SYSTEM_SCRIPTS": str(scripts),
                 "BLENDER_SYSTEM_DATAFILES": str(source / "release/datafiles"),
                 "BLENDER_SYSTEM_PYTHON": str(CACHE / "wasm-threaded-sysroot"),
                 "PYTHONHOME": str(CACHE / "wasm-threaded-sysroot"),

@@ -15,7 +15,10 @@ TESTS = ('tests/blender_gpu_browser_test.py', 'tests/blender_gpu_scene.py',
          'tests/blender_render_browser_test.py', 'tests/blender_render_scene.py',
          'tests/offline_shell_browser_test.py', 'tests/editor_files_browser_test.py',
          'tests/blender_modeling_browser_test.py', 'tests/blender_modeling_scene.py',
-         'tests/editor_install_failure_test.py')
+         'tests/editor_install_failure_test.py',
+         'tests/shader_semantics_browser_test.py', 'tests/shader_switch_fallthrough.comp',
+         'tests/shader_switch_phi.comp', 'tests/shader_volume_query.comp',
+         'scripts/test_browser_lifecycle.py', 'tests/browser_lifecycle_probe.cc')
 
 def digest(path):
     checksum = hashlib.sha256()
@@ -71,6 +74,7 @@ if __name__ == '__main__':
                    'modeling_geometry_nodes', 'armature_deformation', 'obj_interchange',
                    'embedded_python_threads',
                    'subdivision_surface',
+                   'shader_switch_fallthrough', 'volume_texture_queries',
                    'adapter_unavailable_backup', 'initial_install_failure_recovery'],
         **before}, indent=2) + '\n')
     print('PASS: editor acceptance recorded for the exact browser assets and fixtures.')

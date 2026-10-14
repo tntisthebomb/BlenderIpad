@@ -32,3 +32,17 @@ upstream license is retained in the corresponding dependency source. The build
 keeps its topology and stencil regression tests; the application separately
 checks a native level-two Catmull–Clark modifier. WebGPU uses CPU evaluation
 until the GPU subdivision path has its own acceptance proof.
+# Translator corrections
+
+`patches/tint-image-overloads.patch` corrects the pinned Dawn/Tint SPIR-V
+`OpImage` overloads for 3D, cube and depth images. Its generated intrinsic table
+was regenerated from the corrected `spirv.def` using that same pinned checkout's
+`go run ./tools/src/cmd/gen templates src/tint/lang/spirv/intrinsic/data.cc.tmpl`
+with Go 1.23.12. Go is only a development generator; the guarded patch includes
+the generated table and does not add a Go dependency to the port build.
+
+`patches/tint-image-switch-parser.patch` lowers validated switch fallthrough by
+emitting the shared tail in each entry case, with separate nested control-flow
+state. Numeric WebGPU regressions check all entry cases, loops, conditional
+function calls, nested switches, 3D dimensions and texel fetches. The Dawn
+checkout remains pristine and Tint IR validation remains enabled.
