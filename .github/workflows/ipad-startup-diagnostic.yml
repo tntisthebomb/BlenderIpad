@@ -1,0 +1,18 @@
+name: Package iPad startup check
+on:
+  push:
+    branches: [codex/ipad-startup-diagnostic]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ipad-startup-check
+          path: |
+            diagnostics/ipad-startup.html
+            diagnostics/README.txt
+          if-no-files-found: error

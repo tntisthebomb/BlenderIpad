@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#252525">
+<title>Blender startup check</title>
+<style>
+html,body {margin:0;width:100%;height:100%;overflow:hidden;background:#252525;color:#ddd;font:16px system-ui}
+#canvas {display:block;width:100%;height:calc(100% - 40px);outline:0;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+header {height:40px;display:flex;gap:12px;align-items:center;padding:0 12px;box-sizing:border-box;font-size:13px}
+button,.file-button {background:#454545;color:#eee;border:1px solid #666;border-radius:4px;padding:5px 10px;font:inherit;cursor:pointer}
+#file-message {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+dialog {background:#303030;color:#eee;border:1px solid #666;border-radius:8px}
+#saved-files {display:block;min-width:260px;margin:12px 0}
+#status {position:fixed;inset:0;display:grid;place-items:center;padding:2rem;background:#252525}
+#status[hidden] {display:none}
+#status{text-align:center}#status section{width:min(700px,90vw)}
+#startup-report{text-align:left;white-space:pre-wrap;overflow:auto;max-height:50vh;font:12px monospace}
+#startup-report,details{user-select:text;-webkit-user-select:text}button{min-height:44px;margin:4px}
+</style>
+<body>
+<header><label class="file-button">Import files<input id="import-files" type="file" multiple hidden></label>
+<button id="export-files" type="button">Export saved file</button><span id="file-message" role="status"></span></header>
+<canvas id="canvas" tabindex="0" aria-label="Blender editor"></canvas>
+<dialog id="file-dialog"><label for="saved-files">Saved files</label><select id="saved-files"></select>
+<button id="download-file" type="button">Download</button><button id="close-files" type="button">Close</button></dialog>
+<div id="status" role="status"><section>
+<p id="startup-message">Starting check…</p>
+<button id="copy-startup-report">Copy startup report</button>
+<button id="download-startup-report">Download report</button>
+<details open><summary>Startup details</summary><pre id="startup-report"></pre></details>
+</section></div>
+
+<script>
+// SPDX-License-Identifier: GPL-3.0-or-later
+const startupReport={diagnostic:'ipad-startup-v1',url:location.href,
+  userAgent:navigator.userAgent,secureContext:isSecureContext,
+  crossOriginIsolated,startedAt:new Date().toISOString(),stages:[],errors:[]};
+const startupMessage=document.getElementById('startup-message');
+function reportText(){
+  return JSON.stringify({...startupReport,
+    elapsedSeconds:Math.round((performance.now()-startupStart)/1000),
+    memoryBytes:window.startupMemory?.buffer.byteLength || null,
+    projectStorageReady:window.blenderEditor?.projectStorageReady || false,
+    log:window.editorOutput?.slice(-35)},null,2);
+}
+const startupStart=performance.now();
+try{startupReport.previousAttempt=JSON.parse(sessionStorage.getItem('blender-startup-check-last') || 'null');}catch{}
+startupReport.attempt=(startupReport.previousAttempt?.attempt || 0)+1;
+function refreshReport(){
+  document.getElementById('startup-report').textContent=reportText();
+  try{sessionStorage.setItem('blender-startup-check-last',JSON.stringify({
+    attempt:startupReport.attempt,phase:startupReport.phase,error:startupReport.error || null,
+    elapsedSeconds:Math.round((performance.now()-startupStart)/1000),
+    runtimeReady:!!startupReport.runtimeReady,rendered:!!startupReport.rendered,
+    memoryBytes:window.startupMemory?.buffer.byteLength || null,
+    remainingDependencies:startupReport.remainingDependencies,lastLog:window.editorOutput?.slice(-3)
+  }));}catch{}
+}
+function phase(name){
+  startupReport.phase=name;
+  startupReport.stages.push({name,seconds:Math.round((performance.now()-startupStart)/1000)});
+  startupMessage.textContent=name;refreshReport();
+}
+async function startupStep(name,operation,timeout=30000){
+  phase(name);let timer;
+  try{return await Promise.race([operation(),new Promise((resolve,reject)=>{
+    timer=setTimeout(()=>reject(new Error('Startup stalled: '+name+'. Copy the startup report.')),timeout);
+  })]);}finally{clearTimeout(timer);}
+}
+document.getElementById('copy-startup-report').onclick=()=>{
+  const text=reportText();
+  if(navigator.clipboard?.writeText) navigator.clipboard.writeText(text).catch(()=>{
+    startupMessage.textContent='Select and copy the Startup details below.';
+  });
+  else startupMessage.textContent='Select and copy the Startup details below.';
+};
+document.getElementById('download-startup-report').onclick=()=>{
+  const url=URL.createObjectURL(new Blob([reportText()],{type:'application/json'}));
+  const link=document.createElement('a');link.href=url;link.download='blender-startup-report.json';
+  link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+};
+window.addEventListener('error',event=>fail(event.message || 'Script error'));
+window.addEventListener('unhandledrejection',event=>fail(event.reason));
+setInterval(refreshReport,1000);
+window.editorOutput=[];
+window.editorErrors=[];
+function log(message) {
+  editorOutput.push(String(message));
+  if (editorOutput.length>1000) editorOutput.shift();
+  if(String(message).includes('WGPU_FIRST_CONTENT') && !startupReport.error){
+    startupReport.rendered=true;
+    document.body.dataset.rendered='true';document.body.dataset.started='true';
+    phase('Viewport presented');status.hidden=true;
+  }
+}
+const canvas=document.getElementById('canvas');
+const status=document.getElementById('status');
+function fail(error) {
+  const message=String(error);
+  if(startupReport.error)return;
+  startupReport.error=message;startupReport.errors.push(message);
+  editorErrors.push(message);
+  document.body.dataset.error=message;
+  status.hidden=false;
+  startupMessage.textContent=message;refreshReport();
+}
+canvas.addEventListener('pointerdown',()=>canvas.focus({preventScroll:true}));
+canvas.addEventListener('contextmenu',event=>event.preventDefault());
+function resizeCanvas() {
+  const scale=window.devicePixelRatio || 1;
+  canvas.width=Math.max(1,Math.round(canvas.clientWidth*scale));
+  canvas.height=Math.max(1,Math.round(canvas.clientHeight*scale));
+}
+window.addEventListener('resize',resizeCanvas);
+(async()=>{
+  if (!isSecureContext) throw new Error('Open Blender using HTTPS or localhost.');
+  if (!('serviceWorker' in navigator)) throw new Error('Offline installation is unavailable in this browser.');
+  phase('Installing offline files');
+  await startupStep('Registering offline worker',()=>navigator.serviceWorker.register('./service-worker.js'));
+  await startupStep('Waiting for offline installation',()=>navigator.serviceWorker.ready,180000);
+  if (!navigator.serviceWorker.controller) {
+    if(sessionStorage.getItem('startup-check-isolation-reload')) throw new Error('Offline worker did not control this page after reload. Copy the startup report.');
+    sessionStorage.setItem('startup-check-isolation-reload','1');
+    location.reload();return;
+  }
+  sessionStorage.removeItem('startup-check-isolation-reload');
+  phase('Checking graphics support');
+  if (!crossOriginIsolated) throw new Error('This server must enable cross-origin isolation to run Blender.');
+  if (!navigator.gpu) throw new Error('WebGPU is unavailable. Open Blender in a supported browser using HTTPS or localhost.');
+  const adapter=await startupStep('Finding graphics adapter',()=>navigator.gpu.requestAdapter());
+  if (!adapter) throw new Error('No WebGPU graphics adapter is available.');
+  if (!adapter.features.has('depth32float-stencil8')) throw new Error('This graphics device lacks the depth/stencil format required by this build.');
+  startupReport.adapterFeatures=[...adapter.features];
+  startupReport.adapterLimits=Object.fromEntries(['maxComputeInvocationsPerWorkgroup',
+    'maxComputeWorkgroupStorageSize','maxStorageTexturesPerShaderStage',
+    'maxStorageBuffersPerShaderStage','maxBufferSize','maxStorageBufferBindingSize']
+    .map(name=>[name,adapter.limits[name]]));
+  const features=['float32-filterable','depth32float-stencil8'].filter(feature=>adapter.features.has(feature));
+  const device=await startupStep('Creating graphics device',()=>adapter.requestDevice({requiredFeatures:features}));
+  window.startupGraphics={adapter,device};
+  device.addEventListener('uncapturederror',event=>fail(event.error.message));
+  device.lost.then(info=>fail('Graphics device lost: '+info.message));
+  resizeCanvas();
+  phase('Allocating shared memory');
+  // Exact memory parameters of the verified 5.2.2 baseline preview. Supplying
+  // the same memory explicitly lets the report observe real memory growth.
+  window.startupMemory=new WebAssembly.Memory({initial:2048,maximum:16384,shared:true});
+  await startupStep('Loading engine script',()=>new Promise((resolve,reject)=>{
+    const script=document.createElement('script');script.src='./blender-core.js';
+    script.onload=resolve;script.onerror=()=>reject(new Error('Engine script could not load'));
+    document.head.append(script);
+  }));
+  const module=await startupStep('Loading engine and restoring projects',()=>createBlenderCore({canvas,preinitializedWebGPUDevice:device,noInitialRun:true,wasmMemory:window.startupMemory,
+    print:log,printErr:log,
+    monitorRunDependencies:count=>{startupReport.remainingDependencies=count;refreshReport();},
+    onAbort:fail,onExit:code=>{document.body.dataset.exit=String(code);}
+  }),180000);
+  window.blenderEditor=module;startupReport.runtimeReady=true;
+  document.body.dataset.ready='true';
+  phase('Starting native Blender');
+  const nativeStartup=module.runBlenderMain(window.editorArguments || ['--offline-mode','--disable-autoexec','--threads','2',
+                   '--python','/browser_startup.py']);
+  nativeStartup.then(()=>{
+    startupReport.mainReturned=true;
+    if(!startupReport.rendered && !startupReport.error) phase('Waiting for viewport pixels');
+  }).catch(fail);
+  setTimeout(()=>{
+    if(!startupReport.rendered && !startupReport.error) fail('Startup stalled before the viewport appeared. Copy the startup report.');
+  },180000);
+  canvas.focus({preventScroll:true});
+})().catch(fail);
+</script>
+<script src="editor_files.js"></script>
+</body>
+</html>
