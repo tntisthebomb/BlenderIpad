@@ -1,0 +1,11 @@
+--- a/intern/cycles/cmake/macros.cmake
++++ b/intern/cycles/cmake/macros.cmake
+@@ -126,7 +126,7 @@
+       list(APPEND ${libraries} "opengl32")
+     endif()
+   endif()
+-  if(UNIX AND NOT APPLE)
++  if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+     list(APPEND ${libraries} "-lm -lc -lutil")
+   endif()
+ 

@@ -46,9 +46,6 @@ if __name__ == "__main__":
     (build / "package.json").write_text('{"type":"commonjs"}\n')
     flags = "-pthread -fexceptions -DPY_CALL_TRAMPOLINE -UNDEBUG"
     link = "-g2 -pthread -sNODERAWFS=1 -sENVIRONMENT=node -sASSERTIONS=2 -sDISABLE_EXCEPTION_CATCHING=0 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=134217728 -sMAXIMUM_MEMORY=1073741824 -sSTACK_SIZE=8388608 -sDEFAULT_PTHREAD_STACK_SIZE=2097152 -sUSE_ZLIB=1 -sUSE_BZIP2=1 --pre-js " + str(ROOT / "native/browser/core_node_env.js")
-    # Prewarm workers before main starts. Python/Cycles synchronous joins must
-    # not block browser workers from completing their asynchronous startup.
-    link += " -sPTHREAD_POOL_SIZE=4 -sPTHREAD_POOL_SIZE_STRICT=2"
     if args.webgpu:
         # Optimize the linked module before and after suspension instrumentation.
         # CPython's evaluation loop otherwise exceeds ordinary engine stack limits.
@@ -58,6 +55,7 @@ if __name__ == "__main__":
         link += " -sBINARYEN_EXTRA_PASSES=--one-caller-inline-max-function-size=0"
     graphics = []
     graphics += ["-DWITH_CYCLES=" + ("ON" if args.cycles else "OFF"),
+                 "-DWITH_CYCLES_STANDALONE=OFF",
                  "-DWITH_TBB=" + ("ON" if args.cycles else "OFF")]
     if args.cycles:
         proof_path = CACHE / 'tbb-probe/validation.json'

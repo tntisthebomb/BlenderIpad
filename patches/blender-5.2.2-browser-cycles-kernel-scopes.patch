@@ -1,0 +1,35 @@
+--- a/intern/cycles/util/defines.h
++++ b/intern/cycles/util/defines.h
+@@ -22,9 +22,17 @@
+ 
+ /* Leave inlining decisions to compiler for these, the inline keyword here
+  * is not about performance but including function definitions in headers. */
+-#  define ccl_device static inline
++#  ifdef __EMSCRIPTEN__
++/* Keep CPU shader stages separate: merged kernels exceed 20,000 Wasm locals
++ * and exhaust browser compiler memory. Basic vector arithmetic stays inlined;
++ * shader behavior and all kernel assertions are preserved. */
++#    define ccl_device static inline __attribute__((noinline))
++#    define ccl_device_noinline static inline __attribute__((noinline))
++#  else
++#    define ccl_device static inline
++#    define ccl_device_noinline static inline
++#  endif
+ #  define ccl_device_extern extern "C"
+-#  define ccl_device_noinline static inline
+ #  define ccl_device_noinline_cpu ccl_device_noinline
+ 
+ /* Forced inlining. */
+@@ -46,7 +54,11 @@
+ #    define ccl_always_inline __forceinline
+ #    define ccl_never_inline __declspec(noinline)
+ #  else /* _WIN32 && !FREE_WINDOWS */
+ #    define ccl_device_inline static inline __attribute__((always_inline))
+-#    define ccl_device_forceinline static inline __attribute__((always_inline))
++#    ifdef __EMSCRIPTEN__
++#      define ccl_device_forceinline static inline __attribute__((noinline))
++#    else
++#      define ccl_device_forceinline static inline __attribute__((always_inline))
++#    endif
+ #    define ccl_device_inline_method __attribute__((always_inline))
+ #    define ccl_device_template_spec template<> inline __attribute__((always_inline))

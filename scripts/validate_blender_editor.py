@@ -40,19 +40,28 @@ if __name__ == '__main__':
     if options.cycles:
         engines.append('CYCLES')
     stamp = CACHE / 'blender-webgpu-browser/editor-validation.json'
+    failure_stamp = stamp.with_name('editor-failures.json')
     stamp.unlink(missing_ok=True)
+    failure_stamp.unlink(missing_ok=True)
     before = snapshot()
     interpreter = CACHE / 'browser-tests/bin/python'
-    subprocess.run([str(interpreter), str(ROOT / 'tests/blender_gpu_browser_test.py')], cwd=ROOT, check=True)
+    failures = []
+    def check(label, script, *arguments):
+        result = subprocess.run([str(interpreter), str(ROOT / script), *arguments], cwd=ROOT)
+        if result.returncode:
+            failures.append({'check': label, 'exit_code': result.returncode})
+    check('gpu_resources', 'tests/blender_gpu_browser_test.py')
     for engine in engines:
-        subprocess.run([str(interpreter), str(ROOT / 'tests/blender_render_browser_test.py'),
-                        '--engine', engine], cwd=ROOT, check=True)
+        check(engine, 'tests/blender_render_browser_test.py', '--engine', engine)
     for script in (
                    'tests/blender_modeling_browser_test.py', 'tests/blender_editor_browser_test.py', 'tests/offline_shell_browser_test.py',
                    'tests/editor_files_browser_test.py', 'tests/editor_install_failure_test.py'):
-        subprocess.run([str(interpreter), str(ROOT / script)], cwd=ROOT, check=True)
+        check(script, script)
     if snapshot() != before:
         raise SystemExit('Assets or acceptance fixtures changed during validation.')
+    if failures:
+        failure_stamp.write_text(json.dumps({'failures': failures, **before}, indent=2) + '\n')
+        raise SystemExit('Editor acceptance failed: ' + ', '.join(item['check'] for item in failures))
     stamp.write_text(json.dumps({'version': [5, 2, 2], 'profile': 'experimental-editor',
         'render_engines': engines,
         'checks': ['gpu_resources', 'font_pixels', 'native_viewport', 'keyboard_transform',
