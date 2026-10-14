@@ -1,0 +1,39 @@
+name: Recover exact failed editor for local diagnosis
+on:
+  push:
+    branches: [codex/ipad-diagnostics]
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: restored
+        with:
+          path: .cache
+          key: browser-v2-Linux-cpu-cycles-4ab71cd3f10e67d7f3f9471c3d72285d5f9179cabd4a69ba655191e963031863-5999676c4ef42bac96a5db416b90c139af8fdf10
+          fail-on-cache-miss: true
+      - name: Identify the failed source and runtime
+        run: |
+          test '${{ steps.restored.outputs.cache-hit }}' = true
+          mkdir -p diagnostic
+          printf '%s\n' 'UNACCEPTED diagnostic runtime from source 5999676c4ef42bac96a5db416b90c139af8fdf10, run 38540158181, cpu-cycles profile.' > diagnostic/PROVENANCE.txt
+          cp .cache/blender-webgpu-browser/editor-failures.json diagnostic/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unaccepted-runtime-only-5999676-cpu-cycles
+          include-hidden-files: true
+          path: |
+            diagnostic
+            .cache/blender-webgpu-browser
+            .cache/blender-webgpu-build/bin/blender.js
+            .cache/blender-webgpu-build/bin/blender.wasm
+            .cache/blender-editor-browser-log.json
+            .cache/blender-editor-frame.png
+            .cache/blender-gpu-browser-console.log
+            .cache/blender-render-*-console.log
+            .cache/blender-modeling-console.log
+          if-no-files-found: error
