@@ -1,0 +1,67 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,"><title>Install Blender offline files</title>
+<style>body{background:#252525;color:#eee;font:17px system-ui;margin:24px}main{max-width:720px;margin:auto}button{font:inherit;min-height:48px;padding:12px;margin:8px 8px 8px 0}p{line-height:1.5}textarea{width:100%;box-sizing:border-box;height:35vh;background:#181818;color:#eee;font:13px monospace;padding:12px}</style>
+<main><h1>Install Blender offline files</h1>
+<p>This page downloads the build served by WorldWideWeb into the offline cache. It does not compile or start Blender. Extract the replacement build into your server folder first.</p>
+<p>Close every other Blender tab or Home Screen window. Keep WorldWideWeb running alongside Safari.</p>
+<button id="install" type="button">Install or update offline files</button>
+<button id="copy" type="button">Copy installation report</button>
+<p id="status" role="status">Ready. Blender has not started.</p>
+<textarea id="report" readonly spellcheck="false" aria-label="Installation report"></textarea>
+</main><script>
+'use strict';
+const report={diagnostic:'ipad-offline-update-v1',engineStarted:false,url:location.href,
+  secureContext:isSecureContext,phase:'Ready',errors:[]};
+const status=document.getElementById('status'),output=document.getElementById('report'),button=document.getElementById('install');
+function show(phase,message){report.phase=phase;status.textContent=message;output.value=JSON.stringify(report,null,2);document.body.dataset.state=phase;}
+show('ready','Ready. Blender has not started.');
+function waitForBuild(registration){
+  return new Promise((resolve,reject)=>{
+    const watched=new Set();let finished=false,checked=false;
+    const finish=(error,state)=>{
+      if(finished)return;finished=true;clearTimeout(timer);
+      registration.removeEventListener('updatefound',watch);
+      for(const worker of watched)worker.removeEventListener('statechange',watch);
+      error ? reject(error) : resolve(state);
+    };
+    const watch=()=>{
+      const worker=registration.installing || registration.waiting || registration.active;
+      if(worker && !watched.has(worker)){watched.add(worker);worker.addEventListener('statechange',watch);}
+      report.installing=registration.installing?.state || null;
+      report.waiting=registration.waiting?.state || null;
+      report.active=registration.active?.state || null;
+      if(!checked){show('checking','Checking the replacement build. Blender is not running.');return;}
+      if(registration.waiting?.state==='installed')finish(null,'waiting');
+      else if(!registration.installing && registration.active?.state==='activated') {
+        // A redundant candidate is an installation failure, even if the old
+        // build remains active. Do not label that old cache as updated.
+        if([...watched].some(w=>w.state==='redundant')) finish(new Error('The replacement files could not be installed. The previous offline build was kept.'));
+        else finish(null,'installed');
+      } else if(worker?.state==='redundant') finish(new Error('Offline installation failed. Check that the complete build is extracted and WorldWideWeb stays running.'));
+      else show('installing','Downloading offline files. Blender is not running.');
+    };
+    const timer=setTimeout(()=>finish(new Error('Offline installation timed out. Keep the server running; no Blender engine was started.')),300000);
+    registration.addEventListener('updatefound',watch);watch();
+    registration.update().then(()=>{checked=true;watch();},error=>finish(error));
+  });
+}
+button.onclick=async()=>{
+  button.disabled=true;report.errors=[];
+  try{
+    if(!isSecureContext || !navigator.serviceWorker)throw new Error('Open this page at HTTPS or localhost in Safari.');
+    show('checking','Checking the build served by WorldWideWeb. Blender is not running.');
+    const registration=await navigator.serviceWorker.register('./service-worker.js',{updateViaCache:'none'});
+    const outcome=await waitForBuild(registration);
+    if(outcome==='waiting')show('waiting','Update downloaded. Close this tab and every Blender tab/window, then open your normal Blender address. Closing them allows the new build to activate.');
+    else show('installed','Offline files are installed. Close this tab before opening Blender. This does not establish that the editor can run on this device.');
+  }catch(error){report.errors.push(String(error));show('failed',String(error));}
+  finally{button.disabled=false;}
+};
+document.getElementById('copy').onclick=async()=>{
+  output.focus();output.select();output.setSelectionRange(0,output.value.length);
+  try{await navigator.clipboard.writeText(output.value);}catch{status.textContent='Report selected. Touch and hold the selected text, then choose Copy.';}
+};
+</script></html>
