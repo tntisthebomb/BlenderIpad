@@ -1,0 +1,39 @@
+Blender iPad startup diagnostics v5
+
+Use this SMALL UPDATE with your existing v4 Blender folder. Copy every update
+file into that folder and choose Replace. Keep all existing engine files.
+This update does not change blender-core.js, blender-core.wasm or blender-core.data.
+
+1. Keep WorldWideWeb serving your same Blender folder at localhost port 8080.
+2. Open http://localhost:8080/ipad-update.html and install the offline update.
+3. Close every Blender, updater and diagnostic tab and Home Screen window.
+4. Reopen http://localhost:8080/ and start Blender once. Look for stats v5.
+
+Allow up to three minutes only while the iPad stays responsive. If the whole
+iPad slows down, close Blender. If no interface appears, manually reopen the
+page and leave Start alone. The Previous startup panel restores the last main
+checkpoint and, if available, the independent worker's saved observation time
+and longest heartbeat gap. Screenshot that panel; Download device report also
+includes the bounded command journal and saved worker record.
+
+The new trace covers layouts, bind groups, command encoders, passes, pipeline
+binding, draws, command finalization and submission. A call returning does not
+prove GPU work finished. A separate observer records completion of the first
+submission; no completion callback alone cannot establish a GPU hang because
+its callback also needs the main thread to respond.
+
+A tiny worker writes a bounded recovery record to IndexedDB about once per
+second, independently of the main UI timer. It records the latest checkpoint,
+visibility information and heartbeat gaps. It cannot run through termination
+of the whole browser process, expose total/free iPad RAM or prove an OS memory
+kill. Background suspension can also delay callbacks. Storage failures are
+reported; the main local checkpoint remains a fallback. The recorder exits
+once Blender presents its viewport. Per-draw checkpoint writes stop then.
+
+The complete v4 engine and its thirteen accepted automated checks remain
+unchanged. The new proof lists checks actually run against this diagnostic
+frontend; previous-editor-validation.json preserves the v4 proof. This build
+improves diagnosis and does not establish that iPad startup is fixed.
+
+Do not clear Safari website data. Keep the same address to retain projects.
+The combined application is GPL-3.0-or-later; see LICENSE.txt.

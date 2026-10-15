@@ -15,6 +15,7 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-stats-') as directory:
  css=(ROOT/'native/browser/blender_editor.html').read_text().split('<style>')[1].split('</style>')[0]
  (base/'index.html').write_text('<!doctype html><meta charset="utf-8"><style>'+css+'</style><body><button id="behind-stats" style="position:fixed;bottom:40px;left:20px" onclick="this.dataset.clicked=\'true\'">Underlying control</button><script src="startup_stats.js"></script></body>')
  (base/'worker.js').write_text("onmessage=event=>{if(event.data.cmd==='load')postMessage({cmd:'loaded'});else postMessage({size:event.data.buffer.byteLength});};")
+ (base/'startup_watchdog.js').write_bytes((ROOT/'native/browser/startup_watchdog.js').read_bytes())
  (base/'startup_stats.js').write_bytes((ROOT/'native/browser/startup_stats.js').read_bytes())
  server=ThreadingHTTPServer(('127.0.0.1',0),partial(Handler,directory=directory))
  Thread(target=server.serve_forever,daemon=True).start()
@@ -23,6 +24,16 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-stats-') as directory:
    browser=p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH','/usr/lib/chromium/chromium'),args=['--no-sandbox'])
    context=browser.new_context();page=context.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    url=f'http://127.0.0.1:{server.server_port}/';page.goto(url)
+   # Upgrading the existing v4 page must show its old checkpoint even though
+   # that schema has no recorder attempt ID.
+   page.evaluate('''()=>{const legacy=blenderStartupStats.snapshot();
+    delete legacy.attemptId;delete legacy.watchdogStatus;legacy.version='startup-stats-v4';
+    legacy.phase='Legacy v4 viewport';legacy.lines=['legacy native breadcrumb'];
+    localStorage.setItem('blender-startup-stats-last',JSON.stringify(legacy));}''')
+   page.reload()
+   assert 'Legacy v4 viewport' in page.locator('#startup-stats-text').inner_text()
+   assert 'legacy native breadcrumb' in page.locator('#startup-stats-text').inner_text()
+   page.evaluate('localStorage.removeItem("blender-startup-stats-last")');page.reload()
    assert page.locator('#startup-stats').is_visible()
    page.locator('#behind-stats').click()
    assert page.locator('#behind-stats').get_attribute('data-clicked')=='true','Stats must not block editor/recovery controls'
@@ -46,8 +57,21 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-stats-') as directory:
     });
     if(size!==8||buffer.byteLength!==0)throw Error('Worker transfer list or handler changed');
     worker.terminate();
-    const marker={};window.observedBeforeCall=false;window.originalError=new Error('fixture failure');
-    const device={
+    const marker={};window.observedBeforeCall=false;
+    let resolveCompletion;window.queueObservers=0;window.drawCheckpoint=false;
+    const completion=new Promise(resolve=>resolveCompletion=resolve);
+    const pass={setPipeline(p){if(p!==marker)throw Error('Pipeline argument changed');},
+      draw(...args){
+        if(this!==pass||args.join(',')!=='3,1,0,0')throw Error('Draw receiver or arguments changed');
+        const saved=JSON.parse(localStorage.getItem('blender-startup-stats-last'));
+        drawCheckpoint=saved.operation==='Encoding draw'&&saved.operationStatus==='in progress';return marker;
+      },end(){return marker;}};
+    window.traceFixturePass=pass;
+    const encoder={beginRenderPass(d){if(this!==encoder)throw Error('Encoder receiver changed');return pass;},finish(){return marker;}};
+    const queue={submit(commands){if(this!==queue||commands[0]!==marker)throw Error('Queue arguments or receiver changed');return marker;},
+      onSubmittedWorkDone(){queueObservers++;return completion;}};
+window.originalError=new Error('fixture failure');
+    const device={queue,createCommandEncoder(){return encoder;},
       createShaderModule(d){if(this!==device)throw Error('Wrong receiver');return marker;},
       createBuffer(d){return marker;},createTexture(d){return marker;},
       createRenderPipeline(d){
@@ -61,6 +85,18 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-stats-') as directory:
     if(device.createShaderModule({label:'shader'})!==marker)throw Error('Changed shader result');
     device.createBuffer({size:1048576});device.createTexture({});
     if(device.createRenderPipeline({label:'frozen-shader'})!==marker)throw Error('Changed pipeline result');
+    const again=device.createCommandEncoder;blenderStartupStats.instrumentDevice(device);
+    if(device.createCommandEncoder!==again)throw Error('Instrumented device twice');
+    if(device.createCommandEncoder()!==encoder)throw Error('Changed encoder result');
+    if(encoder.beginRenderPass({label:'native-aa-pass'})!==pass)throw Error('Changed pass result');
+    pass.setPipeline(marker);
+    if(pass.draw(3,1,0,0)!==marker||!drawCheckpoint)throw Error('Draw result or pre-call checkpoint changed');
+    if(pass.end()!==marker||encoder.finish()!==marker)throw Error('Encoder API result changed');
+    if(queue.submit([marker])!==marker||queue.submit([marker])!==marker)throw Error('Changed queue return');
+    if(queueObservers!==1)throw Error('Added repeated completion observers');
+    if(blenderStartupStats.snapshot().firstSubmission!=='waiting for callback')throw Error('Marked GPU complete too early');
+    resolveCompletion();await completion;
+    if(blenderStartupStats.snapshot().firstSubmission!=='completed')throw Error('Completion callback was not recorded');
     try{device.createComputePipeline({label:'failed-compute'});throw Error('Swallowed exception');}
     catch(error){if(error!==originalError)throw error;}
     trackedMemory.grow(1);
@@ -84,6 +120,16 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-stats-') as directory:
    assert snapshot['wasmMemoryBytes']==3*65536,snapshot
    assert [snapshot[k] for k in ('shaderModules','renderPipelines','computePipelines','texturesCreated','buffersCreated')]==[1,1,1,1,1]
    assert snapshot['bufferBytesRequested']==1048576
+   assert [snapshot[k] for k in ('commandEncoders','renderPasses','drawCalls','queueSubmissions')]==[1,1,1,2],snapshot
+   assert snapshot['firstSubmission']=='completed',snapshot
+   page.evaluate('''()=>{
+    blenderStartupStats.phase('Viewport presented');
+    const save=Storage.prototype.setItem;let writes=0;
+    Storage.prototype.setItem=function(...args){writes++;return Reflect.apply(save,this,args);};
+    for(let i=0;i<10000;i++)traceFixturePass.draw(3,1,0,0);
+    Storage.prototype.setItem=save;
+    if(writes!==0)throw Error('Steady editor draw path wrote synchronous recovery checkpoints');
+   }''')
    page.locator('#toggle-startup-stats').click();assert page.locator('#startup-stats-text').is_hidden()
    page.locator('#toggle-startup-stats').click();assert page.locator('#startup-stats-text').is_visible()
    page.evaluate('blenderStartupStats.failure("Failed to compile shader, generated metal: "+"source".repeat(8000)+" - error useful compiler explanation")')

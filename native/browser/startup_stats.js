@@ -4,12 +4,13 @@
   'use strict';
   const key='blender-startup-stats-last';
   let began=performance.now();
-  const state={version:'startup-stats-v4',active:false,phase:'Waiting to start',phaseSeconds:0,
+  const state={version:'startup-stats-v5',attemptId:null,progressSequence:0,startedAt:null,pageVisible:!document.hidden,traceUnavailable:[],watchdogStatus:'not started',watchdogMaxGapMs:0,recentOperations:[],active:false,phase:'Waiting to start',phaseSeconds:0,
     elapsedSeconds:0,operation:'None yet',operationStatus:'not started',label:'',wasmMemoryBytes:null,dependencies:null,
     wasmMode:'not started',wasmMimeType:null,mainInstanceReady:false,workersRequested:0,workersReady:0,
     shaderModules:0,renderPipelines:0,computePipelines:0,texturesCreated:0,buffersCreated:0,
+    commandEncoders:0,renderPasses:0,computePasses:0,drawCalls:0,queueSubmissions:0,firstSubmission:'not submitted',
     bufferBytesRequested:0,canvasBacking:null,canvasCss:null,lines:[],updatedAt:null};
-  let previous=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,compact=false;
+  let previous=null,previousWatchdog=null,watchdog=null,lastEventSignature=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,compact=false;
   try{previous=JSON.parse(localStorage.getItem(key)||'null');}catch{}
   const panel=document.createElement('aside');panel.id='startup-stats';
   panel.setAttribute('aria-label','Blender startup statistics');
@@ -17,15 +18,31 @@
   document.body.append(panel);
   const title=panel.querySelector('strong'),text=panel.querySelector('pre'),toggle=panel.querySelector('button');
   function snapshot(){
-    return {...state,lines:state.lines.slice(),error:state.error};
+    return {...state,lines:state.lines.slice(),recentOperations:state.recentOperations.slice(),error:state.error};
+  }
+  function previousSnapshot(){
+    const recovery=previousWatchdog?.checkpoint&&(!previous||
+      (previous.attemptId&&previousWatchdog.attemptId===previous.attemptId))?previousWatchdog.checkpoint:null;
+    return recovery&&(!previous||(recovery.progressSequence??0)>=(previous.progressSequence??0))?recovery:previous;
   }
   function update(save=false,force=false){
     state.elapsedSeconds=Math.round((performance.now()-began)/1000);
     try{state.wasmMemoryBytes=memory?.buffer.byteLength ?? window.blenderEditor?.getBlenderMemoryBytes?.() ?? state.wasmMemoryBytes;}catch{}
     const canvas=document.getElementById('canvas');
     if(canvas){state.canvasBacking=[canvas.width,canvas.height];state.canvasCss=[canvas.clientWidth,canvas.clientHeight];}
-    const view=!state.active&&previous ? previous : state;
-    title.textContent=!state.active&&previous ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v4';
+    if(force&&state.active){
+      state.progressSequence++;
+      const signature=[state.operation,state.label,state.operationStatus].join('|');
+      if(signature!==lastEventSignature){
+        state.recentOperations.push({seconds:((performance.now()-began)/1000).toFixed(2),
+          operation:state.operation,label:state.label,status:state.operationStatus});
+        state.recentOperations=state.recentOperations.slice(-32);lastEventSignature=signature;
+      }
+    }
+    const previousView=previousSnapshot();
+    const view=!state.active&&previousView ? previousView : state;
+    const hasRecovery=!!previousWatchdog&&view.attemptId!=null&&previousWatchdog.attemptId===view.attemptId;
+    title.textContent=!state.active&&previousView ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v5';
     const mib=value=>(value/1048576).toFixed(1)+' MiB';
     text.textContent=[
       'Step: '+view.phase,
@@ -37,15 +54,20 @@
       'Canvas: '+(view.canvasBacking?.join(' × ')??'not recorded')+' pixels · CSS: '+(view.canvasCss?.join(' × ')??'not recorded'),
       'Dependencies left: '+(view.dependencies??'not reported'),
       'Creation requests: '+view.shaderModules+' shaders · '+view.renderPipelines+' render pipelines · '+view.computePipelines+' compute pipelines',
+      'Startup command calls: '+(view.commandEncoders??0)+' encoders · '+(view.renderPasses??0)+' render passes · '+(view.computePasses??0)+' compute passes · '+(view.drawCalls??0)+' draws',
+      'Queue: '+(view.queueSubmissions??0)+' submit calls · first completion: '+(view.firstSubmission??'not recorded'),
+      'Recovery recorder: '+(state.active?view.watchdogStatus:(hasRecovery?'saved':'not recorded'))+' · longest main heartbeat gap: '+Math.round((hasRecovery?previousWatchdog.maxHeartbeatGapMs:view.watchdogMaxGapMs??0)/1000)+' s'+(hasRecovery?' · observed at '+previousWatchdog.observedElapsedSeconds+' s':''),
+      ...(view.traceUnavailable?.length?['Trace unavailable: '+view.traceUnavailable.join(', ')]:[]),
       'GPU resource requests: '+view.texturesCreated+' textures · '+view.buffersCreated+' buffers',
       'GPU buffer requests: '+mib(view.bufferBytesRequested)+' cumulative (not live usage)',
       ...(view.error?['Error: '+view.error]:[]),
       ...view.lines.map(line=>'> '+line)
     ].join('\n');
-    if(window.blenderDeviceReport)window.blenderDeviceReport.startupStats=snapshot();
+    if(window.blenderDeviceReport){window.blenderDeviceReport.startupStats=snapshot();if(!state.active&&previousView)window.blenderDeviceReport.previousStartupStats=previousView;}
     if(save&&state.active&&(force||performance.now()-lastSaved>=1000)){
       state.updatedAt=new Date().toISOString();lastSaved=performance.now();
       try{localStorage.setItem(key,JSON.stringify(snapshot()));}catch{}
+      try{watchdog?.postMessage({kind:'checkpoint',checkpoint:snapshot()});}catch{}
     }
   }
   function operation(name,label='',status='in progress'){
@@ -89,7 +111,71 @@
     }
     return Reflect.apply(post,this,[message,...rest]);
   };
+  const pipelines=new WeakMap(),instrumented=new WeakSet();
+  function trace(target,method,label,counter,after,describe){
+    const original=target?.[method];if(typeof original!=='function')return;
+    const wrapper=function(...args){
+      if(counter&&state.phase!=='Viewport presented')state[counter]++;
+      // Trace startup boundaries. The steady editor keeps inexpensive counts
+      // without synchronous DOM/storage work for each draw.
+      const recording=state.active&&state.phase!=='Viewport presented';
+      if(recording)operation(label,describe?.(args)??'');
+      try {
+        const result=Reflect.apply(original,this,args);
+        if(recording){state.operationStatus='call returned';update(true,true);}
+        try{after?.(result,args);}catch{unavailable(method);}
+        return result;
+      } catch(error) {
+        if(recording){state.operationStatus='call threw';update(true,true);}
+        throw error;
+      }
+    };
+    try{target[method]=wrapper;if(target[method]!==wrapper)unavailable(method);}
+    catch{unavailable(method);}
+  }
+  function unavailable(method){
+    if(!state.traceUnavailable.includes(method))state.traceUnavailable=state.traceUnavailable.concat(method).slice(-8);
+  }
+  function instrumentPass(pass,label){
+    if(state.phase==='Viewport presented'||!pass||instrumented.has(pass))return;
+    instrumented.add(pass);let pipeline='';
+    trace(pass,'setPipeline','Setting pass pipeline',null,(_,args)=>{
+      pipeline=pipelines.get(args[0])??'';
+    },args=>pipelines.get(args[0])??label);
+    for(const method of ['draw','drawIndexed','drawIndirect','drawIndexedIndirect']){
+      trace(pass,method,'Encoding '+method,'drawCalls',null,()=>label+(pipeline?' · '+pipeline:''));
+    }
+    for(const method of ['dispatchWorkgroups','dispatchWorkgroupsIndirect','end']){
+      trace(pass,method,'Encoding '+method,null,null,()=>label);
+    }
+  }
+  function instrumentEncoder(encoder){
+    if(state.phase==='Viewport presented'||!encoder||instrumented.has(encoder))return;
+    instrumented.add(encoder);
+    trace(encoder,'beginRenderPass','Beginning render pass','renderPasses',
+      (pass,args)=>instrumentPass(pass,args[0]?.label??''),args=>args[0]?.label??'');
+    trace(encoder,'beginComputePass','Beginning compute pass','computePasses',
+      (pass,args)=>instrumentPass(pass,args[0]?.label??''),args=>args[0]?.label??'');
+    trace(encoder,'finish','Finishing command encoder');
+  }
   function instrumentDevice(device){
+    if(instrumented.has(device))return;instrumented.add(device);
+    for(const method of ['createBindGroupLayout','createPipelineLayout','createBindGroup']){
+      trace(device,method,'GPU '+method,null,null,args=>args[0]?.label??'');
+    }
+    trace(device,'createCommandEncoder','Creating command encoder','commandEncoders',instrumentEncoder);
+    let watchedSubmission=false;
+    trace(device.queue,'submit','Submitting GPU commands','queueSubmissions',()=>{
+      if(watchedSubmission||typeof device.queue.onSubmittedWorkDone!=='function')return;
+      watchedSubmission=true;state.firstSubmission='waiting for callback';
+      // Observe one existing submission. This does not insert a GPU wait or
+      // block native rendering; its callback also requires a responsive page.
+      try {
+        device.queue.onSubmittedWorkDone().then(()=>{
+          state.firstSubmission='completed';update(true,true);
+        },error=>{state.firstSubmission='rejected: '+String(error).slice(0,120);update(true,true);});
+      } catch(error){state.firstSubmission='observer failed: '+String(error).slice(0,100);}
+    });
     for(const [method,counter,label] of [
       ['createShaderModule','shaderModules','Creating shader module'],
       ['createRenderPipeline','renderPipelines','Compiling render pipeline'],
@@ -105,6 +191,10 @@
         try {
           const value=Reflect.apply(original,this,[descriptor,...rest]);
           if(tracked){state.operationStatus='call returned';update(true,true);}
+          if(method==='createRenderPipeline'||method==='createComputePipeline'){
+            if(value&&typeof value==='object')pipelines.set(value,String(descriptor?.label??''));
+            trace(value,'getBindGroupLayout','Getting pipeline bind-group layout',null,null,()=>descriptor?.label??'');
+          }
           return value;
         } catch(error) {
           if(tracked){state.operationStatus='call threw';update(true,true);}
@@ -113,18 +203,61 @@
       };
     }
   }
+  function startWatchdog(){
+    if(!globalThis.Worker||!globalThis.indexedDB){state.watchdogStatus='unavailable';return;}
+    try {
+      watchdog=new Worker(new URL('startup_watchdog.js',document.baseURI),{name:'blender-startup-watchdog'});
+      state.watchdogStatus='starting';
+      watchdog.onmessage=event=>{
+        const message=event.data;
+        if(message.kind==='storage-error')state.watchdogStatus='storage unavailable: '+message.message.slice(0,100);
+        else if(message.kind==='ready')state.watchdogStatus='recording';
+        else if(message.kind==='sample')state.watchdogMaxGapMs=message.maxHeartbeatGapMs;
+        else if(message.kind==='stopped'){watchdog=null;if(!state.watchdogStatus.startsWith('storage unavailable'))state.watchdogStatus='finished';}
+        update();
+      };
+      watchdog.onerror=event=>{event.preventDefault();state.watchdogStatus='unavailable';watchdog?.terminate();watchdog=null;update();};
+      watchdog.postMessage({kind:'start',attemptId:state.attemptId,checkpoint:snapshot()});
+    } catch {state.watchdogStatus='unavailable';watchdog=null;}
+  }
+  function readPreviousWatchdog(){
+    try {
+      const request=indexedDB.open('blender-startup-recovery-v1',1);
+      request.onupgradeneeded=()=>request.result.createObjectStore('attempts');
+      request.onerror=()=>{};
+      request.onsuccess=()=>{
+        const db=request.result,transaction=db.transaction('attempts','readonly');
+        const get=transaction.objectStore('attempts').get('last');
+        get.onsuccess=()=>{
+          previousWatchdog=get.result??null;
+          if(window.blenderDeviceReport)window.blenderDeviceReport.previousWatchdogReport=previousWatchdog;
+          update();
+        };
+        transaction.oncomplete=()=>db.close();transaction.onerror=()=>db.close();
+      };
+    } catch {}
+  }
   window.blenderStartupStats={snapshot,instrumentDevice,
-    previousAttempt(){return previous;},
+    previousRecovery(){return previousWatchdog;},
+    previousAttempt(){return previousSnapshot();},
     phase(phase){
       state.phase=phase;state.phaseSeconds=Math.round((performance.now()-began)/1000);update(true,true);
+      if(phase==='Viewport presented')watchdog?.postMessage({kind:'stop',checkpoint:snapshot()});
     },
-    start(){began=performance.now();state.phaseSeconds=0;state.active=true;previous=null;operation('Starting Blender');},
+    start(){began=performance.now();state.phaseSeconds=0;state.active=true;previous=null;state.startedAt=Date.now();state.attemptId=state.startedAt+'-'+Math.random().toString(36).slice(2,8);startWatchdog();operation('Starting Blender');},
     // Thousands of files can change the dependency count synchronously. Keep
     // only the count; the heartbeat paints it, with a final immediate update.
     dependencies(count){state.dependencies=count;if(count===0)update(true,true);},
     line(message){
       const line=String(message).replace(/\s+/g,' ').trim();
-      if(line){state.lines.push(line.slice(0,180));state.lines=state.lines.slice(-4);}
+      if(line){
+        const bounded=line.slice(0,180);state.lines.push(bounded);state.lines=state.lines.slice(-4);
+        if(state.active&&state.phase!=='Viewport presented'){
+          state.progressSequence++;
+          try{watchdog?.postMessage({kind:'native-line',line:bounded,progressSequence:state.progressSequence,
+            elapsedSeconds:Math.round((performance.now()-began)/1000)});}catch{}
+        }
+      }
       if(performance.now()-lastOutputUpdate>=250){lastOutputUpdate=performance.now();update(true);}
     },
     failure(message){
@@ -137,7 +270,7 @@
     compact=!compact;text.hidden=compact;toggle.textContent=compact?'Show details':'Hide details';
   };
   addEventListener('pagehide',()=>update(true,true));
-  document.addEventListener('visibilitychange',()=>update(true,true));
-  setInterval(()=>{if(!document.hidden)update(true);},1000);
-  update();
+  document.addEventListener('visibilitychange',()=>{state.pageVisible=!document.hidden;try{watchdog?.postMessage({kind:'visibility',visible:state.pageVisible});}catch{}update(true,true);});
+  setInterval(()=>{if(!document.hidden){update(true);if(state.active)try{watchdog?.postMessage({kind:'heartbeat'});}catch{}}},1000);
+  update();readPreviousWatchdog();
 })();

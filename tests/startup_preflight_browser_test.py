@@ -30,7 +30,7 @@ ENGINE='''window.createBlenderCore=async options=>({
 });'''
 with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-preflight-') as directory:
     base=Path(directory)
-    for name in ['blender_editor.html','editor_files.js','editor_input.js','startup_stats.js','ipad-startup.html']:
+    for name in ['blender_editor.html','editor_files.js','editor_input.js','startup_stats.js','startup_watchdog.js','ipad-startup.html']:
         (base/('index.html' if name=='blender_editor.html' else name)).write_bytes((ROOT/'native/browser'/name).read_bytes())
     (base/'editor.html').write_bytes((base/'index.html').read_bytes())
     (base/'blender-core.js').write_text(ENGINE)

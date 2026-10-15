@@ -47,7 +47,7 @@ try:
         diagnostics=(ROOT/'.cache/blender-tablet-startup-console.log').open('w')
         page.on('console',lambda message:(diagnostics.write(message.type+': '+message.text+'\n'),diagnostics.flush()))
         page.on('pageerror',lambda error:errors.append(str(error)))
-        page.on('worker',lambda worker:workers.append(worker.url))
+        page.on('worker',lambda worker:workers.append(worker.url) if 'blender-core.js' in worker.url else None)
         page.goto(f'http://127.0.0.1:{server.server_port}/')
         page.wait_for_selector('#start-editor',state='visible')
         assert not page.evaluate('window.createBlenderCore || window.blenderEditor')
@@ -62,6 +62,8 @@ try:
         assert stats['texturesCreated']>0 and stats['buffersCreated']>0,stats
         assert stats['phase']=='Viewport presented',stats
         assert stats['wasmMode']=='streaming' and stats['wasmMimeType']=='application/wasm',stats
+        assert stats['drawCalls']>0 and stats['queueSubmissions']>0,stats
+        page.wait_for_function("blenderStartupStats.snapshot().firstSubmission==='completed' && blenderStartupStats.snapshot().watchdogStatus==='finished'")
         assert len(workers)==4,workers
         assert stats['mainInstanceReady'] and stats['workersReady']==stats['workersRequested']==4,stats
         state=page.evaluate('''({report:blenderDeviceReport,ready:blenderEditor.projectStorageReady,

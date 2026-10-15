@@ -43,7 +43,7 @@ with TemporaryDirectory(prefix='offline-shell-', dir=ROOT/'.cache') as directory
         (folder/'service-worker.js').write_text(worker.replace('__BUILD_CACHE__', 'fixture-'+name))
         fixtures[name] = {}
         for asset in ('blender-core.js', 'blender-core.wasm', 'blender-core.data',
-                      'manifest.webmanifest', 'icon.svg', 'icon-192.png','icon-512.png','editor_files.js','editor_input.js','startup_stats.js','ipad-startup.html'):
+                      'manifest.webmanifest', 'icon.svg', 'icon-192.png','icon-512.png','editor_files.js','editor_input.js','startup_stats.js','startup_watchdog.js','ipad-startup.html'):
             content = ('Infrastructure fixture '+name+' '+asset).encode()
             (folder/asset).write_bytes(content)
             fixtures[name][asset] = content.decode()

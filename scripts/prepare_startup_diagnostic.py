@@ -13,7 +13,7 @@ from browser_low_memory import strip_debug_names, fix_tablet_pixel_ratio
 
 ROOT=Path(__file__).resolve().parents[1]
 ENGINE='893f6163652f5cde223f9781a61ef4931f4b3444'
-OVERLAY=('index.html','editor.html','startup_stats.js','ipad-startup.html','service-worker.js')
+OVERLAY=('index.html','editor.html','startup_stats.js','startup_watchdog.js','ipad-startup.html','service-worker.js')
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
 def main():
