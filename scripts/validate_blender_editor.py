@@ -84,6 +84,8 @@ if __name__ == '__main__':
                    'shader_switch_fallthrough', 'volume_texture_queries',
                    'atomic_image_coherence', 'normalized_storage_images', 'buffered_storage_images', 'shader_output_names',
                    'localhost_recovery_links', 'tablet_stock_startup', 'float32_nearest_sampling',
-                   'adapter_unavailable_backup', 'initial_install_failure_recovery'],
+                   'float32_texel_load', 'depth_stencil_clear', 'indirect_instance_drawing',
+                   'adapter_unavailable_backup', 'initial_install_failure_recovery'] +
+                  (['eevee_shadow_viewports', 'render_attachment_lifetime'] if options.eevee else []),
         **before}, indent=2) + '\n')
     print('PASS: editor acceptance recorded for the exact browser assets and fixtures.')

@@ -38,6 +38,7 @@ struct WgslResourceBinding {
   WGPUStorageTextureAccess storage_access = WGPUStorageTextureAccess_WriteOnly;
   WGPUTextureFormat storage_format = WGPUTextureFormat_RGBA8Unorm;
   WGPUSamplerBindingType sampler_type = WGPUSamplerBindingType_Filtering;
+  bool sampler_used = false; /* Actual sampling/helper use, excluding Tint phony uses. */
   bool writable = false; /* read_write storage buffer / storage texture */
 };
 

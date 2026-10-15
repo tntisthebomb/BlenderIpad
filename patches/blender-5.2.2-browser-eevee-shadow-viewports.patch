@@ -1,0 +1,57 @@
+--- a/source/blender/draw/engines/eevee/shaders/eevee_geom_mesh.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_geom_mesh.bsl.hh
+@@ -112,6 +112,16 @@
+   }
+
+   out_position = reverse_z::transform(view.point_view_to_homogenous(vs_P));
++#ifdef GPU_WEBGPU
++  /* WebGPU has one hardware viewport. The shadow framebuffer uses its full
++   * size; emulate the selected power-of-two viewport anchored at (0, 0).
++   * Apply this in GL clip space before the backend's Y and depth conversion. */
++  if (pipe.is_shadow_pipe) [[static_branch]] {
++    float viewport_scale = float(1u << uint(out_viewport)) / float(SHADOW_TILEMAP_RES);
++    out_position.x = (out_position.x + out_position.w) * viewport_scale - out_position.w;
++    out_position.y = (out_position.y + out_position.w) * viewport_scale - out_position.w;
++  }
++#endif
+ }
+
+ }  // namespace eevee
+--- a/source/blender/draw/engines/eevee/shaders/eevee_geom_curves.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_geom_curves.bsl.hh
+@@ -150,6 +150,16 @@
+   }
+
+   out_position = reverse_z::transform(view.point_view_to_homogenous(vs_P));
++#ifdef GPU_WEBGPU
++  /* WebGPU has one hardware viewport. The shadow framebuffer uses its full
++   * size; emulate the selected power-of-two viewport anchored at (0, 0).
++   * Apply this in GL clip space before the backend's Y and depth conversion. */
++  if (pipe.is_shadow_pipe) [[static_branch]] {
++    float viewport_scale = float(1u << uint(out_viewport)) / float(SHADOW_TILEMAP_RES);
++    out_position.x = (out_position.x + out_position.w) * viewport_scale - out_position.w;
++    out_position.y = (out_position.y + out_position.w) * viewport_scale - out_position.w;
++  }
++#endif
+ }
+
+ }  // namespace eevee
+--- a/source/blender/draw/engines/eevee/shaders/eevee_geom_pointcloud.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_geom_pointcloud.bsl.hh
+@@ -140,6 +140,16 @@
+   }
+
+   out_position = reverse_z::transform(view.point_view_to_homogenous(vs_P));
++#ifdef GPU_WEBGPU
++  /* WebGPU has one hardware viewport. The shadow framebuffer uses its full
++   * size; emulate the selected power-of-two viewport anchored at (0, 0).
++   * Apply this in GL clip space before the backend's Y and depth conversion. */
++  if (pipe.is_shadow_pipe) [[static_branch]] {
++    float viewport_scale = float(1u << uint(out_viewport)) / float(SHADOW_TILEMAP_RES);
++    out_position.x = (out_position.x + out_position.w) * viewport_scale - out_position.w;
++    out_position.y = (out_position.y + out_position.w) * viewport_scale - out_position.w;
++  }
++#endif
+ }
+
+ }  // namespace eevee

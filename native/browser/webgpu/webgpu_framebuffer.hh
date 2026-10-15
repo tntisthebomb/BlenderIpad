@@ -64,6 +64,7 @@ class WebGPUFrameBuffer : public FrameBuffer {
 
  public:
   WebGPUFrameBuffer(const char *name) : FrameBuffer(name) {}
+  ~WebGPUFrameBuffer() override;
 
   void set_is_backbuffer(bool value)
   {

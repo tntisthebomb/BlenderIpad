@@ -30,9 +30,16 @@ try:
             '--no-sandbox','--enable-unsafe-webgpu','--enable-features=Vulkan',
             '--use-angle=swiftshader','--enable-unsafe-swiftshader'])
         context=browser.new_context()
-        context.add_init_script('''const request=GPUAdapter.prototype.requestDevice;
+        context.add_init_script('''window.renderDummyTextures=[];
+          const createTexture=GPUDevice.prototype.createTexture;
+          GPUDevice.prototype.createTexture=function(options){
+            const texture=createTexture.call(this,options);
+            if(options.label==='fb_dummy_attachment')renderDummyTextures.push(new WeakRef(texture));
+            return texture;
+          };
+          const request=GPUAdapter.prototype.requestDevice;
           GPUAdapter.prototype.requestDevice=async function(options){
-            const device=await request.call(this,options);window.renderTestFeatures=[...device.features];return device;
+            const device=await request.call(this,{...options,requiredFeatures:options.requiredFeatures.filter(feature=>feature!=='float32-filterable')});window.renderTestFeatures=[...device.features];window.renderTestDevice=device;return device;
           };''')
         page=context.new_page()
         errors=[]
@@ -45,7 +52,7 @@ try:
         page.goto(f'http://127.0.0.1:{server.server_port}/core.html')
         page.wait_for_function('document.body.dataset.ready || document.body.dataset.error',timeout=300000)
         assert page.locator('body').get_attribute('data-ready')=='true',page.locator('body').get_attribute('data-error')
-        assert page.evaluate('crossOriginIsolated && renderTestFeatures.includes("indirect-first-instance")')
+        assert page.evaluate('crossOriginIsolated && renderTestFeatures.includes("indirect-first-instance") && !renderTestFeatures.includes("float32-filterable")')
         page.evaluate('source=>blenderCore.FS.writeFile("/gpu_test.py",source)',(ROOT/'tests/blender_render_scene.py').read_text())
         context.set_offline(True)
         page.evaluate("""engine=>{setTimeout(()=>{
@@ -73,6 +80,14 @@ try:
             assert picture.getextrema()[3][1]==(0 if label=='empty' else 255)
             (ROOT/'.cache'/('blender-render-'+options.engine+'-'+label+'.png')).write_bytes(data)
         diagnostics.write(json.dumps(checks)+'\n')
+        if options.engine=='BLENDER_EEVEE':
+            # A native framebuffer owns its dummy render attachment. Repeated
+            # render-engine teardown must release that ownership, even when JS
+            # garbage collection is deliberately delayed by the browser.
+            page.evaluate('renderTestDevice.queue.onSubmittedWorkDone()')
+            debug_session.send('HeapProfiler.collectGarbage')
+            retained=page.evaluate('({created:renderDummyTextures.length,alive:renderDummyTextures.filter(ref=>ref.deref()).length})')
+            assert retained['created']>0 and retained['alive']==0,retained
         assert not errors,errors
         diagnostics.write(json.dumps(page.evaluate('({stdout:coreOutput,stderr:coreErrors})'),indent=2))
         diagnostics.close()

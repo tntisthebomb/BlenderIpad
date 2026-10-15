@@ -31,6 +31,7 @@
 #include "webgpu_context.hh"
 #include "webgpu_shader.hh"
 #include "shader_prepare.hh"
+#include "shader_sampler_usage.hh"
 #include "shader_atomic_image.hh"
 #include "shader_unorm16_image.hh"
 #include "shader_buffer_image.hh"
@@ -899,6 +900,7 @@ static void parse_wgsl_bindings(const std::string &wgsl, std::vector<WgslResourc
     }
     else if (type.compare(0, 7, "sampler") == 0) {
       b.kind = WgslResourceBinding::SAMPLER;
+      b.sampler_used = webgpu_prepare::sampler_is_used(wgsl, varname);
       b.sampler_type = has(type, "comparison") ? WGPUSamplerBindingType_Comparison :
                                                  WGPUSamplerBindingType_Filtering;
       b.res_name = varname;
@@ -930,8 +932,9 @@ static void parse_wgsl_bindings(const std::string &wgsl, std::vector<WgslResourc
     }
     /* Dedup by binding (a resource used in vert+frag appears in both). */
     bool dup = false;
-    for (const WgslResourceBinding &e : out) {
+    for (WgslResourceBinding &e : out) {
       if (e.binding == b.binding) {
+        e.sampler_used |= b.sampler_used;
         dup = true;
         break;
       }

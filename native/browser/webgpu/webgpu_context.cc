@@ -109,6 +109,24 @@ void WebGPUContext::clear_bind_group_cache_all_contexts()
   }
 }
 
+void WebGPUContext::invalidate_cached_resource_all_contexts(WGPUTextureView view,
+                                                           WGPUBuffer buffer)
+{
+  for (WebGPUContext *ctx : g_all_contexts) {
+    for (auto it = ctx->bind_group_cache_.begin(); it != ctx->bind_group_cache_.end();) {
+      const auto &entries = it->second.entries;
+      const bool matches = std::any_of(entries.begin(), entries.end(), [&](const auto &entry) {
+        return (view && entry.textureView == view) || (buffer && entry.buffer == buffer);
+      });
+      if (matches) {
+        ctx->cached_bind_group_release(it->second);
+        it = ctx->bind_group_cache_.erase(it);
+      }
+      else ++it;
+    }
+  }
+}
+
 static uint32_t align256(uint32_t v)
 {
   return (v + 255u) & ~255u;
@@ -214,6 +232,12 @@ WebGPUContext::~WebGPUContext()
     }
   }
   clear_bind_group_cache();
+  for (const auto &item : snapshot_textures_) {
+    if (item.second) wgpuTextureRelease(item.second);
+  }
+  for (const auto &item : snapshot_buffers_) {
+    if (item.second) wgpuBufferRelease(item.second);
+  }
   for (const auto &item : state_samplers_.items()) {
     if (item.value) wgpuSamplerRelease(item.value);
   }
@@ -1548,7 +1572,9 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
             break;
           }
           WebGPUTexture *paired = bound_texture_for_binding(iface, bindings, b.binding - 128);
-          if (paired && paired->is_depth_format()) {
+          if (paired && (paired->is_depth_format() ||
+                         (requires_unfilterable_sample(paired) && !b.sampler_used))) {
+            /* A texelFetch-only shader never consults sampler filtering. */
             e.sampler = nearest_sampler();
           }
         }
@@ -1624,6 +1650,15 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
     return nullptr;
   }
 
+  /* Snapshot views start with a caller-owned reference. Bind groups and cache
+   * entries acquire the ownership they need before this scope releases it. */
+  struct TemporaryViews {
+    std::vector<WGPUTextureView> handles;
+    ~TemporaryViews() {
+      for (WGPUTextureView view : handles) wgpuTextureViewRelease(view);
+    }
+  } temporary_views;
+
   /* Sampled-texture vs storage-texture aliasing on the SAME texture within one
    * bind group is invalid in WebGPU (per-subresource usage scopes) — sample a
    * snapshot copy instead (GL semantics: reads see pre-pass contents). */
@@ -1658,6 +1693,7 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
                   bindings[j].res_name.c_str());
           fflush(stderr);
         }
+        temporary_views.handles.push_back(snap);
         entries[i].textureView = snap;
       }
       break;

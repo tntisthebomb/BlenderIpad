@@ -253,19 +253,24 @@ WebGPUTexture::~WebGPUTexture()
   WebGPUContext::scrub_texture_all_contexts(this);
   for (auto &kv : attachment_views_) {
     if (kv.second) {
+      WebGPUContext::invalidate_cached_resource_all_contexts(kv.second, nullptr);
       wgpuTextureViewRelease(kv.second);
     }
   }
   if (sample_view_) {
+    WebGPUContext::invalidate_cached_resource_all_contexts(sample_view_, nullptr);
     wgpuTextureViewRelease(sample_view_);
   }
   if (mip_range_view_) {
+    WebGPUContext::invalidate_cached_resource_all_contexts(mip_range_view_, nullptr);
     wgpuTextureViewRelease(mip_range_view_);
   }
   if (storage_view_) {
+    WebGPUContext::invalidate_cached_resource_all_contexts(storage_view_, nullptr);
     wgpuTextureViewRelease(storage_view_);
   }
   if (view_) {
+    WebGPUContext::invalidate_cached_resource_all_contexts(view_, nullptr);
     wgpuTextureViewRelease(view_);
   }
   {
@@ -288,7 +293,10 @@ WebGPUTexture::~WebGPUTexture()
 
 WebGPUAtomicImage::~WebGPUAtomicImage()
 {
-  if (buffer) wgpuBufferRelease(buffer);
+  if (buffer) {
+    WebGPUContext::invalidate_cached_resource_all_contexts(nullptr, buffer);
+    wgpuBufferRelease(buffer);
+  }
 }
 
 WGPUBuffer WebGPUTexture::atomic_image_buffer()

@@ -17,6 +17,12 @@
 
 namespace blender::gpu {
 
+WebGPUFrameBuffer::~WebGPUFrameBuffer()
+{
+  if (dummy_att_view_) wgpuTextureViewRelease(dummy_att_view_);
+  if (dummy_att_tex_) wgpuTextureRelease(dummy_att_tex_);
+}
+
 void WebGPUFrameBuffer::bind(bool enabled_srgb)
 {
   static int s_bind_log = 0;

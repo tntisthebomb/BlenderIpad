@@ -418,6 +418,9 @@ class WebGPUContext : public Context {
     bind_group_cache_.clear();
   }
   static void clear_bind_group_cache_all_contexts();
+  /* Drop cached ownership when the resource's native owner releases it. Pending
+   * commands retain their own references until submitted work completes. */
+  static void invalidate_cached_resource_all_contexts(WGPUTextureView view, WGPUBuffer buffer);
   static void clear_pipeline_cache_all_contexts();
   WebGPUTexture *bound_texture_for_binding(ShaderInterface *iface,
                                            const std::vector<WgslResourceBinding> &bindings,

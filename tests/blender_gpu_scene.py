@@ -155,6 +155,25 @@ for iteration,format_name in enumerate(['RGBA8','RGBA32F','RGBA8','RGBA32F']):
 gpu.shader.unbind()
 checks['float32_nearest_sampling']=True
 
+# Exact texel loads ignore filtering state. An unused Tint sampler still needs
+# a valid non-filtering binding when the float32 filtering feature is absent.
+info=gpu.types.GPUShaderCreateInfo()
+info.local_group_size(1,1)
+info.sampler(0,'FLOAT_2D','source_texture')
+info.image(0,'RGBA32F','FLOAT_2D','target',qualifiers={'WRITE'})
+info.compute_source('void main(){imageStore(target,ivec2(0),texelFetch(source_texture,ivec2(1,1),0));}')
+shader=gpu.shader.create_from_info(info)
+values=[0.0]*12+[0.125,0.375,0.625,1.0]
+source=gpu.types.GPUTexture((2,2),format='RGBA32F',data=gpu.types.Buffer('FLOAT',16,values))
+source.filter_mode(True)
+target=gpu.types.GPUTexture((1,1),format='RGBA32F')
+shader.uniform_sampler('source_texture',source)
+shader.image('target',target)
+gpu.compute.dispatch(shader,1,1,1)
+assert list(flattened(target.read()))==values[-4:]
+gpu.shader.unbind()
+checks['float32_texel_load']=True
+
 # RGBA read/write images must work without texture-formats-tier2. Preserve
 # padded rows, array layers, half-float packing and buffer/texture coherence.
 for name in ['RGBA16F','RGBA32F']:
