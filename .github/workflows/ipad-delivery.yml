@@ -1,0 +1,48 @@
+name: Package the accepted iPad preview for one extraction
+on:
+  push:
+    branches: [codex/ipad-preview-delivery]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ACCEPTED_RUN_ID: '38697242925'
+      ACCEPTED_SOURCE_COMMIT: '893f6163652f5cde223f9781a61ef4931f4b3444'
+      SOURCE_ARTIFACT_ID: '11957548860'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Check delivery packaging guards
+        run: python3 delivery/test_package_delivery.py
+      - name: Install updater test runner
+        run: |
+          python3 -m venv /tmp/blender-delivery-tests
+          /tmp/blender-delivery-tests/bin/python -m pip install playwright==1.62.0
+      - name: Validate engine-free updater and coherent replacement
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+        run: /tmp/blender-delivery-tests/bin/python delivery/test_updater.py
+      - name: Retrieve the accepted CPU Cycles engine and corresponding source
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: blender-editor-cpu-cycles-with-source
+          github-token: ${{ github.token }}
+          run-id: ${{ env.ACCEPTED_RUN_ID }}
+          path: work/accepted
+      - name: Verify provenance and every accepted engine byte; prepare flat preview
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 delivery/package_delivery.py --input-dir work/accepted --output work/ready/Blender-iPad \
+            --source-commit "$ACCEPTED_SOURCE_COMMIT" --run-id "$ACCEPTED_RUN_ID" \
+            --source-artifact-id "$SOURCE_ARTIFACT_ID"
+      - name: Upload one-extraction iPad preview
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Blender-iPad-5.2.2
+          path: work/ready/Blender-iPad/*
+          if-no-files-found: error
+          retention-days: 30
