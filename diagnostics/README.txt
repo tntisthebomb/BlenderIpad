@@ -1,16 +1,26 @@
-Blender iPad startup check
+Blender iPad device check v2 (engine-free)
 
-1. Unzip this download in Files.
-2. Copy ipad-startup.html into the WorldWideWeb folder already containing
-   index.html, blender-core.js, blender-core.wasm and blender-core.data.
-3. Close the previous Blender tab. Keep WorldWideWeb running beside Safari.
-4. Open http://localhost:8080/ipad-startup.html in Safari. If your editor lives
-   in a subfolder, preserve that subfolder before ipad-startup.html.
-5. If it stalls or reports an error, tap Copy startup report and paste it into
-   the chat. Startup details also show the report for manual selection/copy.
+This replaces the earlier ipad-startup-v1 page, which automatically started
+Blender. Do not retry that old page on an iPad that became unresponsive.
 
-This diagnostic uses the existing engine files and the same project storage.
-It records startup phases and the previous attempt if the page reloads. It is
-not a new completed port. Its complete frontend source is ipad-startup.html.
-The diagnostic is GPL-3.0-or-later; the existing engine's corresponding source
-accompanies your original blender-editor-preview-with-source download.
+Unzip this download. Copy ipad-startup.html into the WorldWideWeb folder if you
+still have it, replacing the old file. You can also serve this two-file folder
+by itself. No Blender engine or original preview download is required.
+
+Keep WorldWideWeb and Safari visible together. Open
+http://localhost:8080/ipad-startup.html
+Preserve your actual server port/folder path if different. The report should
+identify itself as ipad-preflight-v2 and say engineStarted: false.
+
+Browser details appear immediately. Check graphics support only asks for an
+adapter; it does not create a GPU device, load the engine, allocate Blender's
+memory, or register/install an offline worker. Copy report has selectable text
+as a fallback; Download report saves JSON. Do not launch Blender from another
+tab while checking. If the device is sluggish, close its existing Blender tab.
+
+This small preflight does not prove that the full port can run on your iPad.
+Safari does not expose available RAM. No physical device retry is needed until
+you choose to provide this preflight report; the affected engine remains unverified.
+
+SPDX-License-Identifier: GPL-3.0-or-later
+The complete source of this diagnostic is the readable ipad-startup.html file.
