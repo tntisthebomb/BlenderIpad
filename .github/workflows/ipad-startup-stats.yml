@@ -1,7 +1,7 @@
 name: Validate and package full Blender startup statistics
 on:
   push:
-    branches: [codex/ipad-startup-stats, codex/ipad-wasm-streaming]
+    branches: [codex/ipad-startup-stats, codex/ipad-wasm-streaming, codex/ipad-low-memory]
   workflow_dispatch:
 permissions:
   contents: read
@@ -9,7 +9,7 @@ permissions:
 jobs:
   diagnostic:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install acceptance runner
@@ -25,22 +25,24 @@ jobs:
           path: work/original
           merge-multiple: true
       - name: Verify every original asset and prepare the diagnostic overlay
-        run: python3 scripts/prepare_startup_diagnostic.py --input-dir work/original --output .cache/blender-webgpu-browser
+        run: |
+          python3 tests/browser_low_memory_test.py
+          python3 scripts/prepare_startup_diagnostic.py --input-dir work/original --output .cache/blender-webgpu-browser --low-memory
       - name: Validate screenshots, crash checkpoints, actual editor and offline updates
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
         run: .cache/browser-tests/bin/python scripts/validate_startup_diagnostic.py
-      - name: Upload small update for the existing folder
+      - name: Upload engine update for the existing folder
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Blender-iPad-startup-stats-update
+          name: Blender-iPad-low-memory-update
           path: work/startup-stats-update/*
           if-no-files-found: error
           retention-days: 30
       - name: Upload full replacement folder
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Blender-iPad-startup-stats-full
+          name: Blender-iPad-low-memory-full
           path: .cache/blender-webgpu-browser/*
           if-no-files-found: error
           retention-days: 30

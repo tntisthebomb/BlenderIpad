@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Add the screenshot panel to the exact previously distributed engine.
 
-This is a frontend diagnostic overlay, not a newly accepted native engine.
+Optionally derive a lower-memory candidate by stripping debug names. Acceptance remains pending after preparation.
 """
 import argparse
 import hashlib
@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+from browser_low_memory import strip_debug_names
 
 ROOT=Path(__file__).resolve().parents[1]
 ENGINE='893f6163652f5cde223f9781a61ef4931f4b3444'
@@ -19,6 +20,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--input-dir',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--low-memory',action='store_true')
     args=parser.parse_args()
     source=args.input_dir;output=args.output
     manifest=json.loads((source/'delivery-manifest.json').read_text())
@@ -40,6 +42,11 @@ def main():
         if name=='service-worker.js':continue
         native='blender_editor.html' if name in ('index.html','editor.html') else name
         shutil.copyfile(ROOT/'native/browser'/native,output/name)
+    transformations={}
+    if args.low_memory:
+        wasm,transformations=strip_debug_names((output/'blender-core.wasm').read_bytes())
+        (output/'blender-core.wasm').write_bytes(wasm)
+        shutil.copyfile(ROOT/'native/browser/blender_webgpu.html',output/'core.html')
     # The service worker waits for old tabs to close; all protected assets get
     # a new coherent cache, including the diagnostic script while offline.
     inputs=proof['assets'].keys() | {'startup_stats.js'}
@@ -52,15 +59,17 @@ def main():
     frontend=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     metadata={'profile':'experimental-startup-diagnostic','nativeEngineSource':ENGINE,
         'frontendSource':frontend,'physicalSafariAccepted':False,'validation':'pending',
-        'nativeEngineAssets':{name:proof['assets'][name] for name in ('blender-core.js','blender-core.wasm','blender-core.data')},
+        'originalNativeEngineAssets':{name:proof['assets'][name] for name in ('blender-core.js','blender-core.wasm','blender-core.data')},
+        'nativeEngineAssets':{name:digest(output/name) for name in ('blender-core.js','blender-core.wasm','blender-core.data')},
+        'lowMemory':args.low_memory,'transformations':transformations,
         'correspondingNativeSourceURL':manifest['correspondingSourceURL'],
         'correspondingFrontendSourceURL':'https://github.com/tntisthebomb/BlenderIpad/tree/'+frontend,
-        'overlayFiles':list(OVERLAY)}
+        'overlayFiles':list(OVERLAY)+(['blender-core.wasm','core.html'] if args.low_memory else [])}
     (output/'delivery-manifest.json').write_text(json.dumps(metadata,indent=2)+'\n')
-    readme=(ROOT/'docs/ipad-startup-stats.txt').read_text()
+    readme=(ROOT/'docs'/('ipad-low-memory.txt' if args.low_memory else 'ipad-startup-stats.txt')).read_text()
     (output/'README.txt').write_text(readme+'\nNative corresponding source: '+metadata['correspondingNativeSourceURL']+'\nFrontend corresponding source: '+metadata['correspondingFrontendSourceURL']+'\n')
     for name,expected in metadata['nativeEngineAssets'].items():
         if digest(output/name)!=expected:raise SystemExit('Native engine bytes changed: '+name)
-    print('Prepared diagnostic frontend; original native engine bytes verified unchanged. Validation remains pending.')
+    print('Prepared pending startup profile. Low-memory transformations: '+str(args.low_memory))
 
 if __name__=='__main__':main()

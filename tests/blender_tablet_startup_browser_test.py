@@ -57,6 +57,7 @@ try:
         assert stats['phase']=='Viewport presented',stats
         assert stats['wasmMode']=='streaming' and stats['wasmMimeType']=='application/wasm',stats
         assert len(workers)==4,workers
+        assert stats['mainInstanceReady'] and stats['workersReady']==stats['workersRequested']==4,stats
         state=page.evaluate('''({report:blenderDeviceReport,ready:blenderEditor.projectStorageReady,
           wasmMemoryBytes:blenderEditor.getBlenderMemoryBytes(),width:canvas.width,height:canvas.height})''')
         assert state['ready'] is True and state['wasmMemoryBytes']>0,state

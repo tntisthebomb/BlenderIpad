@@ -21,18 +21,23 @@ def main():
     if manifest['profile']!='experimental-startup-diagnostic' or manifest['validation']!='pending':
         raise SystemExit('Expected a fresh pending diagnostic overlay.')
     before=assets()
-    for test in TESTS:
-        subprocess.run([sys.executable,str(ROOT/test)],cwd=ROOT,check=True)
+    checks=[(test,[]) for test in TESTS]
+    if manifest.get('lowMemory'):
+        checks += [('tests/blender_modeling_browser_test.py',['--tablet'])]
+        checks += [('tests/blender_render_browser_test.py',['--tablet','--engine',engine])
+                   for engine in ('BLENDER_WORKBENCH','BLENDER_EEVEE','CYCLES')]
+    for test,args in checks:
+        subprocess.run([sys.executable,str(ROOT/test),*args],cwd=ROOT,check=True)
     if before!=assets():raise SystemExit('Runtime changed during its acceptance tests.')
     for name,expected in manifest['nativeEngineAssets'].items():
         if digest(RUNTIME/name)!=expected:raise SystemExit('Native engine changed: '+name)
     manifest['validation']='automated-frontend-checks-passed'
     (RUNTIME/'delivery-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     proof={'profile':'experimental-startup-diagnostic','version':[5,2,2],
-        'checks':list(TESTS),'assets':assets(),
-        'tests':{name:digest(ROOT/name) for name in TESTS},
+        'checks':[{'test':test,'args':args} for test,args in checks],'assets':assets(),
+        'tests':{test:digest(ROOT/test) for test,_ in checks},
         'nativeEngineSource':manifest['nativeEngineSource'],
-        'frontendSource':manifest['frontendSource'],'physicalSafariAccepted':False}
+        'frontendSource':manifest['frontendSource'],'lowMemory':manifest.get('lowMemory',False),'physicalSafariAccepted':False}
     (RUNTIME/'editor-validation.json').write_text(json.dumps(proof,indent=2)+'\n')
     patch=ROOT/'work/startup-stats-update';patch.mkdir(parents=True,exist_ok=False)
     for name in manifest['overlayFiles']:shutil.copyfile(RUNTIME/name,patch/name)

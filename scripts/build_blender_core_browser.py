@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from setup_browser import CACHE, ROOT, toolchain, run
 from browser_runtime_scripts import stage_runtime_scripts
+from browser_low_memory import strip_debug_names
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser()
@@ -66,6 +67,10 @@ if __name__ == '__main__':
         args += ['--preload-file', str(ROOT / 'native/browser/editor_startup.py') + '@/browser_startup.py']
         args += ['--preload-file', str(ROOT / 'tests/blender_editor_scene.py') + '@/editor_test.py']
     run(*args, cwd=core, env=env)
+    if options.editor:
+        wasm=output/'blender-core.wasm'
+        stripped,_=strip_debug_names(wasm.read_bytes())
+        wasm.write_bytes(stripped)
     shutil.copyfile(ROOT / ('native/browser/blender_webgpu.html' if options.webgpu else 'native/browser/blender_core.html'), output / 'core.html')
     if options.editor:
         shutil.copyfile(ROOT / 'native/browser/blender_editor.html', output / 'editor.html')

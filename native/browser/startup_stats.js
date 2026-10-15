@@ -4,9 +4,9 @@
   'use strict';
   const key='blender-startup-stats-last';
   let began=performance.now();
-  const state={version:'startup-stats-v2',active:false,phase:'Waiting to start',phaseSeconds:0,
+  const state={version:'startup-stats-v3',active:false,phase:'Waiting to start',phaseSeconds:0,
     elapsedSeconds:0,operation:'None yet',label:'',wasmMemoryBytes:null,dependencies:null,
-    wasmMode:'not started',wasmMimeType:null,
+    wasmMode:'not started',wasmMimeType:null,mainInstanceReady:false,workersRequested:0,workersReady:0,
     shaderModules:0,renderPipelines:0,computePipelines:0,texturesCreated:0,buffersCreated:0,
     bufferBytesRequested:0,lines:[],updatedAt:null};
   let previous=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,compact=false;
@@ -23,7 +23,7 @@
     state.elapsedSeconds=Math.round((performance.now()-began)/1000);
     try{state.wasmMemoryBytes=memory?.buffer.byteLength ?? window.blenderEditor?.getBlenderMemoryBytes?.() ?? state.wasmMemoryBytes;}catch{}
     const view=!state.active&&previous ? previous : state;
-    title.textContent=!state.active&&previous ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v2';
+    title.textContent=!state.active&&previous ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v3';
     const mib=value=>(value/1048576).toFixed(1)+' MiB';
     text.textContent=[
       'Step: '+view.phase,
@@ -31,6 +31,7 @@
       'Last operation: '+view.operation+(view.label?' · '+view.label:''),
       'WASM memory: '+(view.wasmMemoryBytes===null?'not available yet':mib(view.wasmMemoryBytes))+' · total iPad RAM use unavailable',
       'WASM loader: '+(view.wasmMode??'not recorded')+' · MIME: '+(view.wasmMimeType??'not recorded'),
+      'Main WASM instance: '+(view.mainInstanceReady?'ready':'not ready')+' · native workers: '+(view.workersReady??0)+' / '+(view.workersRequested??0)+' ready',
       'Dependencies left: '+(view.dependencies??'not reported'),
       'Creation requests: '+view.shaderModules+' shaders · '+view.renderPipelines+' render pipelines · '+view.computePipelines+' compute pipelines',
       'GPU resource requests: '+view.texturesCreated+' textures · '+view.buffersCreated+' buffers',
@@ -62,9 +63,29 @@
         },()=>{});
       }
       findMemory(args[1]);operation('Compiling / instantiating WebAssembly');
-      return Reflect.apply(original,this,args);
+      const result=Reflect.apply(original,this,args);
+      // Observe completion without replacing the Promise returned to Emscripten.
+      Promise.resolve(result).then(()=>{
+        state.mainInstanceReady=true;operation('Main WebAssembly instance ready');
+      },()=>{});
+      return result;
     };
   }
+  // Emscripten sends the compiled module to each native worker before starting
+  // Blender. Keep its handlers, transfer list, receiver and return untouched.
+  const trackedWorkers=new WeakSet(),post=globalThis.Worker?.prototype.postMessage;
+  if(post)Worker.prototype.postMessage=function(message,...rest){
+    if(message?.cmd==='load'&&!trackedWorkers.has(this)){
+      trackedWorkers.add(this);state.workersRequested++;
+      this.addEventListener('message',event=>{
+        if(event.data?.cmd==='loaded'){
+          state.workersReady++;operation('Native worker ready',state.workersReady+' / '+state.workersRequested);
+        }
+      });
+      operation('Preparing native worker',state.workersRequested);
+    }
+    return Reflect.apply(post,this,[message,...rest]);
+  };
   function instrumentDevice(device){
     for(const [method,counter,label] of [
       ['createShaderModule','shaderModules','Creating shader module'],

@@ -14,6 +14,7 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-stats-') as directory:
  base=Path(directory)
  css=(ROOT/'native/browser/blender_editor.html').read_text().split('<style>')[1].split('</style>')[0]
  (base/'index.html').write_text('<!doctype html><meta charset="utf-8"><style>'+css+'</style><body><button id="behind-stats" style="position:fixed;bottom:40px;left:20px" onclick="this.dataset.clicked=\'true\'">Underlying control</button><script src="startup_stats.js"></script></body>')
+ (base/'worker.js').write_text("onmessage=event=>{if(event.data.cmd==='load')postMessage({cmd:'loaded'});else postMessage({size:event.data.buffer.byteLength});};")
  (base/'startup_stats.js').write_bytes((ROOT/'native/browser/startup_stats.js').read_bytes())
  server=ThreadingHTTPServer(('127.0.0.1',0),partial(Handler,directory=directory))
  Thread(target=server.serve_forever,daemon=True).start()
@@ -32,6 +33,19 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-stats-') as directory:
     window.trackedMemory=new WebAssembly.Memory({initial:2});
     const result=await WebAssembly.instantiate(new Uint8Array([0,97,115,109,1,0,0,0]),{env:{memory:trackedMemory}});
     if(!(result.instance instanceof WebAssembly.Instance))throw Error('Changed WebAssembly result');
+    if(!blenderStartupStats.snapshot().mainInstanceReady)throw Error('Main instantiation completion not recorded');
+    const worker=new Worker('/worker.js');
+    await new Promise(resolve=>{worker.onmessage=resolve;worker.postMessage({cmd:'load'});});
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const workerState=blenderStartupStats.snapshot();
+    if(workerState.workersReady!==1||workerState.workersRequested!==1)throw Error('Worker readiness not observed');
+    const buffer=new ArrayBuffer(8);
+    const size=await new Promise(resolve=>{
+      worker.onmessage=event=>resolve(event.data.size);
+      worker.postMessage({buffer},[buffer]);
+    });
+    if(size!==8||buffer.byteLength!==0)throw Error('Worker transfer list or handler changed');
+    worker.terminate();
     const marker={};window.observedBeforeCall=false;window.originalError=new Error('fixture failure');
     const device={
       createShaderModule(d){if(this!==device)throw Error('Wrong receiver');return marker;},

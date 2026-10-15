@@ -11,6 +11,7 @@ from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser()
 parser.add_argument('--engine',choices=('BLENDER_WORKBENCH','BLENDER_EEVEE','CYCLES'),default='BLENDER_WORKBENCH')
+parser.add_argument('--tablet',action='store_true')
 options=parser.parse_args()
 class Handler(SimpleHTTPRequestHandler):
     def log_message(self,*args): pass
@@ -42,6 +43,8 @@ try:
             const device=await request.call(this,{...options,requiredFeatures:options.requiredFeatures.filter(feature=>feature!=='float32-filterable')});window.renderTestFeatures=[...device.features];window.renderTestDevice=device;return device;
           };''')
         page=context.new_page()
+        workers=[]
+        page.on('worker',lambda worker:workers.append(worker.url))
         errors=[]
         page.on('pageerror',lambda error:errors.append(str(error)))
         diagnostics=(ROOT/'.cache'/('blender-render-'+options.engine+'-console.log')).open('w')
@@ -49,7 +52,7 @@ try:
         debug_session=context.new_cdp_session(page)
         debug_session.send('Inspector.enable')
         debug_session.on('Inspector.targetCrashed',lambda event: (diagnostics.write('target-crash: '+json.dumps(event)+'\n'), diagnostics.flush()))
-        page.goto(f'http://127.0.0.1:{server.server_port}/core.html')
+        page.goto(f'http://127.0.0.1:{server.server_port}/core.html'+('?tablet=1' if options.tablet else ''))
         page.wait_for_function('document.body.dataset.ready || document.body.dataset.error',timeout=300000)
         assert page.locator('body').get_attribute('data-ready')=='true',page.locator('body').get_attribute('data-error')
         assert page.evaluate('crossOriginIsolated && renderTestFeatures.includes("indirect-first-instance") && !renderTestFeatures.includes("float32-filterable")')
@@ -57,10 +60,11 @@ try:
         context.set_offline(True)
         page.evaluate("""engine=>{setTimeout(()=>{
             blenderCore.runBlenderMain(['--background','--factory-startup','--offline-mode',
-                '--disable-autoexec','--threads','2','--python-exit-code','1','--python','/gpu_test.py','--',engine])
+                '--disable-autoexec','--threads',(blenderCore.browserLowResource?'1':'2'),'--python-exit-code','1','--python','/gpu_test.py','--',engine])
                 .catch(error=>document.body.dataset.error=String(error));
         },0);} """,options.engine)
         page.wait_for_function('coreExit !== null || document.body.dataset.error',timeout=300000)
+        assert len(workers)==(4 if options.tablet else 8),workers
         assert page.evaluate('coreExit')==0,page.evaluate('coreErrors')
         checks=json.loads(page.evaluate("blenderCore.FS.readFile('/render-output/result.json',{encoding:'utf8'})"))
         assert checks['version']==[5,2,2],checks

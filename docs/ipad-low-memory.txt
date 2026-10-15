@@ -1,0 +1,36 @@
+Blender iPad lower-memory startup candidate
+
+This is an experimental full-engine build for the iPad. It removes the WASM
+custom debug-name section (all retained sections are byte-identical). It keeps
+four native workers on iPad and eight on desktop: reducing the pool further
+failed the real embedded-Python threading check, so that change is excluded.
+Workbench, Eevee and CPU Cycles remain included. Physical Safari acceptance is
+pending; this build does not establish that the iPad reload is fixed.
+
+Extract this ZIP and copy ALL its files into your existing WorldWideWeb Blender
+folder, choosing Replace. This update includes
+blender-core.wasm: replace that file too. Keep blender-core.js and
+blender-core.data if using the update ZIP. The full ZIP includes every required file.
+
+Keep WorldWideWeb serving the same folder and localhost port. Then:
+1. Open http://localhost:8080/ipad-update.html to install the offline update.
+2. Close the updater and ALL Blender/check tabs and Home Screen windows.
+3. Open http://localhost:8080/ and tap Start Blender once.
+
+Stats v3 distinguishes main WASM instantiation from native worker preparation.
+The panel can freeze when Safari's main thread stops responding. Its last saved
+checkpoint appears after a reload without starting Blender again. If the iPad
+slows down, close Blender. A frozen timer alone cannot prove an out-of-memory
+termination. WASM memory is not total iPad memory, and resource counts are
+cumulative requests, not live allocations.
+
+Keep the same localhost address to preserve saved projects. Do not clear Safari
+website data. Export backups when possible.
+
+original-engine-validation.json records the original accepted engine. The new
+manifest records original/transformed hashes and every retained WASM section.
+editor-validation.json lists checks actually run on this candidate. Removing
+debug names makes native backtraces less descriptive. The source links below
+cover the original native engine and the packaging transformations.
+
+This combined Blender application is GPL-3.0-or-later; see LICENSE.txt.

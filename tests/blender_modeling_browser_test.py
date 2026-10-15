@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Execute actual Blender GPU resources and drawing through its own Python API."""
+import argparse
 import json
 import os
 from functools import partial
@@ -8,6 +9,9 @@ from pathlib import Path
 from threading import Thread
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1]
+parser=argparse.ArgumentParser()
+parser.add_argument('--tablet',action='store_true')
+options=parser.parse_args()
 class Handler(SimpleHTTPRequestHandler):
     def log_message(self,*args): pass
     def end_headers(self):
@@ -27,6 +31,8 @@ try:
             '--use-angle=swiftshader','--enable-unsafe-swiftshader'])
         context=browser.new_context()
         page=context.new_page()
+        workers=[]
+        page.on('worker',lambda worker:workers.append(worker.url))
         errors=[]
         page.on('pageerror',lambda error:errors.append(str(error)))
         diagnostics=(ROOT/'.cache/blender-modeling-console.log').open('w')
@@ -34,7 +40,7 @@ try:
         debug_session=context.new_cdp_session(page)
         debug_session.send('Inspector.enable')
         debug_session.on('Inspector.targetCrashed',lambda event: (diagnostics.write('target-crash: '+json.dumps(event)+'\n'), diagnostics.flush()))
-        page.goto(f'http://127.0.0.1:{server.server_port}/core.html')
+        page.goto(f'http://127.0.0.1:{server.server_port}/core.html'+('?tablet=1' if options.tablet else ''))
         page.wait_for_function('document.body.dataset.ready || document.body.dataset.error',timeout=300000)
         assert page.locator('body').get_attribute('data-ready')=='true',page.locator('body').get_attribute('data-error')
         assert page.evaluate('crossOriginIsolated')
@@ -42,10 +48,11 @@ try:
         context.set_offline(True)
         page.evaluate("""()=>{setTimeout(()=>{
             blenderCore.runBlenderMain(['--background','--factory-startup','--offline-mode',
-                '--disable-autoexec','--threads','2','--python-exit-code','1','--python','/gpu_test.py'])
+                '--disable-autoexec','--threads',(blenderCore.browserLowResource?'1':'2'),'--python-exit-code','1','--python','/gpu_test.py'])
                 .catch(error=>document.body.dataset.error=String(error));
         },0);} """)
         page.wait_for_function('coreExit !== null || document.body.dataset.error',timeout=300000)
+        assert len(workers)==(4 if options.tablet else 8),workers
         assert page.evaluate('coreExit')==0,page.evaluate('coreErrors')
         checks=json.loads(page.evaluate("blenderCore.FS.readFile('/modeling-output/result.json',{encoding:'utf8'})"))
         assert checks['version']==[5,2,2],checks

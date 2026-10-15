@@ -42,7 +42,8 @@ if (!crossOriginIsolated) {
     }
     const device=await adapter.requestDevice({requiredFeatures:features,requiredLimits});
     device.addEventListener('uncapturederror',event=>document.body.dataset.error=event.error.message);
-    return createBlenderCore({preinitializedWebGPUDevice:device,noInitialRun: true, print: write,
+    return createBlenderCore({preinitializedWebGPUDevice:device,noInitialRun: true,
+    browserLowResource:new URLSearchParams(location.search).get('tablet')==='1', print: write,
     printErr: message => {coreErrors.push(String(message)); write(message);},
     onExit: code => {window.coreExit = code;},
     onAbort: message => {document.body.dataset.error = String(message);}
