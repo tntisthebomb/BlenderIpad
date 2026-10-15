@@ -298,6 +298,7 @@ function waitForInstallation(registration) {
     script.onload=resolve;script.onerror=()=>reject(new Error('Blender engine script could not load.'));
     document.head.append(script);
   }),30000);
+  await startupStep('Preparing recovery recorder',()=>window.blenderStartupStats?.recoveryReady()??Promise.resolve(),5000);
   const module=await startupStep('Loading engine and restoring projects',()=>createBlenderCore({canvas,
     preinitializedWebGPUDevice:device,noInitialRun:true,browserLowResource:tabletMode,
     monitorRunDependencies:count=>{

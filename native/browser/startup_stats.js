@@ -10,7 +10,7 @@
     shaderModules:0,renderPipelines:0,computePipelines:0,texturesCreated:0,buffersCreated:0,
     commandEncoders:0,renderPasses:0,computePasses:0,drawCalls:0,queueSubmissions:0,firstSubmission:'not submitted',
     bufferBytesRequested:0,canvasBacking:null,canvasCss:null,lines:[],updatedAt:null};
-  let previous=null,previousWatchdog=null,watchdog=null,lastEventSignature=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,compact=false;
+  let previous=null,previousWatchdog=null,watchdog=null,recorderReady=Promise.resolve(),resolveRecorder=null,lastEventSignature=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,compact=false;
   try{previous=JSON.parse(localStorage.getItem(key)||'null');}catch{}
   const panel=document.createElement('aside');panel.id='startup-stats';
   panel.setAttribute('aria-label','Blender startup statistics');
@@ -204,41 +204,45 @@
     }
   }
   function startWatchdog(){
-    if(!globalThis.Worker||!globalThis.indexedDB){state.watchdogStatus='unavailable';return;}
+    if(!globalThis.Worker||!navigator.storage?.getDirectory){state.watchdogStatus='unavailable';return;}
     try {
+      const attemptId=state.attemptId;
+      recorderReady=new Promise(resolve=>{resolveRecorder=resolve;setTimeout(()=>{if(state.attemptId===attemptId&&state.watchdogStatus==='starting'){state.watchdogStatus='initialization timed out';update(true,true);}resolve();},2000);});
       watchdog=new Worker(new URL('startup_watchdog.js',document.baseURI),{name:'blender-startup-watchdog'});
       state.watchdogStatus='starting';
       watchdog.onmessage=event=>{
         const message=event.data;
-        if(message.kind==='storage-error')state.watchdogStatus='storage unavailable: '+message.message.slice(0,100);
-        else if(message.kind==='ready')state.watchdogStatus='recording';
+        if(message.kind==='storage-error'){state.watchdogStatus='storage unavailable: '+message.message.slice(0,100);resolveRecorder?.();}
+        else if(message.kind==='ready'){state.watchdogStatus='recording';resolveRecorder?.();}
         else if(message.kind==='sample')state.watchdogMaxGapMs=message.maxHeartbeatGapMs;
         else if(message.kind==='stopped'){watchdog=null;if(!state.watchdogStatus.startsWith('storage unavailable'))state.watchdogStatus='finished';}
         update();
       };
-      watchdog.onerror=event=>{event.preventDefault();state.watchdogStatus='unavailable';watchdog?.terminate();watchdog=null;update();};
+      watchdog.onerror=event=>{event.preventDefault();state.traceUnavailable.push('Recovery worker: '+String(event.message||'worker failed').slice(0,160));resolveRecorder?.();state.watchdogStatus='unavailable';watchdog?.terminate();watchdog=null;update();};
       watchdog.postMessage({kind:'start',attemptId:state.attemptId,checkpoint:snapshot()});
-    } catch {state.watchdogStatus='unavailable';watchdog=null;}
+    } catch {state.watchdogStatus='unavailable';watchdog=null;resolveRecorder?.();}
   }
-  function readPreviousWatchdog(){
+  function checksum(text){let value=2166136261;for(let i=0;i<text.length;i++)value=Math.imul(value^text.charCodeAt(i),16777619)>>>0;return value.toString(16);}
+  async function readPreviousWatchdog(){
     try {
-      const request=indexedDB.open('blender-startup-recovery-v1',1);
-      request.onupgradeneeded=()=>request.result.createObjectStore('attempts');
-      request.onerror=()=>{};
-      request.onsuccess=()=>{
-        const db=request.result,transaction=db.transaction('attempts','readonly');
-        const get=transaction.objectStore('attempts').get('last');
-        get.onsuccess=()=>{
-          previousWatchdog=get.result??null;
-          if(window.blenderDeviceReport)window.blenderDeviceReport.previousWatchdogReport=previousWatchdog;
-          update();
-        };
-        transaction.oncomplete=()=>db.close();transaction.onerror=()=>db.close();
-      };
+      const root=await navigator.storage.getDirectory();
+      const reports=await Promise.all(['blender-startup-recovery-a.json','blender-startup-recovery-b.json'].map(async name=>{
+        try {
+          const handle=await root.getFileHandle(name),file=await handle.getFile();
+          const envelope=JSON.parse(await file.text());
+          if(envelope.version!==2||typeof envelope.payload!=='string'||checksum(envelope.payload)!==envelope.checksum)return null;
+          const record=JSON.parse(envelope.payload);
+          return typeof record.observedAt==='number'&&record.checkpoint?record:null;
+        } catch {return null;}
+      }));
+      previousWatchdog=reports.filter(Boolean).sort((a,b)=>b.observedAt-a.observedAt)[0]??null;
+      if(window.blenderDeviceReport)window.blenderDeviceReport.previousWatchdogReport=previousWatchdog;
+      update();
     } catch {}
   }
   window.blenderStartupStats={snapshot,instrumentDevice,
     previousRecovery(){return previousWatchdog;},
+    recoveryReady(){return recorderReady;},
     previousAttempt(){return previousSnapshot();},
     phase(phase){
       state.phase=phase;state.phaseSeconds=Math.round((performance.now()-began)/1000);update(true,true);

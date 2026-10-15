@@ -22,9 +22,10 @@ prove GPU work finished. A separate observer records completion of the first
 submission; no completion callback alone cannot establish a GPU hang because
 its callback also needs the main thread to respond.
 
-A tiny worker writes a bounded recovery record to IndexedDB about once per
-second, independently of the main UI timer. It records the latest checkpoint,
-visibility information and heartbeat gaps. It cannot run through termination
+A tiny worker writes a bounded recovery record through its own synchronous
+local file handles about once per second, independently of the main UI timer. It records the latest checkpoint,
+visibility information and heartbeat gaps. Two alternating files with checksums
+allow recovery from an interrupted write. It cannot run through termination
 of the whole browser process, expose total/free iPad RAM or prove an OS memory
 kill. Background suspension can also delay callbacks. Storage failures are
 reported; the main local checkpoint remains a fallback. The recorder exits

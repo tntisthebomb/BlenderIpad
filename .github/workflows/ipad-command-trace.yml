@@ -8,7 +8,8 @@ permissions:
   actions: read
 jobs:
   recovery-webkit:
-    runs-on: ubuntu-24.04
+    # Apple WebKit exposes the same storage API family as Safari on iPad.
+    runs-on: macos-14
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -16,7 +17,7 @@ jobs:
         run: |
           python3 -m venv .cache/browser-tests
           .cache/browser-tests/bin/python -m pip install playwright==1.62.0
-          .cache/browser-tests/bin/python -m playwright install --with-deps webkit
+          .cache/browser-tests/bin/python -m playwright install webkit
       - name: Verify recorder recovery in WebKit without loading Blender
         run: .cache/browser-tests/bin/python tests/startup_watchdog_browser_test.py --browser webkit
       - name: Preserve WebKit recovery evidence

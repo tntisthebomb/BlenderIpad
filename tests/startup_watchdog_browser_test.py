@@ -21,14 +21,17 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
  for name in ('startup_stats.js','startup_watchdog.js'):(base/name).write_bytes((ROOT/'native/browser'/name).read_bytes())
  (base/'index.html').write_text('<!doctype html><meta charset="utf-8"><body><script src="startup_stats.js"></script></body>')
  (base/'reader.html').write_text('''<!doctype html><meta charset="utf-8"><body>Recovery reader<script>
- window.readRecovery=()=>new Promise((resolve,reject)=>{
-  const request=indexedDB.open('blender-startup-recovery-v1',1);
-  request.onsuccess=()=>{const db=request.result,transaction=db.transaction('attempts','readonly');
-   const read=transaction.objectStore('attempts').get('last');read.onsuccess=()=>resolve(read.result);
-   transaction.oncomplete=()=>db.close();};request.onerror=()=>reject(request.error);
- });</script>''')
- (base/'watchdog-failing.js').write_text("Object.defineProperty(globalThis,'indexedDB',{value:{open(){throw Error('quota fixture');}}});\n"+(base/'startup_watchdog.js').read_text())
- # Fixture-only probe: mark durable transaction completion in shared memory.
+ function checksum(text){let value=2166136261;for(let i=0;i<text.length;i++)value=Math.imul(value^text.charCodeAt(i),16777619)>>>0;return value.toString(16);}
+ window.readRecovery=async()=>{
+  const root=await navigator.storage.getDirectory(),records=[];
+  for(const name of ['blender-startup-recovery-a.json','blender-startup-recovery-b.json']){
+   try{const file=await(await root.getFileHandle(name)).getFile(),data=JSON.parse(await file.text());
+    if(data.checksum===checksum(data.payload))records.push(JSON.parse(data.payload));}catch{}
+  }
+  return records.sort((a,b)=>b.observedAt-a.observedAt)[0];
+ };</script>''')
+ (base/'watchdog-failing.js').write_text("Object.defineProperty(navigator,'storage',{value:{getDirectory(){return Promise.reject(Error('quota fixture'));}}});\n"+(base/'startup_watchdog.js').read_text())
+ # Fixture-only probe: mark a flushed synchronous-file write in shared memory.
  # The blocked page can see this without running any event-loop callbacks.
  (base/'startup_watchdog.js').write_text((base/'startup_watchdog.js').read_text()+'''
  const productionMessage=onmessage,productionSend=postMessage.bind(self);let testProbe=null;
@@ -49,7 +52,9 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
     };
    }''')
    page.evaluate("blenderStartupStats.start();blenderStartupStats.phase('Preparing viewport fixture');blenderStartupStats.line('last useful native breadcrumb')")
-   page.wait_for_function("blenderStartupStats.snapshot().watchdogStatus==='recording'")
+   try:page.wait_for_function("blenderStartupStats.snapshot().watchdogStatus==='recording'")
+   except Exception:
+    print('Recorder initialization failure:',page.evaluate('({state:blenderStartupStats.snapshot(),storage:typeof navigator.storage,directory:typeof navigator.storage?.getDirectory,secure:isSecureContext})'),errors,flush=True);raise
    attempt=page.evaluate('blenderStartupStats.snapshot().attemptId')
    # This browser page cannot run its timer or save recovery records while
    # this synchronous task blocks. The other worker must save independently.
@@ -76,7 +81,7 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    before=restored.evaluate('localStorage.getItem("blender-startup-stats-last")');restored.wait_for_timeout(1200)
    assert restored.evaluate('localStorage.getItem("blender-startup-stats-last")')==before
    # A successful viewport shuts down the recorder rather than retaining a
-   # diagnostic worker / continuing database writes during normal editing.
+   # diagnostic worker / continuing file writes during normal editing.
    restored.evaluate("blenderStartupStats.start();blenderStartupStats.phase('Viewport presented')")
    restored.wait_for_function("blenderStartupStats.snapshot().watchdogStatus==='finished'")
    restored.evaluate("blenderStartupStats.start()")
@@ -102,4 +107,4 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    (ROOT/'work/memory'/('watchdog-'+options.browser+'-evidence.json')).write_text(json.dumps(saved,indent=2)+'\n')
    browser.close()
  finally:server.shutdown();server.server_close()
-print('PASS: '+options.browser+' independent worker persistence during main-thread block, manual closure recovery, idle preservation, recorder shutdown and visible storage failure. No GPU engine loaded in this fixture.')
+print('PASS: '+options.browser+' independent synchronous-file persistence during main-thread block, manual closure recovery, idle preservation, recorder shutdown and visible storage failure. No GPU engine loaded in this fixture.')

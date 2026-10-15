@@ -4,7 +4,7 @@ import argparse,hashlib,json,shutil,subprocess
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 BASE='95e7feb2091f1a986e450621f201b89592713ffc'
-FILES=('startup_stats.js','startup_watchdog.js','service-worker.js')
+FILES=('startup_stats.js','startup_watchdog.js','service-worker.js','index.html','editor.html')
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 def main():
  p=argparse.ArgumentParser();p.add_argument('--input-dir',type=Path,required=True);p.add_argument('--output',type=Path,required=True);args=p.parse_args()
@@ -20,7 +20,7 @@ def main():
  (out/'editor-validation.json').rename(out/'previous-editor-validation.json')
  (out/'delivery-manifest.json').rename(out/'previous-delivery-manifest.json')
  for name in FILES:
-  if name!='service-worker.js':shutil.copyfile(ROOT/'native/browser'/name,out/name)
+  if name!='service-worker.js':shutil.copyfile(ROOT/'native/browser'/('blender_editor.html' if name in ('index.html','editor.html') else name),out/name)
  cache=hashlib.sha256()
  for name in sorted(proof['assets'].keys()|{'startup_watchdog.js'}):
   if name in ('service-worker.js','delivery-manifest.json','editor-validation.json'):continue
