@@ -35,6 +35,8 @@ try:
         ''')
         page=context.new_page();page.set_default_timeout(180000)
         errors=[];workers=[]
+        diagnostics=(ROOT/'.cache/blender-tablet-startup-console.log').open('w')
+        page.on('console',lambda message:(diagnostics.write(message.type+': '+message.text+'\n'),diagnostics.flush()))
         page.on('pageerror',lambda error:errors.append(str(error)))
         page.on('worker',lambda worker:workers.append(worker.url))
         page.goto(f'http://127.0.0.1:{server.server_port}/')
@@ -59,6 +61,6 @@ try:
         page.reload()
         page.wait_for_selector('#start-editor',state='visible')
         assert not page.evaluate('window.blenderEditor'),'Reload automatically restarted the native engine'
-        context.close();browser.close()
+        context.close();browser.close();diagnostics.close()
 finally:server.shutdown();server.server_close()
 print('PASS: real stock tablet editor startup, four prewarmed workers, bounded viewport, no float32 filtering feature and reload gating. Physical Safari acceptance remains separate.')

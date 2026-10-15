@@ -30,6 +30,7 @@ jobs:
           restore-keys: |
             browser-v2-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
             browser-v2-${{ runner.os }}-${{ matrix.profile }}-
+            browser-v2-${{ runner.os }}-webgpu-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
       - name: Install browser acceptance runner
         run: |
           python3 -m venv .cache/browser-tests
@@ -93,6 +94,7 @@ jobs:
             .cache/blender-gpu-browser-console.log
             .cache/blender-editor-browser-log.json
             .cache/blender-editor-frame.png
+            .cache/blender-tablet-startup-*
             .cache/blender-render-*.png
             .cache/blender-render-*-console.log
             .cache/blender-modeling-console.log
