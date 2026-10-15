@@ -12,6 +12,7 @@ ASSETS = ('index.html', 'editor.html', 'ipad-startup.html', 'editor_files.js', '
           'icon.svg', 'icon-192.png', 'icon-512.png', 'service-worker.js')
 TESTS = ('tests/blender_gpu_browser_test.py', 'tests/blender_gpu_scene.py',
          'tests/blender_editor_browser_test.py', 'tests/blender_editor_scene.py',
+         'tests/blender_tablet_startup_browser_test.py',
          'tests/blender_render_browser_test.py', 'tests/blender_render_scene.py',
          'tests/offline_shell_browser_test.py', 'tests/editor_files_browser_test.py',
          'tests/blender_modeling_browser_test.py', 'tests/blender_modeling_scene.py',
@@ -20,7 +21,7 @@ TESTS = ('tests/blender_gpu_browser_test.py', 'tests/blender_gpu_scene.py',
          'tests/shader_switch_phi.comp', 'tests/shader_volume_query.comp',
          'tests/shader_atomic_image.comp', 'tests/shader_readwrite_texture.comp',
          'tests/shader_zbin_range.comp', 'tests/shader_interface_names.vert',
-         'tests/shader_unorm16_image.comp',
+         'tests/shader_unorm16_image.comp', 'tests/shader_buffer_image.comp',
          'scripts/test_browser_lifecycle.py', 'tests/browser_lifecycle_probe.cc',
          'tests/ghost_platform_test.py', 'native/browser/ghost_probe.cc')
 
@@ -63,7 +64,7 @@ if __name__ == '__main__':
     for script in (
                    'tests/blender_modeling_browser_test.py', 'tests/blender_editor_browser_test.py', 'tests/offline_shell_browser_test.py',
                    'tests/editor_files_browser_test.py', 'tests/editor_install_failure_test.py',
-                   'tests/startup_preflight_browser_test.py'):
+                   'tests/startup_preflight_browser_test.py', 'tests/blender_tablet_startup_browser_test.py'):
         check(script, script)
     if snapshot() != before:
         raise SystemExit('Assets or acceptance fixtures changed during validation.')
@@ -81,8 +82,8 @@ if __name__ == '__main__':
                    'embedded_python_threads',
                    'subdivision_surface',
                    'shader_switch_fallthrough', 'volume_texture_queries',
-                   'atomic_image_coherence', 'normalized_storage_images', 'shader_output_names',
-                   'localhost_recovery_links',
+                   'atomic_image_coherence', 'normalized_storage_images', 'buffered_storage_images', 'shader_output_names',
+                   'localhost_recovery_links', 'tablet_stock_startup', 'float32_nearest_sampling',
                    'adapter_unavailable_backup', 'initial_install_failure_recovery'],
         **before}, indent=2) + '\n')
     print('PASS: editor acceptance recorded for the exact browser assets and fixtures.')

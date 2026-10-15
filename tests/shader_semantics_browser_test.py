@@ -31,7 +31,7 @@ try:
         page.goto(f'http://127.0.0.1:{server.server_port}/')
         sources = {name: (directory / (name + '.wgsl')).read_text()
                    for name in ('switch-fallthrough', 'switch-phi', 'volume-query',
-                                'readwrite-texture', 'atomic-image', 'zbin-range', 'interface-names', 'unorm16-image')}
+                                'readwrite-texture', 'atomic-image', 'zbin-range', 'interface-names', 'unorm16-image', 'buffer-image')}
         context.set_offline(True)
         results = page.evaluate('''async sources => {
           const adapter = await navigator.gpu.requestAdapter();
@@ -46,6 +46,32 @@ try:
             const info = await shader.getCompilationInfo();
             const failures = info.messages.filter(message => message.type === 'error');
             if (failures.length) throw Error(JSON.stringify(failures));
+            if (name === 'buffer-image') {
+              const pipeline=await device.createComputePipelineAsync({layout:'auto',compute:{module:shader,entryPoint:'main'}});
+              const output=device.createBuffer({size:96,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+              const read=device.createBuffer({size:100,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+              const make=(width,height,depth)=>{
+                const buffer=device.createBuffer({size:16+256*height*depth,
+                  usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
+                device.queue.writeBuffer(buffer,0,new Uint32Array([width,height,depth,64]));
+                return buffer;
+              };
+              const half=make(2,2,2),full=make(2,2,2),integer=make(1,1,1);
+              device.queue.writeBuffer(half,16+3*256+8,new Uint32Array([0xbc003800,0x3c004000]));
+              device.queue.writeBuffer(full,16+3*256+16,new Float32Array([1.25,-2.5,3.75,0.125]));
+              const group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:
+                [output,half,full,integer].map((buffer,binding)=>({binding,resource:{buffer}}))});
+              const encoder=device.createCommandEncoder(),pass=encoder.beginComputePass();
+              pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(1);pass.end();
+              encoder.copyBufferToBuffer(output,0,read,0,96);
+              encoder.copyBufferToBuffer(integer,16,read,96,4);
+              device.queue.submit([encoder.finish()]);await read.mapAsync(GPUMapMode.READ);
+              const bytes=read.getMappedRange();
+              results[name]={values:Array.from(new Float32Array(bytes,0,24)),integer:new Uint32Array(bytes,96,1)[0]};
+              read.unmap();
+              const error=await device.popErrorScope();if(error)throw Error(error.message);
+              continue;
+            }
             if (name === 'interface-names') {
               const fragment = device.createShaderModule({code: `
                 struct Inputs { @location(0) first:vec3f, @location(1) second:vec3f,
@@ -147,6 +173,9 @@ try:
         assert results['switch-phi'] == [9, 3, 13, 8, -5, -5], results
         assert results['volume-query'] == [2, 3, 4, 42], results
         assert results['readwrite-texture'] == [7, 0, 0, 0], results
+        assert results['buffer-image']=={'values':[0.5,-1,2,1, 0.125,-0.5,65504,1.5,
+            1.25,-2.5,3.75,0.125, 1.5,-2.25,4,0.375, 0,0,0,0, 2,2,2,0],
+            'integer':0xfedcba98},results['buffer-image']
         assert results['unorm16-image'] == [8090, 0, 0, 65535, 126, 0, 1023, 2], results
         assert results['atomic-image'] == [1, 1024, 1, 0], results
         assert results['interface-names'] == [255, 128, 64, 255], results
@@ -162,7 +191,7 @@ try:
             'wgsl_sha256': {name: hashlib.sha256(code.encode()).hexdigest()
                             for name, code in sources.items()}}, indent=2) + '\n')
         browser.close()
-    print('PASS: offline WebGPU switch control flow, 3D texel fetch, read/write storage and contended atomic images.')
+    print('PASS: offline WebGPU switch control flow, 3D texel fetch, read/write storage, packed buffer images and contended atomic images.')
 finally:
     server.shutdown()
     server.server_close()

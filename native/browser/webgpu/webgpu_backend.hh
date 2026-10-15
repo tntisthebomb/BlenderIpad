@@ -236,7 +236,8 @@ class WebGPUBackend : public GPUBackend {
       }
       return;
     }
-    const uint64_t key = uint64_t(uintptr_t(sh)) ^ sh->spec_hash();
+    const uint64_t key = uint64_t(uintptr_t(sh)) ^ sh->spec_hash() ^
+      ctx->resource_layout_hash(sh->compute_bindings(),sh->interface);
     WGPUComputePipeline pipe = ctx->compute_pipeline_get(key);
     if (pipe == nullptr) {
       WGPUBindGroupLayout bgl_explicit = ctx->make_bind_group_layout(
@@ -604,7 +605,8 @@ class WebGPUBackend : public GPUBackend {
     {
       return;
     }
-    const uint64_t key = uint64_t(uintptr_t(sh)) ^ sh->spec_hash();
+    const uint64_t key = uint64_t(uintptr_t(sh)) ^ sh->spec_hash() ^
+      ctx->resource_layout_hash(sh->compute_bindings(),sh->interface);
     WGPUComputePipeline pipe = ctx->compute_pipeline_get(key);
     if (pipe == nullptr) {
       WGPUBindGroupLayout bgl_explicit = ctx->make_bind_group_layout(

@@ -12,6 +12,8 @@
 #include "../native/browser/webgpu/shader_prepare.hh"
 #include "../native/browser/webgpu/shader_atomic_image.hh"
 #include "../native/browser/webgpu/shader_unorm16_image.hh"
+#include "../native/browser/webgpu/shader_buffer_image.hh"
+#include "../native/browser/webgpu/shader_spirv_cleanup.hh"
 
 static std::string read_file(const std::filesystem::path &path)
 {
@@ -90,14 +92,15 @@ void main() {
                                                      "blender-matrix.comp", options);
     if (preprocessed.GetCompilationStatus() != shaderc_compilation_status_success)
       throw std::runtime_error(preprocessed.GetErrorMessage());
-    const auto prepared = blender::gpu::webgpu_prepare::lower_unorm16_images(blender::gpu::webgpu_prepare::lower_atomic_images(
+    const auto prepared = blender::gpu::webgpu_prepare::lower_buffer_images(blender::gpu::webgpu_prepare::lower_unorm16_images(blender::gpu::webgpu_prepare::lower_atomic_images(
         blender::gpu::webgpu_prepare::lower_switches(
-        std::string(preprocessed.cbegin(), preprocessed.cend()))));
+        std::string(preprocessed.cbegin(), preprocessed.cend())))));
     const auto result = compiler.CompileGlslToSpv(prepared, kind,
                                                "blender-matrix.comp", options);
     if (result.GetCompilationStatus() != shaderc_compilation_status_success)
       throw std::runtime_error(result.GetErrorMessage());
     std::vector<uint32_t> words(result.cbegin(), result.cend());
+    blender::gpu::webgpu_prepare::remove_dead_resources(words);
     blender::gpu::webgpu_prepare::unique_local_names(words);
     spvtools::SpirvTools validator(SPV_ENV_VULKAN_1_0);
     validator.SetMessageConsumer([](spv_message_level_t, const char *, const spv_position_t &,

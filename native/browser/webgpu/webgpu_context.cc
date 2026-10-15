@@ -1323,6 +1323,33 @@ WebGPUTexture *WebGPUContext::bound_texture_for_binding(
   return nullptr;
 }
 
+bool WebGPUContext::requires_unfilterable_sample(WebGPUTexture *texture) const
+{
+  if (!texture) return false;
+  if (texture->is_depth_format()) return true;
+  switch (texture->wgpu_format()) {
+    case WGPUTextureFormat_R32Float:
+    case WGPUTextureFormat_RG32Float:
+    case WGPUTextureFormat_RGBA32Float:
+      return !wgpuDeviceHasFeature(device_, WGPUFeatureName_Float32Filterable);
+    default:
+      return false;
+  }
+}
+
+uint64_t WebGPUContext::resource_layout_hash(const std::vector<WgslResourceBinding> &bindings,
+                                            ShaderInterface *iface)
+{
+  uint64_t hash=1469598103934665603ull;
+  for (const auto &binding : bindings) {
+    if (binding.kind != WgslResourceBinding::TEXTURE) continue;
+    WebGPUTexture *texture=bound_texture_for_binding(iface,bindings,binding.binding);
+    const uint64_t format=texture ? uint64_t(texture->wgpu_format()) : 0;
+    hash=(hash ^ format)*1099511628211ull;
+  }
+  return hash;
+}
+
 WGPUBindGroupLayout WebGPUContext::make_bind_group_layout(
     const std::vector<WgslResourceBinding> &bindings, bool is_compute, ShaderInterface *iface)
 {
@@ -1357,40 +1384,29 @@ WGPUBindGroupLayout WebGPUContext::make_bind_group_layout(
         e.texture.sampleType = b.tex_sample;
         e.texture.viewDimension = b.view_dim;
         e.texture.multisampled = false;
-        /* Depth textures sample as unfilterable-float: their WGSL type is
-         * texture_2d<f32> (Tint), but a Float (filterable) layout entry rejects
-         * the depth-only view at bind-group creation. Resolve the currently
-         * bound texture (pipelines are created at first draw, textures already
-         * bound) and downgrade the sample type for depth formats. */
+        /* Depth and float32 formats without optional filtering support must
+         * use an unfilterable layout even for textureLoad/nearest sampling.
+         * The resource format also participates in the pipeline cache key. */
         if (iface != nullptr && e.texture.sampleType == WGPUTextureSampleType_Float) {
           const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(b.binding);
           int slot = in ? in->binding : -1;
           WebGPUTexture *t = (slot >= 0 && slot < WEBGPU_MAX_TEX) ? bound_tex_[slot] : nullptr;
-          if (t) {
-            switch (t->wgpu_format()) {
-              case WGPUTextureFormat_Depth16Unorm:
-              case WGPUTextureFormat_Depth24Plus:
-              case WGPUTextureFormat_Depth24PlusStencil8:
-              case WGPUTextureFormat_Depth32Float:
-              case WGPUTextureFormat_Depth32FloatStencil8:
-                e.texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
-                break;
-              default:
-                break;
-            }
+          if (requires_unfilterable_sample(t)) {
+            e.texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
           }
         }
         break;
       }
       case WgslResourceBinding::SAMPLER:
         e.sampler.type = b.sampler_type;
-        /* Samplers paired with depth textures (bound as unfilterable-float)
-         * must be non-filtering; the bind group binds nearest_sampler() then. */
+        /* Unfilterable textures require a non-filtering sampler layout.
+         * Float32 still uses its requested state: never silently replace a
+         * requested linear filter with nearest sampling. */
         if (iface != nullptr && b.binding >= 128 &&
             e.sampler.type == WGPUSamplerBindingType_Filtering)
         {
           WebGPUTexture *paired = bound_texture_for_binding(iface, bindings, b.binding - 128);
-          if (paired && paired->is_depth_format()) {
+          if (requires_unfilterable_sample(paired)) {
             e.sampler.type = WGPUSamplerBindingType_NonFiltering;
           }
         }
@@ -1524,7 +1540,10 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
             const ShaderInput *in_tex = iface ? static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(tb.binding) :
                                                 nullptr;
             if (in_tex != nullptr) {
-              e.sampler = sampler_for_state(bound_tex_state_get(in_tex->binding));
+              GPUSamplerState state=bound_tex_state_get(in_tex->binding);
+              WebGPUTexture *texture=bound_texture_for_binding(iface,bindings,tb.binding);
+              if (state.type==GPU_SAMPLER_STATE_TYPE_INTERNAL && texture) state=texture->sampler_state;
+              e.sampler = sampler_for_state(state);
             }
             break;
           }

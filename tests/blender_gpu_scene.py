@@ -132,6 +132,50 @@ assert list(flattened(target.read()))==[2,3,4,42]
 gpu.shader.unbind()
 checks['volume_query']=True
 
+# Run this fixture on a device without optional float32-filterable support.
+# Reuse a shader across filterable/unfilterable inputs to exercise layout keys.
+info=gpu.types.GPUShaderCreateInfo()
+info.local_group_size(1,1)
+info.sampler(0,'FLOAT_2D','source_texture')
+info.image(0,'RGBA32F','FLOAT_2D','target',qualifiers={'WRITE'})
+info.compute_source('void main(){imageStore(target,ivec2(0),textureLod(source_texture,vec2(0.75),0.0));}')
+shader=gpu.shader.create_from_info(info)
+target=gpu.types.GPUTexture((1,1),format='RGBA32F')
+shader.image('target',target)
+for format_name in ['RGBA8','RGBA32F','RGBA8','RGBA32F']:
+    values=[0.0]*12+[0.25,0.5,0.75,1.0]
+    source=gpu.types.GPUTexture((2,2),format=format_name,
+        data=gpu.types.Buffer('FLOAT',16,values))
+    shader.uniform_sampler('source_texture',source)
+    gpu.compute.dispatch(shader,1,1,1)
+    actual=list(flattened(target.read()))
+    assert all(abs(a-b)<1/255 for a,b in zip(actual,values[-4:])),(format_name,actual)
+gpu.shader.unbind()
+checks['float32_nearest_sampling']=True
+
+# RGBA read/write images must work without texture-formats-tier2. Preserve
+# padded rows, array layers, half-float packing and buffer/texture coherence.
+for name in ['RGBA16F','RGBA32F']:
+    initial=[0.25,0.5,-0.75,1.0]*8
+    image=gpu.types.GPUTexture((2,2),layers=2,format=name,
+        data=gpu.types.Buffer('FLOAT',len(initial),initial))
+    info=gpu.types.GPUShaderCreateInfo()
+    info.local_group_size(1,1)
+    info.image(0,name,'FLOAT_2D_ARRAY','target',qualifiers={'READ','WRITE'})
+    info.compute_source('''void main(){
+      ivec3 p=ivec3(1,1,1);
+      imageStore(target,p,imageLoad(target,p)+vec4(0.125));
+    }''')
+    shader=gpu.shader.create_from_info(info)
+    shader.image('target',image)
+    for count in [1,2]:
+        gpu.compute.dispatch(shader,1,1,1)
+        actual=list(flattened(image.read()))
+        expected=initial[:-4]+[v+count*0.125 for v in initial[-4:]]
+        assert actual==expected,(name,count,actual)
+    gpu.shader.unbind()
+checks['buffered_image_coherence']=True
+
 # Eevee's virtual shadow atlas needs contended atomic min/add and coherent
 # texture readback, followed by a normal texture write and another atomic pass.
 atlas=gpu.types.GPUTexture((4,1),layers=1,format='R32UI')

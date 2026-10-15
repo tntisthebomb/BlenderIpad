@@ -1,0 +1,17 @@
+#version 450
+layout(local_size_x=1) in;
+layout(set=0,binding=0,std430) buffer Results { vec4 values[]; } result;
+layout(set=0,binding=1,rgba16f) uniform image2DArray half_img;
+layout(set=0,binding=2,rgba32f) uniform image3D full_img;
+layout(set=0,binding=3,r32ui) uniform writeonly uimage2D direct_radiance_3_img;
+void main() {
+  result.values[0]=imageLoad(half_img,ivec3(1,1,1));
+  imageStore(half_img,ivec3(0,0,0),vec4(0.125,-0.5,65504.0,1.5));
+  result.values[1]=imageLoad(half_img,ivec3(0,0,0));
+  result.values[2]=imageLoad(full_img,ivec3(1,1,1));
+  imageStore(full_img,ivec3(1,1,1),result.values[2]+vec4(0.25));
+  result.values[3]=imageLoad(full_img,ivec3(1,1,1));
+  result.values[4]=imageLoad(half_img,ivec3(0,0,-1));
+  result.values[5]=vec4(vec3(imageSize(half_img)),0);
+  imageStore(direct_radiance_3_img,ivec2(0),uvec4(0xfedcba98u));
+}

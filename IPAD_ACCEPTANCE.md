@@ -21,7 +21,8 @@ The updated editor waits for **Start Blender** on touch-capable Apple devices,
 including iPad desktop mode. Reloading a stalled/killed editor returns to that
 choice. A one-time isolation reload after an explicit start preserves the choice
 only for that reload. The iPad viewport is capped at CSS resolution and
-1280×800 pixels; Blender and OIIO request one thread. These changes reduce known
+1280×800 pixels; Blender and OIIO request one thread, with four prewarmed pthread workers instead
+of the desktop pool of eight. These changes reduce known
 costs; they do not establish that the full editor is usable on the target iPad.
 Timeouts cannot interrupt synchronous Wasm compilation or native main-thread work.
 Close the tab if the device becomes sluggish; don't try to collect a live report.

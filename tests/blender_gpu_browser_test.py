@@ -26,6 +26,11 @@ try:
             '--no-sandbox','--enable-unsafe-webgpu','--enable-features=Vulkan',
             '--use-angle=swiftshader','--enable-unsafe-swiftshader'])
         context=browser.new_context()
+        context.add_init_script('''const request=GPUAdapter.prototype.requestDevice;
+          GPUAdapter.prototype.requestDevice=function(options={}) {
+            return request.call(this,{...options,requiredFeatures:
+              [...(options.requiredFeatures || [])].filter(feature=>feature!=='float32-filterable')}).then(device=>{window.nativeTestDevice=device;return device;});
+          };''')
         page=context.new_page()
         errors=[]
         page.on('pageerror',lambda error:errors.append(str(error)))
@@ -37,7 +42,7 @@ try:
         page.goto(f'http://127.0.0.1:{server.server_port}/core.html')
         page.wait_for_function('document.body.dataset.ready || document.body.dataset.error',timeout=300000)
         assert page.locator('body').get_attribute('data-ready')=='true',page.locator('body').get_attribute('data-error')
-        assert page.evaluate('crossOriginIsolated')
+        assert page.evaluate('crossOriginIsolated && !nativeTestDevice.features.has("float32-filterable")')
         page.evaluate('source=>blenderCore.FS.writeFile("/gpu_test.py",source)',(ROOT/'tests/blender_gpu_scene.py').read_text())
         context.set_offline(True)
         page.evaluate('runGPUScene()')
@@ -49,7 +54,7 @@ try:
                                  'R16F_storage':True,'RG16F_storage':True,
                                  'R16_storage':True,'RG16_storage':True,'RGBA16_storage':True,
                                  'switch_fallthrough':True,'volume_query':True,
-                                 'atomic_image_coherence':True,'shader_lifetime_cache':True,
+                                 'atomic_image_coherence':True,'buffered_image_coherence':True,'float32_nearest_sampling':True,'shader_lifetime_cache':True,
                                  'array_layers':True,'cube_faces':True,'builtin_shader_triangle':True,
                                  'font_storage_shader':True},checks
         assert not errors,errors

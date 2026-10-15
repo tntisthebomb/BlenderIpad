@@ -295,19 +295,22 @@ WGPUBuffer WebGPUTexture::atomic_image_buffer()
 {
   WebGPUContext *ctx = ctx_get();
   if (!texture_ || !ctx || !ctx->device()) return nullptr;
-  if ((wgpu_format_ != WGPUTextureFormat_R32Uint &&
-       wgpu_format_ != WGPUTextureFormat_R32Sint) || view_mip_ != 0 || view_layer_ != 0 ||
+  const uint32_t texel_bytes = wgpu_format_ == WGPUTextureFormat_RGBA16Float ? 8u :
+    wgpu_format_ == WGPUTextureFormat_RGBA32Float ? 16u :
+    (wgpu_format_ == WGPUTextureFormat_R32Uint || wgpu_format_ == WGPUTextureFormat_R32Sint ||
+     wgpu_format_ == WGPUTextureFormat_R32Float) ? 4u : 0u;
+  if (!texel_bytes || view_mip_ != 0 || view_layer_ != 0 ||
       (is_view_ && (uint32_t(w_) != wgpuTextureGetWidth(texture_) ||
                     uint32_t(h_) != wgpuTextureGetHeight(texture_) ||
                     uint32_t(layer_count()) != wgpuTextureGetDepthOrArrayLayers(texture_)))) {
-    throw std::runtime_error("WebGPU atomic images require a complete R32I/R32UI base-level view");
+    throw std::runtime_error("WebGPU buffered images require a complete supported base-level view");
   }
   auto &state = *atomic_image_;
   if (!state.buffer) {
     state.width = wgpuTextureGetWidth(texture_);
     state.height = wgpuTextureGetHeight(texture_);
     state.depth = wgpuTextureGetDepthOrArrayLayers(texture_);
-    state.row_bytes = (state.width * 4u + 255u) & ~255u;
+    state.row_bytes = (state.width * texel_bytes + 255u) & ~255u;
     WGPUBufferDescriptor descriptor = {};
     descriptor.size = 16u + uint64_t(state.row_bytes) * state.height * state.depth;
     descriptor.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst;

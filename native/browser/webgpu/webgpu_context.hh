@@ -539,6 +539,10 @@ class WebGPUContext : public Context {
   WebGPUTexture *image_at(int unit) const { return bound_image_[unit]; }
 
   /* --- pipeline cache --- */
+  bool requires_unfilterable_sample(WebGPUTexture *texture) const;
+  uint64_t resource_layout_hash(const std::vector<WgslResourceBinding> &bindings,
+                                ShaderInterface *iface);
+
   WGPURenderPipeline render_pipeline_get(uint64_t key) const
   {
     auto it = render_pipelines_.find(key);

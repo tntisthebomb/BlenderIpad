@@ -55,3 +55,40 @@ isolation continuation, reload returns to start, selectable clipboard fallback,
 download JSON, capped dimensions and thread arguments; file transfer/recovery,
 missing installation and service worker offline/coherent-update fixtures pass.
 Full fresh native module validation remains in CI; Safari acceptance outstanding.
+
+Renderer/device follow-up
+
+The actual iPad preflight reports compute invocations1024, workgroup storage32KiB,
+storage textures44 and storage buffers44 per stage, buffer/binding limits
+715827880bytes, and maximum 2D texture dimension16384. depth32float-stencil8
+is present; float32-filterable and texture-formats-tier2 are absent. Available
+RAM remains unknown. These successful adapter checks do not establish usable
+engine startup or explain the freeze.
+
+The next candidate replaces RGBA16F/RGBA32F read/write images with packed buffer
+mirrors, synchronized with native textures. RGBA read/write storage requires
+texture-formats-tier2; tier1 alone would not fix that incompatibility. Three
+Eevee write outputs also use buffers so the captured lighting shader fits four
+storage textures and ten storage buffers. Dead resource elimination retains
+side effects and resource names. No render output or validation is skipped.
+
+Float32 texel loads and requested nearest sampling now select unfilterable
+layouts when optional float32-filterable is absent. Texture format participates
+in pipeline cache keys, and internal sampler states are resolved. This does not
+implement software linear/anisotropic filtering of float32 textures; requested
+linear filtering is not silently changed to nearest.
+
+The iPad low-resource editor now prewarms four pthread workers rather than eight.
+A real compiled native thread/join probe verifies four for tablet mode and eight
+for desktop mode. The new stock tablet acceptance starts the actual editor with
+no injected bpy observer, no float32-filterable feature, explicit launch, real
+viewport pixels, exactly four prewarmed workers and a non-starting reload. This
+full-module test requires fresh CI and remains separate from physical Safari.
+
+Local verification: native GPU libraries compile; all55 captured real shader
+inputs translate and validate, their compute pipelines create, and11 graphics
+pairs create pipelines with matching input/output types. Numeric GPU tests check
+packed half-floats, float32, arrays/3D, padded rows, out-of-bounds reads and exact
+integer outputs. These are shader-level checks; full native engine renders,
+new texture/buffer coherence fixtures and stock tablet startup still require
+source-matched CI. The iPad freeze and full port acceptance remain unresolved.

@@ -33,6 +33,8 @@
 #include "shader_prepare.hh"
 #include "shader_atomic_image.hh"
 #include "shader_unorm16_image.hh"
+#include "shader_buffer_image.hh"
+#include "shader_spirv_cleanup.hh"
 #include "webgpu_shader_interface.hh"
 
 namespace blender::gpu {
@@ -549,7 +551,7 @@ static std::string wgsl_cache_key(const char *stage, const std::string &glsl)
     h = (h ^ uint8_t(c)) * 1099511628211ull;
   }
   char key[64];
-  snprintf(key, sizeof(key), "v6:%s:%016llx:%zu", stage, (unsigned long long)h, glsl.size());
+  snprintf(key, sizeof(key), "v7:%s:%016llx:%zu", stage, (unsigned long long)h, glsl.size());
   return key;
 }
 
@@ -599,8 +601,8 @@ static bool glsl_to_wgsl(const std::string &glsl,
   }
   std::string prepared;
   try {
-    prepared = webgpu_prepare::lower_unorm16_images(webgpu_prepare::lower_atomic_images(
-        webgpu_prepare::lower_switches(std::string(preprocessed.cbegin(), preprocessed.cend()))));
+    prepared = webgpu_prepare::lower_buffer_images(webgpu_prepare::lower_unorm16_images(webgpu_prepare::lower_atomic_images(
+        webgpu_prepare::lower_switches(std::string(preprocessed.cbegin(), preprocessed.cend())))));
   }
   catch (const std::exception &error) {
     fprintf(stderr, "WGPU_SH preparation FAIL %s: %s\n", name, error.what());
@@ -619,6 +621,7 @@ static bool glsl_to_wgsl(const std::string &glsl,
     return false;
   }
   std::vector<uint32_t> words(spv.cbegin(), spv.cend());
+  webgpu_prepare::remove_dead_resources(words);
   webgpu_prepare::unique_local_names(words);
   /* Capture the actual compiler input before Tint runs, including shaders
    * whose translation fails. This is opt-in and does not change compilation. */

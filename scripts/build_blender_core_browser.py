@@ -42,6 +42,13 @@ if __name__ == '__main__':
     if '-sNODERAWFS=1' not in args or '-sENVIRONMENT=node' not in args:
         raise SystemExit('Unrecognized CLI build; refusing to silently reuse host I/O.')
     args.remove('-sNODERAWFS=1')
+    if options.editor:
+        # The desktop acceptance profile needs the full pool. The iPad's
+        # one-thread Blender/OIIO profile must not prewarm eight workers before
+        # its editor has even started. Retain four for native library helpers.
+        if '-sPTHREAD_POOL_SIZE=8' not in args:
+            raise SystemExit('Unrecognized editor worker pool; validate it before changing startup.')
+        args[args.index('-sPTHREAD_POOL_SIZE=8')] = "-sPTHREAD_POOL_SIZE=Module['browserLowResource']?4:8"
     args[args.index('-sENVIRONMENT=node')] = '-sENVIRONMENT=web,worker'
     args[args.index('--pre-js') + 1] = str(ROOT / 'native/browser/core_browser_env.js')
     args[args.index('-o') + 1] = str(output / 'blender-core.js')
