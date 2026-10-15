@@ -24,20 +24,21 @@ jobs:
           CHROMIUM_PATH: /usr/bin/google-chrome
         run: |
           .cache/browser-tests/bin/python tests/ipad_outline_shader_browser_test.py
+          .cache/browser-tests/bin/python tests/ipad_pipeline_shader_browser_test.py
           .cache/browser-tests/bin/python tests/startup_preflight_browser_test.py
           .cache/browser-tests/bin/python tests/editor_install_failure_test.py
           .cache/browser-tests/bin/python tests/editor_files_browser_test.py
       - name: Prepare engine-free diagnostic download
         run: |
           mkdir -p diagnostic-download
-          cp native/browser/ipad-shader-check.html diagnostic-download/
-          cp docs/ipad-outline-check.txt diagnostic-download/README.txt
+          cp native/browser/ipad-pipeline-check.html diagnostic-download/
+          cp docs/ipad-pipeline-check.txt diagnostic-download/README.txt
           cp LICENSE diagnostic-download/
-          sha256sum diagnostic-download/ipad-shader-check.html > diagnostic-download/SHA256SUMS.txt
+          sha256sum diagnostic-download/ipad-pipeline-check.html > diagnostic-download/SHA256SUMS.txt
       - name: Upload diagnostic only
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Blender-iPad-outline-check
+          name: Blender-iPad-pipeline-check
           path: diagnostic-download/*
           if-no-files-found: error
           retention-days: 30

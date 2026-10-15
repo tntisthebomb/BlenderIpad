@@ -1,0 +1,213 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Blender pipeline check</title>
+<style>
+body{margin:0;padding:24px;background:#252525;color:#eee;font:17px system-ui}
+main{max-width:800px;margin:auto}p{line-height:1.5}
+button{font:inherit;padding:12px;margin:6px 6px 6px 0;background:#454545;color:#fff;border:1px solid #888;border-radius:6px}
+textarea{box-sizing:border-box;width:100%;height:45vh;min-height:220px;background:#181818;color:#eee;padding:12px;font:13px monospace}
+</style>
+<main>
+<h1>Blender pipeline check</h1>
+<p>This checks the captured outline pipeline through Blender's compilation API and the asynchronous API. It does not load Blender, access projects or render a scene.</p>
+<p id="message" role="status">Ready. Nothing has started.</p>
+<button id="check" type="button">Check pipeline</button>
+<button id="copy" type="button">Copy report</button>
+<button id="download" type="button">Download report</button>
+<p><label for="report">Report:</label></p>
+<textarea id="report" readonly spellcheck="false"></textarea>
+</main>
+<script id="captured-pipeline" type="application/json">{
+  "engineSource": "893f6163652f5cde223f9781a61ef4931f4b3444",
+  "fragmentSHA256": "90ae17e1cdfbd88290bf1a7839ba5fc30dd4889ebb09bb9f6439efa414418dd2",
+  "vertexSHA256": "2a14bc6f6fc154b6891fc54d0a61bc48524c84b6e50061fce21e6ba3f99ccc7a",
+  "descriptor": {
+    "label": "workbench_effect_outline",
+    "layout": {
+      "label": "",
+      "bindGroupLayouts": [
+        {
+          "label": "",
+          "entries": [
+            {
+              "binding": 128,
+              "visibility": 3,
+              "sampler": {
+                "type": "filtering"
+              }
+            },
+            {
+              "binding": 0,
+              "visibility": 3,
+              "texture": {
+                "sampleType": "uint",
+                "viewDimension": "2d",
+                "multisampled": false
+              }
+            },
+            {
+              "binding": 1,
+              "visibility": 3,
+              "buffer": {
+                "type": "uniform",
+                "hasDynamicOffset": false,
+                "minBindingSize": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "vertex": {
+      "module": {
+        "label": "",
+        "code": "diagnostic(off, derivative_uniformity);\ndiagnostic(off, subgroup_uniformity);\n\n@id(242) override gpu_point_expand : f32 = 0.0f;\n\n@id(240) override gpu_viewport_w : f32 = 1024.0f;\n\n@id(241) override gpu_viewport_h : f32 = 1024.0f;\n\nvar<private> gpu_viewport_index_var : i32;\n\nvar<private> gpu_point_size_var : f32;\n\nstruct gl_PerVertex {\n  member_28_0 : vec4<f32>,\n  member_28_1 : f32,\n  member_28_2 : array<f32, 1u>,\n  member_28_3 : array<f32, 1u>,\n}\n\nvar<private> v : gl_PerVertex;\n\nfn main_inner(gl_VertexIndex : i32, gl_InstanceIndex : i32) {\n  var v_1 : vec2<f32>;\n  gpu_viewport_index_var = 0i;\n  gpu_point_size_var = 1.0f;\n  v_2(gl_VertexIndex, gl_InstanceIndex);\n  v.member_28_0.z = ((v.member_28_0.z + v.member_28_0.w) * 0.5f);\n  v.member_28_0.y = -(v.member_28_0.y);\n  if ((gpu_point_expand > 0.5f)) {\n    v_1 = ((vec2<f32>(f32((gl_VertexIndex & 1i)), f32(((gl_VertexIndex >> bitcast<u32>(1i)) & 1i))) * 2.0f) - vec2<f32>(1.0f, 1.0f));\n    let v_3 = (((v_1 * max(gpu_point_size_var, 1.0f)) * v.member_28_0.w) / vec2<f32>(gpu_viewport_w, gpu_viewport_h));\n    let v_4 = (v.member_28_0.xy + v_3);\n    v.member_28_0.x = v_4.x;\n    v.member_28_0.y = v_4.y;\n  }\n}\n\nfn v_7(v_5 : ptr<function, i32>, v_6 : ptr<function, vec4<f32>>) {\n  var v_8 : i32;\n  var v_9 : f32;\n  var v_10 : f32;\n  v_8 = (*(v_5) % 3i);\n  v_9 = (-1.0f + f32(((v_8 & 1i) << bitcast<u32>(2i))));\n  v_10 = (-1.0f + f32(((v_8 & 2i) << bitcast<u32>(1i))));\n  *(v_6) = vec4<f32>(v_9, v_10, 1.0f, 1.0f);\n}\n\nfn v_2(gl_VertexIndex : i32, gl_InstanceIndex : i32) {\n  var v_11 : i32;\n  var v_12 : vec4<f32>;\n  v_11 = select(gl_VertexIndex, gl_InstanceIndex, (gpu_point_expand > 0.5f));\n  v_12 = v.member_28_0;\n  v_7(&(v_11), &(v_12));\n  v.member_28_0 = v_12;\n}\n\n@vertex\nfn main(@builtin(vertex_index) gl_VertexIndex : u32, @builtin(instance_index) gl_InstanceIndex : u32) -> @builtin(position) vec4<f32> {\n  main_inner(i32(gl_VertexIndex), i32(gl_InstanceIndex));\n  return v.member_28_0;\n}\n"
+      },
+      "entryPoint": "main"
+    },
+    "primitive": {
+      "topology": "triangle-list",
+      "frontFace": "cw",
+      "cullMode": "none",
+      "unclippedDepth": false
+    },
+    "multisample": {
+      "count": 1,
+      "mask": 4294967295,
+      "alphaToCoverageEnabled": false
+    },
+    "fragment": {
+      "module": {
+        "label": "",
+        "code": "diagnostic(off, derivative_uniformity);\ndiagnostic(off, subgroup_uniformity);\n\nvar<private> gpu_viewport_index_var : i32;\n\nvar<private> gpu_point_size_var : f32;\n\n@group(0u) @binding(128u) var object_id_buffer_sampler : sampler;\n\n@group(0u) @binding(0u) var object_id_buffer_image : texture_2d<u32>;\n\nstruct tint_symbol {\n  member_66_0 : vec4<f32>,\n  member_66_1 : vec4<f32>,\n  member_66_2 : vec4<f32>,\n}\n\nstruct tint_symbol_1 {\n  member_69_0 : vec2<f32>,\n  member_69_1 : vec2<f32>,\n  member_69_2 : vec4<f32>,\n  member_69_3 : vec4<f32>,\n  member_69_4 : f32,\n  member_69_5 : f32,\n  member_69_6 : f32,\n  member_69_7 : f32,\n  member_69_8 : array<tint_symbol, 4u>,\n  member_69_9 : vec4<f32>,\n  member_69_10 : i32,\n  member_69_11 : i32,\n  member_69_12 : f32,\n  member_69_13 : f32,\n  member_69_14 : f32,\n  member_69_15 : f32,\n  member_69_16 : f32,\n  member_69_17 : f32,\n  member_69_18 : f32,\n  member_69_19 : f32,\n  member_69_20 : f32,\n  member_69_21 : f32,\n  member_69_22 : i32,\n  member_69_23 : u32,\n  member_69_24 : f32,\n  member_69_25 : i32,\n  member_69_26 : vec4<f32>,\n}\n\nstruct S {\n  member_70_0 : tint_symbol_1,\n}\n\n@group(0u) @binding(1u) var<uniform> v : S;\n\nvar<private> frag_color : vec4<f32>;\n\nfn main_inner(gl_FragCoord : vec4<f32>) {\n  var v_1 : vec2<f32>;\n  var v_2 : vec3<f32>;\n  var v_3 : u32;\n  var v_4 : vec2<f32>;\n  var v_5 : vec4<u32>;\n  var v_6 : vec2<f32>;\n  var v_7 : vec2<f32>;\n  var v_8 : vec2<f32>;\n  var v_9 : vec2<f32>;\n  var v_10 : f32;\n  gpu_viewport_index_var = 0i;\n  gpu_point_size_var = 1.0f;\n  _ = object_id_buffer_sampler;\n  v_1 = (gl_FragCoord.xy / vec2<f32>(vec2<i32>(textureDimensions(object_id_buffer_image, 0i))));\n  let v_11 = v.member_70_0.member_69_1;\n  v_2 = (vec3<f32>(v_11.x, v_11.y, 0.0f) * v.member_70_0.member_69_20);\n  v_4 = v_1;\n  _ = object_id_buffer_sampler;\n  v_3 = v_12(object_id_buffer_image, &(v_4)).x;\n  v_6 = (v_1 + v_2.zy);\n  _ = object_id_buffer_sampler;\n  let v_13 = v_12(object_id_buffer_image, &(v_6)).x;\n  v_7 = (v_1 - v_2.zy);\n  _ = object_id_buffer_sampler;\n  let v_14 = v_12(object_id_buffer_image, &(v_7)).x;\n  v_8 = (v_1 + v_2.xz);\n  _ = object_id_buffer_sampler;\n  let v_15 = v_12(object_id_buffer_image, &(v_8)).x;\n  v_9 = (v_1 - v_2.xz);\n  _ = object_id_buffer_sampler;\n  v_5 = vec4<u32>(v_13, v_14, v_15, v_12(object_id_buffer_image, &(v_9)).x);\n  let v_16 = v_3;\n  v_10 = (1.0f - dot(select(vec4<f32>(), vec4<f32>(1.0f), (vec4<u32>(v_16, v_16, v_16, v_16) == v_5)), vec4<f32>(0.25f)));\n  frag_color = (v.member_70_0.member_69_2 * v_10);\n}\n\n@fragment\nfn main(@builtin(position) gl_FragCoord : vec4<f32>) -> @location(0u) vec4<f32> {\n  main_inner(gl_FragCoord);\n  return frag_color;\n}\n\nfn v_12(v_17 : texture_2d<u32>, v_18 : ptr<function, vec2<f32>>) -> vec4<u32> {\n  var v_19 : vec2<i32>;\n  var v_20 : vec2<i32>;\n  v_19 = vec2<i32>(textureDimensions(v_17, 0i));\n  v_20 = clamp(vec2<i32>(floor((*(v_18) * vec2<f32>(v_19)))), vec2<i32>(), (v_19 - vec2<i32>(1i)));\n  return textureLoad(v_17, v_20, 0i);\n}\n"
+      },
+      "targets": [
+        {
+          "format": "rgba16float",
+          "blend": {
+            "alpha": {
+              "operation": "add",
+              "srcFactor": "one",
+              "dstFactor": "one-minus-src-alpha"
+            },
+            "color": {
+              "operation": "add",
+              "srcFactor": "one",
+              "dstFactor": "one-minus-src-alpha"
+            }
+          },
+          "writeMask": 15
+        }
+      ],
+      "entryPoint": "main"
+    }
+  }
+}</script>
+<script>
+'use strict';
+const fixture=JSON.parse(document.getElementById('captured-pipeline').textContent);
+const report={diagnostic:'ipad-outline-pipeline-v2',engineStarted:false,
+  engineSource:fixture.engineSource,fragmentSHA256:fixture.fragmentSHA256,vertexSHA256:fixture.vertexSHA256,
+  url:location.href,userAgent:navigator.userAgent,secureContext:isSecureContext,
+  webGPU:!!navigator.gpu,results:[],errors:[]};
+const output=document.getElementById('report'),message=document.getElementById('message');
+function refresh(){
+  output.value=JSON.stringify(report,null,2);
+  try{localStorage.setItem('blender-pipeline-check-last',output.value);}catch{}
+}
+function errorText(error){
+  const text=String(error?.message || error);
+  const separator=text.lastIndexOf(' - error ');
+  const useful=separator>=0 ? text.slice(separator+9) : text;
+  return useful.length>6000 ? useful.slice(0,1000)+'\n[details omitted]\n'+useful.slice(-5000) : useful;
+}
+refresh();
+document.getElementById('check').onclick=async()=>{
+  document.getElementById('check').disabled=true;
+  let device,timer,timeout=false,deviceLost=false;
+  const expired=new Promise((_,reject)=>{timer=setTimeout(()=>{
+    timeout=true;device?.destroy();reject(new Error('Pipeline check timed out. It will not retry.'));
+  },30000);});
+  const bounded=operation=>Promise.race([operation,expired]);
+  try{
+    if(!isSecureContext)throw new Error('Open this file through WorldWideWeb at http://localhost:8080/.');
+    if(!navigator.gpu)throw new Error('WebGPU is unavailable.');
+    message.textContent='Checking adapter — Blender is not loading.';
+    const adapter=await bounded(navigator.gpu.requestAdapter());
+    if(!adapter)throw new Error('No graphics adapter was available.');
+    const features=['float32-filterable','depth32float-stencil8','indirect-first-instance'].filter(f=>adapter.features.has(f));
+    const caps={maxStorageTexturesPerShaderStage:16,maxStorageBuffersPerShaderStage:32,
+      maxUniformBuffersPerShaderStage:32,maxSampledTexturesPerShaderStage:32,maxSamplersPerShaderStage:32,
+      maxBufferSize:1073741824,maxStorageBufferBindingSize:1073741824};
+    const limits={};
+    for(const name of ['maxComputeInvocationsPerWorkgroup','maxComputeWorkgroupSizeX',
+      'maxComputeWorkgroupSizeY','maxComputeWorkgroupSizeZ','maxComputeWorkgroupStorageSize',
+      'maxStorageTexturesPerShaderStage','maxStorageBuffersPerShaderStage',
+      'maxUniformBuffersPerShaderStage','maxSampledTexturesPerShaderStage',
+      'maxSamplersPerShaderStage','maxColorAttachments','maxColorAttachmentBytesPerSample',
+      'maxStorageBufferBindingSize','maxUniformBufferBindingSize','maxBufferSize']){
+      if(typeof adapter.limits[name]==='number')limits[name]=Math.min(adapter.limits[name],caps[name]??adapter.limits[name]);
+    }
+    report.requestedFeatures=features;report.requestedLimits=limits;refresh();
+    for(const profile of ['default-device','engine-device']){
+      // An adapter may be consumed by its first requestDevice call.
+      const selected=profile==='default-device'?adapter:await bounded(navigator.gpu.requestAdapter());
+      if(!selected)throw new Error('No graphics adapter was available for '+profile);
+      const pending=selected.requestDevice(profile==='engine-device'?{requiredFeatures:features,requiredLimits:limits}:{});
+      pending.then(value=>{if(timeout)value.destroy();},()=>{});
+      device=await bounded(pending);deviceLost=false;
+      device.addEventListener('uncapturederror',event=>{
+        event.preventDefault();report.errors.push(errorText(event.error));refresh();
+      });
+      device.lost.then(info=>{
+        if(info.reason!=='destroyed'){deviceLost=true;report.errors.push('Device lost: '+info.message);refresh();}
+      });
+      // The captured descriptor includes Blender's actual vertex, fragment,
+      // filtering sampler layout, buffer bounds, winding and alpha blending.
+      const captured=fixture.descriptor;
+      const vertex=device.createShaderModule(captured.vertex.module);
+      const fragment=device.createShaderModule(captured.fragment.module);
+      for(const mode of ['synchronous','asynchronous']){
+        const name=profile+'/'+mode;message.textContent='Checking '+name+' — Blender is not loading.';
+        const result={name,compiled:false,errors:[]};report.results.push(result);refresh();
+        for(const filter of ['validation','internal','out-of-memory'])device.pushErrorScope(filter);
+        try{
+          const groups=captured.layout.bindGroupLayouts.map(d=>device.createBindGroupLayout(d));
+          const layout=device.createPipelineLayout({bindGroupLayouts:groups});
+          const descriptor={...captured,label:'outline-check-'+name,layout,
+            vertex:{...captured.vertex,module:vertex},fragment:{...captured.fragment,module:fragment}};
+          if(mode==='synchronous')device.createRenderPipeline(descriptor);
+          else await bounded(device.createRenderPipelineAsync(descriptor));
+        }catch(error){result.errors.push(errorText(error));}
+        finally{
+          for(let i=0;i<3;i++){
+            try{const error=await bounded(device.popErrorScope());if(error)result.errors.push(errorText(error));}
+            catch(error){result.errors.push(errorText(error));}
+          }
+        }
+        result.compiled=!timeout&&!deviceLost&&!result.errors.length;refresh();
+        if(timeout||deviceLost)break;
+      }
+      device.destroy();device=null;
+      if(timeout||deviceLost)break;
+    }
+    message.textContent='Check finished. Blender has not loaded. Copy the report and send it in the chat.';
+  }catch(error){report.errors.push(errorText(error));message.textContent=errorText(error);}
+  finally{clearTimeout(timer);device?.destroy();refresh();}
+};
+document.getElementById('copy').onclick=async()=>{
+  output.focus();output.select();output.setSelectionRange(0,output.value.length);
+  try{await navigator.clipboard.writeText(output.value);message.textContent='Report copied. Paste it into the chat.';}
+  catch{message.textContent='Report selected. Touch and hold the selection, then choose Copy.';}
+};
+document.getElementById('download').onclick=()=>{
+  const url=URL.createObjectURL(new Blob([output.value],{type:'application/json'}));
+  const link=document.createElement('a');link.href=url;link.download='BlenderIpad-pipeline-check.json';
+  document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+};
+</script>
+</html>
