@@ -1,7 +1,7 @@
 name: Validate and package full Blender startup statistics
 on:
   push:
-    branches: [codex/ipad-startup-stats, codex/ipad-wasm-streaming, codex/ipad-low-memory]
+    branches: [codex/ipad-startup-stats, codex/ipad-wasm-streaming, codex/ipad-low-memory, codex/ipad-canvas-scale]
   workflow_dispatch:
 permissions:
   contents: read
@@ -35,14 +35,14 @@ jobs:
       - name: Upload engine update for the existing folder
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Blender-iPad-low-memory-update
+          name: Blender-iPad-canvas-scale-update
           path: work/startup-stats-update/*
           if-no-files-found: error
           retention-days: 30
       - name: Upload full replacement folder
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Blender-iPad-low-memory-full
+          name: Blender-iPad-canvas-scale-full
           path: .cache/blender-webgpu-browser/*
           if-no-files-found: error
           retention-days: 30

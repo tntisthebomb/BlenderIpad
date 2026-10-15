@@ -1,7 +1,9 @@
 Blender iPad lower-memory startup candidate
 
 This is an experimental full-engine build for the iPad. It removes the WASM
-custom debug-name section (all retained sections are byte-identical). It keeps
+custom debug-name section (all retained sections are byte-identical). It also
+corrects the tablet native pixel ratio to match the canvas backing size, so
+Retina scaling cannot enlarge Blender region targets beyond that canvas. It keeps
 four native workers on iPad and eight on desktop: reducing the pool further
 failed the real embedded-Python threading check, so that change is excluded.
 Workbench, Eevee and CPU Cycles remain included. Physical Safari acceptance is
@@ -9,15 +11,17 @@ pending; this build does not establish that the iPad reload is fixed.
 
 Extract this ZIP and copy ALL its files into your existing WorldWideWeb Blender
 folder, choosing Replace. This update includes
-blender-core.wasm: replace that file too. Keep blender-core.js and
-blender-core.data if using the update ZIP. The full ZIP includes every required file.
+blender-core.js and blender-core.wasm: replace both. Keep blender-core.data
+if using the update ZIP. The full ZIP includes every required file.
 
 Keep WorldWideWeb serving the same folder and localhost port. Then:
 1. Open http://localhost:8080/ipad-update.html to install the offline update.
 2. Close the updater and ALL Blender/check tabs and Home Screen windows.
 3. Open http://localhost:8080/ and tap Start Blender once.
 
-Stats v3 distinguishes main WASM instantiation from native worker preparation.
+Stats v4 distinguishes main WASM instantiation from native worker preparation.
+GPU call status distinguishes a call that returned from one still in progress.
+A returned JavaScript call does not guarantee GPU compilation/work is finished.
 The panel can freeze when Safari's main thread stops responding. Its last saved
 checkpoint appears after a reload without starting Blender again. If the iPad
 slows down, close Blender. A frozen timer alone cannot prove an out-of-memory

@@ -23,7 +23,8 @@ def main():
     before=assets()
     checks=[(test,[]) for test in TESTS]
     if manifest.get('lowMemory'):
-        checks += [('tests/blender_modeling_browser_test.py',['--tablet'])]
+        checks += [('tests/blender_editor_browser_test.py',['--tablet']),
+                   ('tests/blender_modeling_browser_test.py',['--tablet'])]
         checks += [('tests/blender_render_browser_test.py',['--tablet','--engine',engine])
                    for engine in ('BLENDER_WORKBENCH','BLENDER_EEVEE','CYCLES')]
     for test,args in checks:

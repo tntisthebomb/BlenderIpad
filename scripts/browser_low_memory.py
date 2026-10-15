@@ -44,3 +44,20 @@ def strip_debug_names(data):
         'retainedSectionSHA256':[sha(raw) for raw in retained],
         'inputSHA256':sha(data),'outputSHA256':sha(output),
         'inputBytes':len(data),'outputBytes':len(output)}
+
+DPR_IMPORT='''function _emscripten_get_device_pixel_ratio() {
+  if (ENVIRONMENT_IS_PTHREAD) return proxyToMainThread(54, 0, 1);
+  return devicePixelRatio;
+}'''
+CANVAS_RATIO_IMPORT='''function _emscripten_get_device_pixel_ratio() {
+  if (ENVIRONMENT_IS_PTHREAD) return proxyToMainThread(54, 0, 1);
+  if (Module["browserLowResource"] && Module["canvas"]?.clientWidth>0) {
+    return Module["canvas"].width / Module["canvas"].clientWidth;
+  }
+  return devicePixelRatio;
+}'''
+
+def fix_tablet_pixel_ratio(text):
+    if text.count(DPR_IMPORT)!=1:
+        raise ValueError('Unrecognized original pixel-ratio import')
+    return text.replace(DPR_IMPORT,CANVAS_RATIO_IMPORT)

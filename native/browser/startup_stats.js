@@ -4,11 +4,11 @@
   'use strict';
   const key='blender-startup-stats-last';
   let began=performance.now();
-  const state={version:'startup-stats-v3',active:false,phase:'Waiting to start',phaseSeconds:0,
-    elapsedSeconds:0,operation:'None yet',label:'',wasmMemoryBytes:null,dependencies:null,
+  const state={version:'startup-stats-v4',active:false,phase:'Waiting to start',phaseSeconds:0,
+    elapsedSeconds:0,operation:'None yet',operationStatus:'not started',label:'',wasmMemoryBytes:null,dependencies:null,
     wasmMode:'not started',wasmMimeType:null,mainInstanceReady:false,workersRequested:0,workersReady:0,
     shaderModules:0,renderPipelines:0,computePipelines:0,texturesCreated:0,buffersCreated:0,
-    bufferBytesRequested:0,lines:[],updatedAt:null};
+    bufferBytesRequested:0,canvasBacking:null,canvasCss:null,lines:[],updatedAt:null};
   let previous=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,compact=false;
   try{previous=JSON.parse(localStorage.getItem(key)||'null');}catch{}
   const panel=document.createElement('aside');panel.id='startup-stats';
@@ -22,16 +22,19 @@
   function update(save=false,force=false){
     state.elapsedSeconds=Math.round((performance.now()-began)/1000);
     try{state.wasmMemoryBytes=memory?.buffer.byteLength ?? window.blenderEditor?.getBlenderMemoryBytes?.() ?? state.wasmMemoryBytes;}catch{}
+    const canvas=document.getElementById('canvas');
+    if(canvas){state.canvasBacking=[canvas.width,canvas.height];state.canvasCss=[canvas.clientWidth,canvas.clientHeight];}
     const view=!state.active&&previous ? previous : state;
-    title.textContent=!state.active&&previous ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v3';
+    title.textContent=!state.active&&previous ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v4';
     const mib=value=>(value/1048576).toFixed(1)+' MiB';
     text.textContent=[
       'Step: '+view.phase,
       'Elapsed: '+view.elapsedSeconds+' s · in step: '+Math.max(0,view.elapsedSeconds-view.phaseSeconds)+' s',
-      'Last operation: '+view.operation+(view.label?' · '+view.label:''),
+      'Last operation: '+view.operation+(view.label?' · '+view.label:'')+' · '+(view.operationStatus??'completion not recorded'),
       'WASM memory: '+(view.wasmMemoryBytes===null?'not available yet':mib(view.wasmMemoryBytes))+' · total iPad RAM use unavailable',
       'WASM loader: '+(view.wasmMode??'not recorded')+' · MIME: '+(view.wasmMimeType??'not recorded'),
       'Main WASM instance: '+(view.mainInstanceReady?'ready':'not ready')+' · native workers: '+(view.workersReady??0)+' / '+(view.workersRequested??0)+' ready',
+      'Canvas: '+(view.canvasBacking?.join(' × ')??'not recorded')+' pixels · CSS: '+(view.canvasCss?.join(' × ')??'not recorded'),
       'Dependencies left: '+(view.dependencies??'not reported'),
       'Creation requests: '+view.shaderModules+' shaders · '+view.renderPipelines+' render pipelines · '+view.computePipelines+' compute pipelines',
       'GPU resource requests: '+view.texturesCreated+' textures · '+view.buffersCreated+' buffers',
@@ -45,8 +48,8 @@
       try{localStorage.setItem(key,JSON.stringify(snapshot()));}catch{}
     }
   }
-  function operation(name,label=''){
-    state.operation=name;state.label=String(label||'').slice(0,160);update(true,true);
+  function operation(name,label='',status='in progress'){
+    state.operationStatus=status;state.operation=name;state.label=String(label||'').slice(0,160);update(true,true);
   }
   function findMemory(imports){
     if(imports?.env?.memory instanceof WebAssembly.Memory)memory=imports.env.memory;
@@ -66,7 +69,7 @@
       const result=Reflect.apply(original,this,args);
       // Observe completion without replacing the Promise returned to Emscripten.
       Promise.resolve(result).then(()=>{
-        state.mainInstanceReady=true;operation('Main WebAssembly instance ready');
+        state.mainInstanceReady=true;operation('Main WebAssembly instance ready','','completed');
       },()=>{});
       return result;
     };
@@ -79,7 +82,7 @@
       trackedWorkers.add(this);state.workersRequested++;
       this.addEventListener('message',event=>{
         if(event.data?.cmd==='loaded'){
-          state.workersReady++;operation('Native worker ready',state.workersReady+' / '+state.workersRequested);
+          state.workersReady++;operation('Native worker ready',state.workersReady+' / '+state.workersRequested,'completed');
         }
       });
       operation('Preparing native worker',state.workersRequested);
@@ -98,8 +101,15 @@
         state[counter]++;
         if(method==='createBuffer')state.bufferBytesRequested+=Number(descriptor?.size)||0;
         if(['createShaderModule','createRenderPipeline','createComputePipeline'].includes(method))operation(label,descriptor?.label);
-        const value=Reflect.apply(original,this,[descriptor,...rest]);
-        return value;
+        const tracked=['createShaderModule','createRenderPipeline','createComputePipeline'].includes(method);
+        try {
+          const value=Reflect.apply(original,this,[descriptor,...rest]);
+          if(tracked){state.operationStatus='call returned';update(true,true);}
+          return value;
+        } catch(error) {
+          if(tracked){state.operationStatus='call threw';update(true,true);}
+          throw error;
+        }
       };
     }
   }

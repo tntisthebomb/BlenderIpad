@@ -153,11 +153,17 @@ class GHOST_WindowWeb : public GHOST_Window {
   }
   float getNativePixelSize() override
   {
-    return float(emscripten_get_device_pixel_ratio());
+    // The tablet page can render below Retina resolution. Blender's region
+    // targets and input coordinates must use the actual canvas backing ratio.
+    return float(EM_ASM_DOUBLE({
+      const canvas=Module["canvas"];
+      return Module["browserLowResource"] && canvas?.clientWidth>0 ?
+        canvas.width/canvas.clientWidth : window.devicePixelRatio;
+    }));
   }
   uint16_t getDPIHint() override
   {
-    return uint16_t(96.0*emscripten_get_device_pixel_ratio());
+    return uint16_t(96.0*getNativePixelSize());
   }
   GHOST_TSuccess setState(GHOST_TWindowState state) override
   {

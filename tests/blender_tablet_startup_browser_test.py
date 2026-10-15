@@ -28,6 +28,12 @@ try:
             '--use-angle=swiftshader','--enable-unsafe-swiftshader'])
         context=browser.new_context(viewport={'width':1180,'height':820},device_scale_factor=2,has_touch=True)
         context.add_init_script('''
+          window.tabletTextureRequests=[];
+          const texture=GPUDevice.prototype.createTexture;
+          GPUDevice.prototype.createTexture=function(d){
+            tabletTextureRequests.push({format:d.format,size:JSON.parse(JSON.stringify(d.size))});
+            return texture.call(this,d);
+          };
           Object.defineProperty(navigator,'platform',{get:()=> 'MacIntel'});
           Object.defineProperty(navigator,'maxTouchPoints',{get:()=>5});
           const request=GPUAdapter.prototype.requestDevice;
@@ -63,6 +69,10 @@ try:
         assert state['ready'] is True and state['wasmMemoryBytes']>0,state
         assert state['width']<=1280 and state['height']<=800,state
         assert 'float32-filterable' not in state['report']['features'],state
+        targets=page.evaluate("tabletTextureRequests.filter(d=>d.format==='rgba16float' && d.size.width>128 && d.size.height>128)")
+        assert targets,'Real viewport targets were not observed'
+        assert all(t['size']['width']<=state['width'] and t['size']['height']<=state['height'] for t in targets),targets
+        state['viewportTargets']=targets
         screenshot=ROOT/'.cache/blender-tablet-startup-frame.png'
         page.locator('#canvas').screenshot(path=str(screenshot))
         picture=Image.open(screenshot).convert('RGB')

@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
-from browser_low_memory import strip_debug_names
+from browser_low_memory import strip_debug_names, fix_tablet_pixel_ratio
 
 ROOT=Path(__file__).resolve().parents[1]
 ENGINE='893f6163652f5cde223f9781a61ef4931f4b3444'
@@ -46,6 +46,8 @@ def main():
     if args.low_memory:
         wasm,transformations=strip_debug_names((output/'blender-core.wasm').read_bytes())
         (output/'blender-core.wasm').write_bytes(wasm)
+        js=output/'blender-core.js'
+        js.write_text(fix_tablet_pixel_ratio(js.read_text()))
         shutil.copyfile(ROOT/'native/browser/blender_webgpu.html',output/'core.html')
     # The service worker waits for old tabs to close; all protected assets get
     # a new coherent cache, including the diagnostic script while offline.
@@ -62,9 +64,10 @@ def main():
         'originalNativeEngineAssets':{name:proof['assets'][name] for name in ('blender-core.js','blender-core.wasm','blender-core.data')},
         'nativeEngineAssets':{name:digest(output/name) for name in ('blender-core.js','blender-core.wasm','blender-core.data')},
         'lowMemory':args.low_memory,'transformations':transformations,
+        'tabletNativePixelRatio':'canvas.width / canvas.clientWidth' if args.low_memory else 'devicePixelRatio',
         'correspondingNativeSourceURL':manifest['correspondingSourceURL'],
         'correspondingFrontendSourceURL':'https://github.com/tntisthebomb/BlenderIpad/tree/'+frontend,
-        'overlayFiles':list(OVERLAY)+(['blender-core.wasm','core.html'] if args.low_memory else [])}
+        'overlayFiles':list(OVERLAY)+(['blender-core.js','blender-core.wasm','core.html'] if args.low_memory else [])}
     (output/'delivery-manifest.json').write_text(json.dumps(metadata,indent=2)+'\n')
     readme=(ROOT/'docs'/('ipad-low-memory.txt' if args.low_memory else 'ipad-startup-stats.txt')).read_text()
     (output/'README.txt').write_text(readme+'\nNative corresponding source: '+metadata['correspondingNativeSourceURL']+'\nFrontend corresponding source: '+metadata['correspondingFrontendSourceURL']+'\n')

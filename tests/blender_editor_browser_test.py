@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify actual editor pixels, input, native files, persistence and offline reload."""
+import argparse
 import json
 import os
 import time
@@ -11,6 +12,9 @@ from PIL import Image
 from playwright.sync_api import sync_playwright
 
 ROOT=Path(__file__).resolve().parents[1]
+parser=argparse.ArgumentParser()
+parser.add_argument('--tablet',action='store_true')
+options=parser.parse_args()
 class Handler(SimpleHTTPRequestHandler):
     def log_message(self,*args): pass
 server=ThreadingHTTPServer(('127.0.0.1',0),partial(Handler,directory=str(ROOT/'.cache/blender-webgpu-browser')))
@@ -26,6 +30,16 @@ try:
             '--use-angle=swiftshader','--enable-unsafe-swiftshader'])
         context=browser.new_context(viewport={'width':1024,'height':768},has_touch=True,
             device_scale_factor=float(os.environ.get('EDITOR_DEVICE_SCALE','2')))
+        if options.tablet:
+            context.add_init_script('''
+              Object.defineProperty(navigator,'platform',{get:()=> 'MacIntel'});
+              Object.defineProperty(navigator,'maxTouchPoints',{get:()=>5});
+              const request=GPUAdapter.prototype.requestDevice;
+              GPUAdapter.prototype.requestDevice=function(options={}){
+                return request.call(this,{...options,requiredFeatures:
+                  (options.requiredFeatures||[]).filter(f=>f!=='float32-filterable')});
+              };
+            ''')
         context.add_init_script('''
             const requestAdapter=navigator.gpu.requestAdapter.bind(navigator.gpu);
             navigator.gpu.requestAdapter=async(...args)=>{
@@ -35,7 +49,7 @@ try:
                 return adapter;
             };
         ''')
-        arguments=['--factory-startup','--offline-mode','--disable-autoexec','--threads','2',
+        arguments=['--factory-startup','--offline-mode','--disable-autoexec','--threads',('1' if options.tablet else '2'),
                    '--python','/browser_startup.py','--python-expr',
                    (ROOT/'tests/blender_editor_scene.py').read_text()]
         context.add_init_script('window.editorArguments='+json.dumps(arguments)+';')
@@ -48,6 +62,7 @@ try:
         page.on('pageerror',lambda error:errors.append(str(error)))
         try:
             page.goto(f'http://127.0.0.1:{server.server_port}/')
+            if options.tablet:page.locator('#start-editor').click()
             page.wait_for_function("document.body.dataset.started || document.body.dataset.error",timeout=300000)
             assert not page.locator('body').get_attribute('data-error'),page.locator('body').get_attribute('data-error')
             page.wait_for_function("document.body.dataset.rendered==='true' || document.body.dataset.error",timeout=300000)
@@ -57,6 +72,10 @@ try:
             def state():
                 return json.loads(page.evaluate("blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})"))
             initial=state()
+            if options.tablet:
+                region=initial['view']['region']
+                backing=page.evaluate('[canvas.width,canvas.height]')
+                assert region[0]+region[2]<=backing[0]+2 and region[1]+region[3]<=backing[1]+2,(region,backing)
             assert initial['version']==[5,2,2] and initial['backend']=='WEBGPU',initial
             assert initial['windows']==1 and 'VIEW_3D' in initial['areas'],initial
             assert initial['active']=='Cube' and not initial['errors'],initial
@@ -122,7 +141,7 @@ try:
             # than moving the selected mesh or leaving a selection drag held.
             native_view=state()['view']
             region=native_view['region']
-            scale=page.evaluate('devicePixelRatio')
+            scale=page.evaluate('canvas.width/canvas.clientWidth')
             cx=box['x']+(region[0]+region[2]*0.5)/scale
             cy=box['y']+box['height']-(region[1]+region[3]*0.5)/scale
             touch_session=context.new_cdp_session(page)
@@ -145,7 +164,7 @@ try:
             page.wait_for_function("JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).selected.length===0",timeout=30000)
             position=state()['object_position']
             assert position, state()
-            scale=page.evaluate('devicePixelRatio')
+            scale=page.evaluate('canvas.width/canvas.clientWidth')
             page.touchscreen.tap(box['x']+position[0]/scale,box['y']+box['height']-position[1]/scale)
             page.wait_for_function("JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).selected.includes('Cube')",timeout=30000)
             # The native application writes this project, rather than JS fabricating bytes.
@@ -160,6 +179,7 @@ try:
             # A new runtime must boot from the installed cache with the server offline.
             context.set_offline(True)
             page.reload()
+            if options.tablet:page.locator('#start-editor').click()
             page.wait_for_function("document.body.dataset.started || document.body.dataset.error",timeout=300000)
             assert not page.locator('body').get_attribute('data-error'),page.locator('body').get_attribute('data-error')
             assert page.evaluate("Array.from(blenderEditor.FS.readFile('/projects/keyboard-scene.blend'))")==saved
@@ -180,6 +200,18 @@ try:
             page.set_viewport_size({'width':768,'height':1024})
             page.wait_for_function("JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).location[0]===1")
             assert not state()['errors'],state()
+            if options.tablet:
+                # Portrait now renders below CSS resolution. Native region
+                # bounds and touch selection must follow the backing scale.
+                page.wait_for_function("""()=>{const r=JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).view.region;
+                  return r[0]+r[2]<=canvas.width+2 && r[1]+r[3]<=canvas.height+2;}""",timeout=30000)
+                page.evaluate("blenderEditor.FS.writeFile('/editor-command.json',JSON.stringify({operation:'deselect',path:'/projects/keyboard-scene.blend'}))")
+                page.wait_for_function("JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).selected.length===0")
+                portrait=page.locator('#canvas').bounding_box()
+                position=state()['object_position']
+                scale=page.evaluate('canvas.width/canvas.clientWidth')
+                page.touchscreen.tap(portrait['x']+position[0]/scale,portrait['y']+portrait['height']-position[1]/scale)
+                page.wait_for_function("JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).selected.includes('Cube')")
             # Native memory/files remain accessible after a real GPU device
             # loss. Export must still return the exact project bytes.
             page.evaluate('testDevice.destroy()')
@@ -194,6 +226,7 @@ try:
             # the real IDBFS records without instantiating the native engine.
             context.add_init_script('navigator.gpu.requestAdapter=async()=>null;')
             page.reload()
+            if options.tablet:page.locator('#start-editor').click()
             page.wait_for_function("document.body.dataset.error?.includes('No WebGPU graphics adapter')")
             assert not page.evaluate('!!window.blenderEditor')
             page.locator('#recover-files').click()
