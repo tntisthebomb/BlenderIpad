@@ -30,7 +30,7 @@ const report={diagnostic:'ipad-preflight-v2',engineStarted:false,url:location.hr
   // Safari does not expose available device memory. Never infer it from GPU limits.
   availableMemoryBytes:null,devicePixelRatio:window.devicePixelRatio,
   screen:{width:screen.width,height:screen.height},errors:[]};
-for(const key of ['blender-startup-last','blender-startup-check-last']) {
+for(const key of ['blender-startup-last','blender-startup-check-last','blender-startup-stats-last']) {
   for(const storage of ['sessionStorage','localStorage']) {
     try {
       const saved=window[storage].getItem(key);

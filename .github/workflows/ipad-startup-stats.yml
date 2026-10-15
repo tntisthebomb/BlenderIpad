@@ -1,0 +1,57 @@
+name: Validate and package full Blender startup statistics
+on:
+  push:
+    branches: [codex/ipad-startup-stats]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install acceptance runner
+        run: |
+          python3 -m venv .cache/browser-tests
+          .cache/browser-tests/bin/python -m pip install playwright==1.62.0 Pillow==12.0.0
+      - name: Retrieve the exact engine already tested on the iPad
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: '11958485469'
+          github-token: ${{ github.token }}
+          run-id: '38705147615'
+          path: work/original
+          merge-multiple: true
+      - name: Verify every original asset and prepare the diagnostic overlay
+        run: python3 scripts/prepare_startup_diagnostic.py --input-dir work/original --output .cache/blender-webgpu-browser
+      - name: Validate screenshots, crash checkpoints, actual editor and offline updates
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+        run: .cache/browser-tests/bin/python scripts/validate_startup_diagnostic.py
+      - name: Upload small update for the existing folder
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Blender-iPad-startup-stats-update
+          path: work/startup-stats-update/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload full replacement folder
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Blender-iPad-startup-stats-full
+          path: .cache/blender-webgpu-browser/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Preserve startup evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: startup-stats-test-evidence
+          include-hidden-files: true
+          path: |
+            .cache/blender-editor-frame.png
+            .cache/blender-editor-browser-log.json
+            .cache/blender-tablet-startup-*
+          if-no-files-found: ignore

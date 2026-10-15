@@ -31,6 +31,7 @@ with TemporaryDirectory(dir=ROOT/'.cache') as directory:
     </script><script src="editor_files.js"></script></body></html>'''
     (base/'index.html').write_text(markup+fixture)
     (base/'editor_files.js').write_bytes((ROOT/'native/browser/editor_files.js').read_bytes())
+    (base/'startup_stats.js').write_bytes((ROOT/'native/browser/startup_stats.js').read_bytes())
     folder=base/'linked-project'
     (folder/'textures').mkdir(parents=True)
     (folder/'scene.blend').write_bytes(b'Project fixture')

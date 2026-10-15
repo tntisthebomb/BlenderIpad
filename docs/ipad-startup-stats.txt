@@ -1,0 +1,43 @@
+Blender iPad startup statistics diagnostic
+
+This adds a screenshot panel to the full Blender loader. It does not fix the
+previous freezing or claim successful iPad acceptance. The native engine files
+are byte-for-byte identical to the earlier 893f616 build.
+
+SMALL UPDATE ZIP (for the Blender folder you already have):
+Close every Blender tab/window. Extract the ZIP, then copy its files into the
+existing Blender folder in Files. Choose Replace when asked. Keep the existing
+blender-core.js, blender-core.wasm and blender-core.data files.
+Keep WorldWideWeb serving that same folder and port.
+
+FULL ZIP (only if you need a replacement folder):
+Extract once and select the folder containing index.html in WorldWideWeb.
+
+INSTALL THE UPDATE BEFORE STARTING BLENDER:
+1. Keep WorldWideWeb running, preferably visible beside Safari.
+2. Open http://localhost:8080/ipad-update.html and install the offline update.
+3. Close the updater and every Blender tab/Home Screen window so it activates.
+4. Open http://localhost:8080/ and tap Start Blender once.
+
+The panel stays visible after the first frame. Screenshot it if startup stalls.
+If the entire iPad slows down, close Blender. Do not switch between apps to copy
+reports while the engine is freezing. After a reload, leave Start Blender alone:
+the panel shows the last saved startup statistics without restarting the engine.
+
+The panel shows elapsed time, startup phase, last WebAssembly/GPU operation,
+shader/pipeline counts, remaining dependencies, recent engine output and WASM
+memory. The WASM value is NOT total iPad memory use. GPU object counts and buffer
+byte requests are cumulative creation attempts, not live allocations or free memory.
+Safari does not expose available RAM. A frozen main thread also freezes the
+panel; the screenshot can show only its last painted state. A checkpoint is
+saved before shader/pipeline creation and periodically while the page responds.
+
+Hide details collapses the panel once the interface is usable.
+Do not clear Safari website data. Keep the same localhost port/folder path to
+preserve access to saved projects, and export project backups when possible.
+
+The original engine proof remains in original-engine-validation.json. The new
+editor-validation.json records frontend/editor checks for this diagnostic build.
+It does not claim the native renderers were rebuilt or revalidated on Safari.
+
+The combined Blender application is GPL-3.0-or-later; see LICENSE.txt.

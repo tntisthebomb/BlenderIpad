@@ -46,6 +46,12 @@ try:
         page.wait_for_function('document.body.dataset.rendered || document.body.dataset.error',timeout=300000)
         assert not page.evaluate('document.body.dataset.error'),page.evaluate('window.editorErrors')
         page.wait_for_function('document.body.dataset.started',timeout=300000)
+        assert page.locator('#startup-stats').is_visible()
+        page.wait_for_function('blenderStartupStats.snapshot().wasmMemoryBytes===blenderEditor.getBlenderMemoryBytes()')
+        stats=page.evaluate('blenderStartupStats.snapshot()')
+        assert stats['shaderModules']>0 and stats['renderPipelines']>0,stats
+        assert stats['texturesCreated']>0 and stats['buffersCreated']>0,stats
+        assert stats['phase']=='Viewport presented',stats
         assert len(workers)==4,workers
         state=page.evaluate('''({report:blenderDeviceReport,ready:blenderEditor.projectStorageReady,
           wasmMemoryBytes:blenderEditor.getBlenderMemoryBytes(),width:canvas.width,height:canvas.height})''')
@@ -61,6 +67,8 @@ try:
         page.reload()
         page.wait_for_selector('#start-editor',state='visible')
         assert not page.evaluate('window.blenderEditor'),'Reload automatically restarted the native engine'
+        assert page.locator('#startup-stats-title').inner_text()=='Previous startup — Blender is stopped'
+        assert 'Viewport presented' in page.locator('#startup-stats-text').inner_text()
         context.close();browser.close();diagnostics.close()
 finally:server.shutdown();server.server_close()
 print('PASS: real stock tablet editor startup, four prewarmed workers, bounded viewport, no float32 filtering feature and reload gating. Physical Safari acceptance remains separate.')

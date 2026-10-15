@@ -30,7 +30,7 @@ ENGINE='''window.createBlenderCore=async options=>({
 });'''
 with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-preflight-') as directory:
     base=Path(directory)
-    for name in ['blender_editor.html','editor_files.js','editor_input.js','ipad-startup.html']:
+    for name in ['blender_editor.html','editor_files.js','editor_input.js','startup_stats.js','ipad-startup.html']:
         (base/('index.html' if name=='blender_editor.html' else name)).write_bytes((ROOT/'native/browser'/name).read_bytes())
     (base/'editor.html').write_bytes((base/'index.html').read_bytes())
     (base/'blender-core.js').write_text(ENGINE)
@@ -73,6 +73,9 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-preflight-') as direct
             # First install isolation reload carries exactly one explicit launch.
             page.wait_for_function('document.body.dataset.started',timeout=30000)
             assert page.evaluate('crossOriginIsolated')
+            assert page.locator('#startup-stats').is_visible()
+            assert 'Viewport presented' in page.locator('#startup-stats-text').inner_text()
+            assert '128.0 MiB' in page.locator('#startup-stats-text').inner_text()
             assert page.evaluate('requestedFeatures.includes("indirect-first-instance")')
             assert page.evaluate('fixtureOptions.lowResource') is True
             args=page.evaluate('fixtureOptions.args')
