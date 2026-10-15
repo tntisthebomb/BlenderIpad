@@ -19,10 +19,10 @@ dialog {background:#303030;color:#eee;border:1px solid #666;border-radius:8px}
 #status[hidden] {display:none}
 #startup-details {max-height:35vh;overflow:auto;text-align:left;white-space:pre-wrap;user-select:text;-webkit-user-select:text;font:12px monospace}
 #local-addresses a {display:inline-block;color:#a9d4ff;padding:12px}
-#startup-stats {position:fixed;z-index:20;left:8px;bottom:8px;box-sizing:border-box;width:min(730px,calc(100vw - 16px));max-height:45vh;overflow:auto;background:#151515f5;color:#f4f4f4;border:1px solid #777;border-radius:6px;padding:10px;text-align:left;font:13px/1.4 ui-monospace,monospace}
+#startup-stats {position:fixed;z-index:20;left:8px;bottom:8px;box-sizing:border-box;width:min(730px,calc(100vw - 16px));max-height:45vh;overflow:auto;background:#151515f5;color:#f4f4f4;border:1px solid #777;border-radius:6px;padding:10px;text-align:left;font:13px/1.4 ui-monospace,monospace;pointer-events:none}
 #startup-stats strong {display:block;padding-right:100px}
 #startup-stats pre {margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}
-#toggle-startup-stats {float:right;font:12px system-ui;min-height:32px}
+#toggle-startup-stats {float:right;font:12px system-ui;min-height:32px;pointer-events:auto}
 </style>
 <body>
 <header><label class="file-button">Import files<input id="import-files" type="file" multiple hidden></label>

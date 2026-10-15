@@ -12,7 +12,8 @@ class Handler(SimpleHTTPRequestHandler):
  def log_message(self,*args):pass
 with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-stats-') as directory:
  base=Path(directory)
- (base/'index.html').write_text('<!doctype html><meta charset="utf-8"><body><script src="startup_stats.js"></script></body>')
+ css=(ROOT/'native/browser/blender_editor.html').read_text().split('<style>')[1].split('</style>')[0]
+ (base/'index.html').write_text('<!doctype html><meta charset="utf-8"><style>'+css+'</style><body><button id="behind-stats" style="position:fixed;bottom:40px;left:20px" onclick="this.dataset.clicked=\'true\'">Underlying control</button><script src="startup_stats.js"></script></body>')
  (base/'startup_stats.js').write_bytes((ROOT/'native/browser/startup_stats.js').read_bytes())
  server=ThreadingHTTPServer(('127.0.0.1',0),partial(Handler,directory=directory))
  Thread(target=server.serve_forever,daemon=True).start()
@@ -22,6 +23,8 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-stats-') as directory:
    context=browser.new_context();page=context.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    url=f'http://127.0.0.1:{server.server_port}/';page.goto(url)
    assert page.locator('#startup-stats').is_visible()
+   page.locator('#behind-stats').click()
+   assert page.locator('#behind-stats').get_attribute('data-clicked')=='true','Stats must not block editor/recovery controls'
    assert 'not available yet' in page.locator('#startup-stats-text').inner_text()
    assert not page.evaluate('localStorage.getItem("blender-startup-stats-last")')
    page.evaluate('''async()=>{
