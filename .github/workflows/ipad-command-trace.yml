@@ -9,7 +9,7 @@ permissions:
 jobs:
   recovery-webkit:
     # Apple WebKit exposes the same storage API family as Safari on iPad.
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

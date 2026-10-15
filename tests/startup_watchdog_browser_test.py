@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Prove recovery records survive a blocked page and a manual tab closure."""
-import argparse,json,os,time
+import argparse,faulthandler,json,os,time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
@@ -10,6 +10,7 @@ from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser();parser.add_argument('--browser',choices=('chromium','webkit'),default='chromium')
 options=parser.parse_args()
+faulthandler.dump_traceback_later(90,exit=True)
 class Handler(SimpleHTTPRequestHandler):
  def log_message(self,*args):pass
  def end_headers(self):
@@ -42,10 +43,13 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
  try:
   with sync_playwright() as p:
    launch={'args':['--no-sandbox'],'executable_path':os.environ.get('CHROMIUM_PATH','/usr/lib/chromium/chromium')} if options.browser=='chromium' else {}
+   print('Launching '+options.browser,flush=True)
    browser=getattr(p,options.browser).launch(**launch);context=browser.new_context();errors=[]
+   print('Browser context ready',flush=True)
    page=context.new_page();page.on('pageerror',lambda e:errors.append(str(e)))
    origin=f'http://127.0.0.1:{server.server_port}'
    page.goto(origin+'/');assert page.evaluate('crossOriginIsolated')
+   print('Fixture page ready',flush=True)
    page.evaluate('''()=>{window.probeBuffer=new SharedArrayBuffer(4);window.probeView=new Int32Array(probeBuffer);
     const NativeWorker=Worker;globalThis.Worker=class extends NativeWorker{
       constructor(url,options){super(url,options);this.postMessage({kind:'test-probe',buffer:probeBuffer});}
@@ -55,6 +59,7 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    try:page.wait_for_function("blenderStartupStats.snapshot().watchdogStatus==='recording'")
    except Exception:
     print('Recorder initialization failure:',page.evaluate('({state:blenderStartupStats.snapshot(),storage:typeof navigator.storage,directory:typeof navigator.storage?.getDirectory,secure:isSecureContext})'),errors,flush=True);raise
+   print('Recorder ready',flush=True)
    attempt=page.evaluate('blenderStartupStats.snapshot().attemptId')
    # This browser page cannot run its timer or save recovery records while
    # this synchronous task blocks. The other worker must save independently.
@@ -65,8 +70,10 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    # Apple WebKit can hold an exclusive file lock for the access handle.
    # Close the writer before reading, exactly as manual-tab recovery does.
    page.close()
+   print('Writer tab closed',flush=True)
    reader=context.new_page();reader.goto(origin+'/reader.html')
    saved=reader.evaluate('readRecovery()')
+   print('Recovery file read',flush=True)
    assert saved and saved['attemptId']==attempt and saved['maxHeartbeatGapMs']>=2000,saved
    assert saved['checkpoint']['phase']=='Preparing viewport fixture',saved
    assert 'last useful native breadcrumb' in saved['checkpoint']['lines'],saved
@@ -78,6 +85,7 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    assert restored.locator('#startup-stats-title').inner_text()=='Previous startup — Blender is stopped',restored.locator('#startup-stats-title').inner_text()
    assert 'Recovery recorder: saved' in restored.locator('#startup-stats-text').inner_text()
    assert not restored.evaluate('window.blenderEditor || window.createBlenderCore')
+   print('Previous startup restored without engine',flush=True)
    before=restored.evaluate('localStorage.getItem("blender-startup-stats-last")');restored.wait_for_timeout(1200)
    assert restored.evaluate('localStorage.getItem("blender-startup-stats-last")')==before
    # A successful viewport shuts down the recorder rather than retaining a
@@ -89,6 +97,7 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    restored.evaluate("blenderStartupStats.phase('Viewport presented')")
    restored.wait_for_function("blenderStartupStats.snapshot().watchdogStatus==='finished'")
    restored.close()
+   print('Recorder shutdown and restart verified',flush=True)
    context.add_init_script('''const OriginalWorker=Worker;globalThis.Worker=class extends OriginalWorker{
     constructor(url,options){super(String(url).endsWith('startup_watchdog.js')?new URL('watchdog-failing.js',location.href):url,options);}
    };''')
@@ -103,8 +112,10 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    missing.evaluate('blenderStartupStats.start()')
    missing.wait_for_function("blenderStartupStats.snapshot().watchdogStatus==='unavailable'")
    assert not errors,errors
+   print('Storage and missing-worker failure paths verified',flush=True)
    (ROOT/'work/memory').mkdir(parents=True,exist_ok=True)
    (ROOT/'work/memory'/('watchdog-'+options.browser+'-evidence.json')).write_text(json.dumps(saved,indent=2)+'\n')
    browser.close()
  finally:server.shutdown();server.server_close()
+faulthandler.cancel_dump_traceback_later()
 print('PASS: '+options.browser+' independent synchronous-file persistence during main-thread block, manual closure recovery, idle preservation, recorder shutdown and visible storage failure. No GPU engine loaded in this fixture.')
