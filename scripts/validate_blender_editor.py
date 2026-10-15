@@ -22,6 +22,7 @@ TESTS = ('tests/blender_gpu_browser_test.py', 'tests/blender_gpu_scene.py',
          'tests/shader_atomic_image.comp', 'tests/shader_readwrite_texture.comp',
          'tests/shader_zbin_range.comp', 'tests/shader_interface_names.vert',
          'tests/shader_unorm16_image.comp', 'tests/shader_buffer_image.comp',
+         'tests/shader_sampler_helpers.comp',
          'scripts/test_browser_lifecycle.py', 'tests/browser_lifecycle_probe.cc',
          'tests/ghost_platform_test.py', 'native/browser/ghost_probe.cc')
 
@@ -84,7 +85,7 @@ if __name__ == '__main__':
                    'shader_switch_fallthrough', 'volume_texture_queries',
                    'atomic_image_coherence', 'normalized_storage_images', 'buffered_storage_images', 'shader_output_names',
                    'localhost_recovery_links', 'tablet_stock_startup', 'float32_nearest_sampling',
-                   'float32_texel_load', 'depth_stencil_clear', 'indirect_instance_drawing',
+                   'float32_texel_load_helpers', 'float32_texel_load', 'depth_stencil_clear', 'indirect_instance_drawing',
                    'adapter_unavailable_backup', 'initial_install_failure_recovery'] +
                   (['eevee_shadow_viewports', 'render_attachment_lifetime'] if options.eevee else []),
         **before}, indent=2) + '\n')

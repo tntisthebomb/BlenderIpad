@@ -32,6 +32,7 @@
 #include "webgpu_shader.hh"
 #include "shader_prepare.hh"
 #include "shader_sampler_usage.hh"
+#include "shader_sampler_cleanup.hh"
 #include "shader_atomic_image.hh"
 #include "shader_unorm16_image.hh"
 #include "shader_buffer_image.hh"
@@ -552,7 +553,7 @@ static std::string wgsl_cache_key(const char *stage, const std::string &glsl)
     h = (h ^ uint8_t(c)) * 1099511628211ull;
   }
   char key[64];
-  snprintf(key, sizeof(key), "v7:%s:%016llx:%zu", stage, (unsigned long long)h, glsl.size());
+  snprintf(key, sizeof(key), "v8:%s:%016llx:%zu", stage, (unsigned long long)h, glsl.size());
   return key;
 }
 
@@ -660,6 +661,7 @@ static bool glsl_to_wgsl(const std::string &glsl,
     fflush(stderr);
     return false;
   }
+  webgpu_prepare::remove_unused_sampler_parameters(ir.Get());
   /* Permissive WGSL emission: EEVEE uses derivatives in non-uniform control flow
    * (fwidth), has provably-unreachable branches after early-outs, and relies on
    * extensions/features gated off by default (dual-source blending, read-write

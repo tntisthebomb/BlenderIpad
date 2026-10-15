@@ -1,0 +1,16 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+#version 450
+layout(local_size_x=1) in;
+layout(binding=0) uniform sampler2D load_only_texture;
+layout(binding=1) uniform sampler2D sampled_texture;
+layout(binding=2, rgba32f) uniform writeonly image2D target;
+layout(constant_id=0) const float gain=1.0;
+
+vec4 leaf(sampler2D source, ivec2 pixel) { return texelFetch(source,pixel,0); }
+vec4 forward_load(sampler2D source, ivec2 pixel) { return leaf(source,pixel); }
+vec4 forward_sample(sampler2D source, vec2 uv) { return textureLod(source,uv,0.0); }
+void main()
+{
+  imageStore(target,ivec2(0),forward_load(load_only_texture,ivec2(1,1))+
+             gain*forward_sample(sampled_texture,vec2(0.25)));
+}

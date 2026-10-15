@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include <vector>
 #include "../native/browser/webgpu/shader_prepare.hh"
+#include "../native/browser/webgpu/shader_sampler_cleanup.hh"
+#include "../native/browser/webgpu/shader_sampler_usage.hh"
 #include "src/tint/lang/core/ir/module.h"
 #include "src/tint/lang/spirv/reader/reader.h"
 #include "src/tint/lang/wgsl/reader/reader.h"
@@ -32,6 +34,7 @@ int main(int argc, char **argv)
     }
     auto ir = tint::spirv::reader::ReadIR(words, reader_options);
     if (ir != tint::Success) throw std::runtime_error(ir.Failure().reason);
+    blender::gpu::webgpu_prepare::remove_unused_sampler_parameters(ir.Get());
     tint::wgsl::writer::Options writer_options;
     writer_options.allowed_features = tint::wgsl::AllowedFeatures::Everything();
     writer_options.allow_non_uniform_derivatives = true;
@@ -43,6 +46,13 @@ int main(int argc, char **argv)
     wgsl_reader_options.allowed_features = tint::wgsl::AllowedFeatures::Everything();
     auto parsed = tint::wgsl::reader::Parse(&source, wgsl_reader_options);
     if (!parsed.IsValid()) throw std::runtime_error(parsed.Diagnostics().Str());
+    if (std::string(argv[1]).find("sampler-helpers.spv") != std::string::npos) {
+      using blender::gpu::webgpu_prepare::sampler_is_used;
+      if (sampler_is_used(wgsl.Get().wgsl, "load_only_texture_sampler") ||
+          !sampler_is_used(wgsl.Get().wgsl, "sampled_texture_sampler")) {
+        throw std::runtime_error("unused helper sampler cleanup changed actual sampling");
+      }
+    }
     std::ofstream output(argv[2]);
     output << wgsl.Get().wgsl;
     if (!output) throw std::runtime_error("WGSL output write failed");

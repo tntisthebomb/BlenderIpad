@@ -61,7 +61,7 @@ try:
                                  'R16F_storage':True,'RG16F_storage':True,
                                  'R16_storage':True,'RG16_storage':True,'RGBA16_storage':True,
                                  'switch_fallthrough':True,'volume_query':True,
-                                 'atomic_image_coherence':True,'buffered_image_coherence':True,'float32_nearest_sampling':True,'float32_texel_load':True,'shader_lifetime_cache':True,
+                                 'atomic_image_coherence':True,'buffered_image_coherence':True,'float32_nearest_sampling':True,'float32_texel_load_helpers':True,'float32_texel_load':True,'shader_lifetime_cache':True,
                                  'array_layers':True,'cube_faces':True,'builtin_shader_triangle':True,
                                  'font_storage_shader':True,'depth_stencil_clear':True},checks
         aspect_checks=page.evaluate('''async()=>{

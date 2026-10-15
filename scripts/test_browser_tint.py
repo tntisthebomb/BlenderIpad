@@ -19,7 +19,7 @@ if __name__ == '__main__':
     run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node',
         build / 'blender_shader_translation_probe.js', probe / 'portable-math.spv',
         probe / 'portable-math.wgsl', env=env)
-    for name in ('switch-fallthrough', 'switch-phi', 'volume-query', 'readwrite-texture', 'atomic-image', 'zbin-range', 'interface-names', 'unorm16-image', 'buffer-image'):
+    for name in ('switch-fallthrough', 'switch-phi', 'volume-query', 'readwrite-texture', 'atomic-image', 'zbin-range', 'interface-names', 'unorm16-image', 'buffer-image', 'sampler-helpers'):
         run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node',
             build / 'blender_shader_translation_probe.js', probe / (name + '.spv'),
             probe / (name + '.wgsl'), env=env)
@@ -34,5 +34,6 @@ if __name__ == '__main__':
                           'atomic-image.spv', 'atomic-image.wgsl',
                           'zbin-range.spv', 'zbin-range.wgsl',
                           'interface-names.spv', 'interface-names.wgsl',
-                          'unorm16-image.spv', 'unorm16-image.wgsl', 'buffer-image.spv', 'buffer-image.wgsl']}
+                          'unorm16-image.spv', 'unorm16-image.wgsl', 'buffer-image.spv', 'buffer-image.wgsl',
+                          'sampler-helpers.spv', 'sampler-helpers.wgsl']}
     (probe / 'translation-validation.json').write_text(json.dumps(stamp, indent=2) + '\n')
