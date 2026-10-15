@@ -155,7 +155,7 @@ class GHOST_WindowWeb : public GHOST_Window {
   {
     // The tablet page can render below Retina resolution. Blender's region
     // targets and input coordinates must use the actual canvas backing ratio.
-    return float(EM_ASM_DOUBLE({
+    return float(MAIN_THREAD_EM_ASM_DOUBLE({
       const canvas=Module["canvas"];
       return Module["browserLowResource"] && canvas?.clientWidth>0 ?
         canvas.width/canvas.clientWidth : window.devicePixelRatio;
