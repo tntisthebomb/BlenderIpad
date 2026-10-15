@@ -9,7 +9,7 @@
     wasmMode:'not started',wasmMimeType:null,
     shaderModules:0,renderPipelines:0,computePipelines:0,texturesCreated:0,buffersCreated:0,
     bufferBytesRequested:0,lines:[],updatedAt:null};
-  let previous=null,memory=null,lastSaved=0,compact=false;
+  let previous=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,compact=false;
   try{previous=JSON.parse(localStorage.getItem(key)||'null');}catch{}
   const panel=document.createElement('aside');panel.id='startup-stats';
   panel.setAttribute('aria-label','Blender startup statistics');
@@ -88,11 +88,13 @@
       state.phase=phase;state.phaseSeconds=Math.round((performance.now()-began)/1000);update(true,true);
     },
     start(){began=performance.now();state.phaseSeconds=0;state.active=true;previous=null;operation('Starting Blender');},
-    dependencies(count){state.dependencies=count;update(true);},
+    // Thousands of files can change the dependency count synchronously. Keep
+    // only the count; the heartbeat paints it, with a final immediate update.
+    dependencies(count){state.dependencies=count;if(count===0)update(true,true);},
     line(message){
       const line=String(message).replace(/\s+/g,' ').trim();
       if(line){state.lines.push(line.slice(0,180));state.lines=state.lines.slice(-4);}
-      update(true);
+      if(performance.now()-lastOutputUpdate>=250){lastOutputUpdate=performance.now();update(true);}
     },
     failure(message){
       const value=String(message),at=value.lastIndexOf(' - error ');

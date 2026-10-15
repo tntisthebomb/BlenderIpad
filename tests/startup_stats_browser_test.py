@@ -49,7 +49,17 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-stats-') as directory:
     if(device.createRenderPipeline({label:'frozen-shader'})!==marker)throw Error('Changed pipeline result');
     try{device.createComputePipeline({label:'failed-compute'});throw Error('Swallowed exception');}
     catch(error){if(error!==originalError)throw error;}
-    trackedMemory.grow(1);blenderStartupStats.dependencies(17);
+    trackedMemory.grow(1);
+    // A large file package must not produce thousands of synchronous DOM /
+    // storage updates merely to display its dependency counter.
+    const save=Storage.prototype.setItem;let writes=0;
+    Storage.prototype.setItem=function(...args){writes++;return Reflect.apply(save,this,args);};
+    for(let count=10000;count>0;count--)blenderStartupStats.dependencies(count);
+    if(writes!==0)throw Error('Dependency burst caused synchronous checkpoint writes');
+    blenderStartupStats.dependencies(0);
+    if(writes!==1)throw Error('Completed dependencies did not save their checkpoint');
+    Storage.prototype.setItem=save;
+    blenderStartupStats.dependencies(17);
     blenderStartupStats.line('Last engine message');
    }''')
    assert page.evaluate('observedBeforeCall')
