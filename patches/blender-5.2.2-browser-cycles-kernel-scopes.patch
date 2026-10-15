@@ -1,0 +1,23 @@
+--- a/intern/cycles/util/defines.h
++++ b/intern/cycles/util/defines.h
+@@ -25 +25,10 @@
+-#  define ccl_device static inline
++#  ifdef __EMSCRIPTEN__
++/* Keep CPU shader stages separate: merged kernels exceed 20,000 Wasm locals
++ * and exhaust browser compiler memory. Basic vector arithmetic stays inlined;
++ * shader behavior and all kernel assertions are preserved. */
++#    define ccl_device static inline __attribute__((noinline))
++#    define ccl_device_noinline static inline __attribute__((noinline))
++#  else
++#    define ccl_device static inline
++#    define ccl_device_noinline static inline
++#  endif
+@@ -27 +35,0 @@
+-#  define ccl_device_noinline static inline
+@@ -49 +57,5 @@
+-#    define ccl_device_forceinline static inline __attribute__((always_inline))
++#    ifdef __EMSCRIPTEN__
++#      define ccl_device_forceinline static inline __attribute__((noinline))
++#    else
++#      define ccl_device_forceinline static inline __attribute__((always_inline))
++#    endif

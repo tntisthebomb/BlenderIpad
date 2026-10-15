@@ -12,6 +12,7 @@ static GHOST_IWindow *window_instance;
 static GHOST_CallbackEventConsumer *consumer;
 static int key_down, key_up, mouse_down, mouse_up, cursor_moves, wheel, resizes, redraws;
 static int last_key, repeat, width, height;
+static int trackpad_pan, trackpad_zoom, pan_x, pan_y, zoom_x;
 static char last_text[6];
 
 static bool consume(const GHOST_IEvent *event, void *)
@@ -30,6 +31,16 @@ static bool consume(const GHOST_IEvent *event, void *)
     case GHOST_kEventButtonUp: ++mouse_up; break;
     case GHOST_kEventCursorMove: ++cursor_moves; break;
     case GHOST_kEventWheel: ++wheel; break;
+    case GHOST_kEventTrackpad: {
+      const auto *data = static_cast<const GHOST_TEventTrackpadData *>(event->getData());
+      if (data->subtype == GHOST_kTrackpadEventScroll) {
+        ++trackpad_pan; pan_x += data->deltaX; pan_y += data->deltaY;
+      }
+      if (data->subtype == GHOST_kTrackpadEventMagnify) {
+        ++trackpad_zoom; zoom_x += data->deltaX;
+      }
+      break;
+    }
     case GHOST_kEventWindowSize: {
       ++resizes;
       GHOST_Rect bounds;
@@ -66,7 +77,7 @@ void ghost_probe_tick()
 }
 const char *ghost_probe_snapshot()
 {
-  static char output[512];
+  static char output[768];
   GHOST_ModifierKeys keys;
   GHOST_Buttons buttons;
   if (system_instance) {
@@ -76,10 +87,12 @@ const char *ghost_probe_snapshot()
   snprintf(output, sizeof(output),
     "{\"keydown\":%d,\"keyup\":%d,\"mousedown\":%d,\"mouseup\":%d,\"cursor\":%d,"
     "\"wheel\":%d,\"resizes\":%d,\"redraws\":%d,\"key\":%d,\"repeat\":%d,\"width\":%d,\"height\":%d,"
-    "\"left_shift\":%d,\"right_shift\":%d,\"left_button\":%d,\"backend\":\"%s\"}",
+    "\"left_shift\":%d,\"right_shift\":%d,\"left_button\":%d,\"backend\":\"%s\","
+    "\"trackpad_pan\":%d,\"trackpad_zoom\":%d,\"pan_x\":%d,\"pan_y\":%d,\"zoom_x\":%d}",
     key_down,key_up,mouse_down,mouse_up,cursor_moves,wheel,resizes,redraws,last_key,repeat,width,height,
     keys.get(GHOST_kModifierKeyLeftShift), keys.get(GHOST_kModifierKeyRightShift),
-    buttons.get(GHOST_kButtonMaskLeft), system_instance ? GHOST_ISystem::getSystemBackend() : "none");
+    buttons.get(GHOST_kButtonMaskLeft), system_instance ? GHOST_ISystem::getSystemBackend() : "none",
+    trackpad_pan, trackpad_zoom, pan_x, pan_y, zoom_x);
   return output;
 }
 int ghost_probe_key_g() { return int(GHOST_kKeyG); }

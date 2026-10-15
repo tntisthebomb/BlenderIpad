@@ -1,0 +1,33 @@
+#version 450
+layout(local_size_x=1) in;
+layout(set=0, binding=0, std430) buffer Results { int values[]; } output_data;
+int bump(inout int value) { value += 2; return value; }
+int triple(inout int value) { value *= 3; return value; }
+int calculate(int selector) {
+  int value = 1;
+  // These scoped names must remain distinct after Tint emits WGSL.
+  { int prev = selector + 1; value += prev - selector - 1; }
+  { int prev = selector + 2; value += prev - selector - 2; }
+  switch (selector) {
+    case 0: value += 2;
+    case 1:
+      value = selector == 1 ? bump(value) : triple(value);
+      break;
+    case 2: value += 5;
+    case 3:
+      value = selector < 3 ? bump(value) : triple(value);
+      for (int i = 0; i < 2; i++) {
+        switch (i) {
+          case 0: value += 1;
+          default: value += 2;
+        }
+      }
+      break;
+    default: value = -5;
+  }
+  return value;
+}
+void main() {
+  uint index = gl_GlobalInvocationID.x;
+  if (index < 6) output_data.values[index] = calculate(int(index));
+}

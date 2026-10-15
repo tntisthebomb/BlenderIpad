@@ -11,7 +11,7 @@ Module['preRun'].push(function () {
   // OIIO constructs its default pool before applying Blender's --threads
   // override. Avoid creating a hardware-sized pool and synchronously joining
   // workers that the browser has not yet had an opportunity to start.
-  ENV['OPENIMAGEIO_THREADS'] = '2';
+  ENV['OPENIMAGEIO_THREADS'] = Module['browserLowResource'] ? '1' : '2';
   FS.mkdirTree('/cache');
 });
 
@@ -30,3 +30,26 @@ Module['runBlenderMain'] = async function (args) {
     throw error;
   }
 };
+
+// Stop scheduling draws while the page is suspended or its device is lost.
+// The filesystem remains available for downloading already-saved projects.
+let blenderLoopPaused = false;
+Module['pauseBlenderLoop'] = function () {
+  if (blenderLoopPaused) return;
+  // A paused scheduler releases its own keepalive token. Hold one explicitly
+  // so EXIT_RUNTIME cannot run Blender's static destructors during suspension
+  // or destroy project recovery state after GPU loss.
+  Module['runtimeKeepalivePush']();
+  blenderLoopPaused = true;
+  Module['pauseMainLoop']?.();
+};
+Module['resumeBlenderLoop'] = function () {
+  if (!blenderLoopPaused) return;
+  Module['resumeMainLoop']?.();
+  blenderLoopPaused = false;
+  Module['runtimeKeepalivePop']();
+};
+
+// Read the internal heap from its own generated scope. Do not access Module.HEAPU8:
+// unexported Emscripten symbols can have getters which abort the application.
+Module['getBlenderMemoryBytes'] = function () { return HEAPU8.byteLength; };

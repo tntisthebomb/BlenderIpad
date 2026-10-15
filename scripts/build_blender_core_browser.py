@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Relink the actual background Blender objects for a browser integration test.
-
-This is deliberately not a GUI build or the downloadable iPad workbench.
-"""
+"""Relink native Blender for the browser, including its GUI with --editor."""
 import argparse
 import hashlib
 import json
@@ -10,6 +7,7 @@ import shlex
 import shutil
 import subprocess
 from setup_browser import CACHE, ROOT, toolchain, run
+from browser_runtime_scripts import stage_runtime_scripts
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser()
@@ -44,13 +42,21 @@ if __name__ == '__main__':
     if '-sNODERAWFS=1' not in args or '-sENVIRONMENT=node' not in args:
         raise SystemExit('Unrecognized CLI build; refusing to silently reuse host I/O.')
     args.remove('-sNODERAWFS=1')
+    if options.editor:
+        # The desktop acceptance profile needs the full pool. The iPad's
+        # one-thread Blender/OIIO profile must not prewarm eight workers before
+        # its editor has even started. Retain four for native library helpers.
+        if '-sPTHREAD_POOL_SIZE=8' not in args:
+            raise SystemExit('Unrecognized editor worker pool; validate it before changing startup.')
+        args[args.index('-sPTHREAD_POOL_SIZE=8')] = "-sPTHREAD_POOL_SIZE=Module['browserLowResource']?4:8"
     args[args.index('-sENVIRONMENT=node')] = '-sENVIRONMENT=web,worker'
     args[args.index('--pre-js') + 1] = str(ROOT / 'native/browser/core_browser_env.js')
     args[args.index('-o') + 1] = str(output / 'blender-core.js')
+    scripts = stage_runtime_scripts(core)
     args += ['-sMODULARIZE=1', '-sEXPORT_NAME=createBlenderCore',
-             "-sEXPORTED_RUNTIME_METHODS=['callMain','FS']", '-sFORCE_FILESYSTEM=1',
+             "-sEXPORTED_RUNTIME_METHODS=['callMain','FS','runtimeKeepalivePush','runtimeKeepalivePop']", '-sFORCE_FILESYSTEM=1',
              '--preload-file', str(stdlib) + '@/python/lib/python313.zip',
-             '--preload-file', str(CACHE / 'blender-browser/scripts') + '@/blender/scripts',
+             '--preload-file', str(scripts) + '@/blender/scripts',
              '--preload-file', str(CACHE / 'blender-browser/release/datafiles') + '@/blender/datafiles',
              '--preload-file', str(ROOT / 'tests/blender_core_scene.py') + '@/scene_test.py']
     if options.webgpu:
@@ -64,11 +70,11 @@ if __name__ == '__main__':
     if options.editor:
         shutil.copyfile(ROOT / 'native/browser/blender_editor.html', output / 'editor.html')
         shutil.copyfile(output / 'editor.html', output / 'index.html')
-        for name in ('manifest.webmanifest','icon.svg','editor_files.js'):
+        for name in ('manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js','editor_input.js','ipad-startup.html'):
             shutil.copyfile(ROOT / 'native/browser' / name, output / name)
         content=hashlib.sha256()
         for name in ('index.html','editor.html','blender-core.js','blender-core.wasm',
-                     'blender-core.data','manifest.webmanifest','icon.svg','editor_files.js'):
+                     'blender-core.data','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js','editor_input.js','ipad-startup.html'):
             content.update(name.encode())
             with (output / name).open('rb') as stream:
                 while chunk := stream.read(1024*1024):

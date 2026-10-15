@@ -1,7 +1,12 @@
 --- a/source/blender/python/gpu/gpu_py_texture.cc
 +++ b/source/blender/python/gpu/gpu_py_texture.cc
-@@ -688,7 +688,8 @@
-   const Py_ssize_t component_len = GPU_texture_component_len(tex_format);
+@@ -688,7 +688,12 @@
+-  const Py_ssize_t component_len = GPU_texture_component_len(tex_format);
++  /* Packed HDR readback returns one 32-bit word per texel, not three
++   * independently addressable components. Keep the Python buffer shape
++   * within the allocation returned by GPU_texture_read. */
++  const Py_ssize_t component_len = best_data_format == GPU_DATA_10_11_11_REV ?
++                                      1 : GPU_texture_component_len(tex_format);
    Py_ssize_t shape[4];
    int shape_len;
 -  if (GPU_texture_dimensions(self->tex) == 3) {

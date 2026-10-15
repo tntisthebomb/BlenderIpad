@@ -23,25 +23,27 @@ def pinned_git(name):
         raise SystemExit(name + ': preserve local changes before building')
     return source
 
-def patched_atomics(source):
-    """Backport upstream atomic composite lowering without editing the checkout."""
-    relative = 'src/tint/lang/spirv/reader/lower/atomics.cc'
+def patched_source(source, relative, patch_name):
+    """Apply a guarded translator correction without editing the checkout."""
     build = CACHE / 'tint-patched-source'
     build.mkdir(exist_ok=True)
-    destination = build / 'atomics.cc'
-    stamp = build / 'atomics.json'
+    destination = build / Path(relative).name
+    stamp = build / (Path(relative).stem + '.json')
     previous = json.loads(stamp.read_text()) if stamp.exists() else {}
     if destination.exists() and hashlib.sha256(destination.read_bytes()).hexdigest() != previous.get('output_sha256'):
         raise SystemExit('Preserve unrecognized edits to the patched Tint source before rebuilding.')
     with tempfile.TemporaryDirectory(dir=CACHE) as temporary:
         temporary = Path(temporary)
-        target = temporary / relative
-        target.parent.mkdir(parents=True)
-        shutil.copyfile(source / relative, target)
-        patch = ROOT / 'patches/tint-atomics-composite.patch'
+        patch = ROOT / 'patches' / patch_name
+        paths = {line[6:] for line in patch.read_text().splitlines()
+                 if line.startswith('+++ b/')}
+        for path in paths:
+            target = temporary / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source / path, target)
         run('git', 'apply', '--check', patch, cwd=temporary)
         run('git', 'apply', patch, cwd=temporary)
-        output = target.read_bytes()
+        output = (temporary / relative).read_bytes()
     if not destination.exists() or destination.read_bytes() != output:
         destination.write_bytes(output)
     stamp.write_text(json.dumps({'source_commit': LOCK['webgpu_toolchain']['dawn']['commit'],
@@ -56,7 +58,13 @@ if __name__ == '__main__':
     packages = subprocess.check_output([str(CACHE / 'python/bin/python'), '-c',
         'import sysconfig; print(sysconfig.get_path("purelib"))'], text=True).strip()
     source, abseil = pinned_git('dawn'), pinned_git('abseil')
-    atomics = patched_atomics(source)
+    atomics = patched_source(source, 'src/tint/lang/spirv/reader/lower/atomics.cc',
+                             'tint-atomics-composite.patch')
+    shader_io = patched_source(source, 'src/tint/lang/spirv/reader/lower/shader_io.cc',
+                               'tint-shader-io-output-names.patch')
+    intrinsic_source = patched_source(source, 'src/tint/lang/spirv/intrinsic/data.cc',
+                                      'tint-image-overloads.patch')
+    patched_source(source, 'src/tint/lang/spirv/spirv.def', 'tint-image-overloads.patch')
     spirv, headers = fetch('spirv-tools'), fetch('spirv-headers')
     build = CACHE / 'deps-build/tint-threaded'
     prefix = CACHE / 'wasm-threaded-sysroot'
@@ -85,6 +93,8 @@ if __name__ == '__main__':
         '-DDAWN_JINJA2_DIR=' + packages, '-DDAWN_MARKUPSAFE_DIR=' + packages,
         '-DBLENDER_SHADER_PROBE_SOURCE=' + str(ROOT / 'tests/shader_translation_probe.cc'),
         '-DBLENDER_TINT_ATOMICS_SOURCE=' + str(atomics),
+        '-DBLENDER_TINT_SHADER_IO_SOURCE=' + str(shader_io),
+        '-DBLENDER_TINT_INTRINSIC_SOURCE=' + str(intrinsic_source),
         '-DCMAKE_EXE_LINKER_FLAGS=-pthread -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=2 -sDISABLE_EXCEPTION_CATCHING=0 -sSTACK_SIZE=8388608',
         '-DDAWN_ABSEIL_DIR=' + str(abseil), '-DDAWN_SPIRV_TOOLS_DIR=' + str(spirv),
         '-DDAWN_SPIRV_HEADERS_DIR=' + str(headers),

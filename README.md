@@ -2,11 +2,44 @@
 
 Goal: run the latest stable Blender locally on an iPad as an installable, offline PWA, with physical keyboard input and no jailbreak or alternative app store.
 
+For resumed sessions, [RECOVERY.md](RECOVERY.md) identifies the verified source,
+latest successful editor workflow, recovered artifacts and remaining work.
+
 **Current status: the real Blender 5.2.2 editor passes Chromium acceptance.** Its solid viewport, grid, fonts and native UI render; physical-keyboard transforms and touch selection work; native projects save, persist and reload after an offline application restart. This is an experimental port: render-engine validation, disabled optional features and acceptance on the target iPad remain outstanding. The older `ipad-workbench` download is still a separate math demo. See [BROWSER_PORT.md](BROWSER_PORT.md) for scope and reproducible commands.
+
+## Run the existing preview on iPad
+
+1. While signed into GitHub, download
+   [blender-editor-preview-with-source](https://github.com/tntisthebomb/BlenderIpad/actions/runs/38463349693/artifacts/11852511697).
+   This is the verified baseline preview; completion candidates are tracked in
+   [PR #1](https://github.com/tntisthebomb/BlenderIpad/pull/1).
+2. Unzip the download in Files, then unzip the inner
+   `BlenderIpad-5.2.2-editor-preview.zip`. Keep the corresponding source archive.
+3. In WorldWideWeb, serve the extracted folder containing `index.html`,
+   `blender-core.wasm` and `blender-core.data`.
+4. Open WorldWideWeb's address in Safari, replacing its hostname with `localhost`
+   and preserving its port and folder path. For example,
+   `http://users-ipad.local:8080/editor/` becomes
+   `http://localhost:8080/editor/`. Try `127.0.0.1` if localhost fails.
+5. Keep WorldWideWeb running until the actual Blender interface and offline-ready
+   message appear. Choose Share → Add to Home Screen. Open that installed app
+   once with WorldWideWeb still running and wait for it to become ready too.
+
+The baseline preview has physical-keyboard input and single-finger selection.
+The on-screen keyboard, two-finger navigation and newer renderer changes belong
+to the completion candidate and require its own accepted build. The full port
+is not complete, and the WorldWideWeb/Safari route still needs the physical
+device checks in [IPAD_ACCEPTANCE.md](IPAD_ACCEPTANCE.md). Download **Device report**
+from the application if startup fails.
 
 ## Experimental editor build
 
 The actual editor is built separately from the legacy math workbench:
+
+Use a Linux builder with at least 16 GiB RAM. Compilation fits in 8 GiB, but
+full-editor Asyncify linking exceeded that limit even with staged optimization.
+The editor CI workflow provides separate graphics and CPU Cycles candidates;
+each must pass its actual engine render checks before producing an accepted ZIP.
 
 ```sh
 python3 scripts/build_browser_platform.py
@@ -17,18 +50,28 @@ python3 scripts/build_browser_shaderc.py
 python3 scripts/test_browser_shaderc.py
 python3 scripts/build_browser_tint.py
 python3 scripts/test_browser_tint.py
+python3 scripts/build_browser_opensubdiv.py
 python3 scripts/build_blender_core.py --editor
 python3 scripts/test_blender_core.py --webgpu
 python3 scripts/build_blender_core_browser.py --editor
 python3 -m venv .cache/browser-tests
 .cache/browser-tests/bin/python -m pip install playwright==1.62.0 Pillow==12.0.0
-python3 scripts/validate_blender_editor.py
+python3 scripts/validate_blender_editor.py --eevee
 python3 scripts/package_blender_editor.py
 ```
 
 Acceptance requires Chromium with a working WebGPU adapter; set `CHROMIUM_PATH` when necessary. Packaging rejects changed assets or fixtures after acceptance. It writes `dist/BlenderIpad-5.2.2-editor-preview.zip` and its corresponding `-source.tar.gz`, containing prepared Blender, dependency sources, runtime sources, overlays, licenses and rebuild instructions. These names describe local outputs, not an already published release.
 
-Serve the extracted editor assets over HTTPS with COOP/COEP headers as described below. WebGPU, shared memory and cross-origin isolation are required. Plain HTTP `users-ipad.local` in WorldWideWeb cannot provide those requirements. GitHub Pages cannot set the required headers directly; the existing Pages workflow continues to build the legacy math demo. No remote Blender process is needed: computation is local once the assets load. Initial shader compilation can take several minutes. Export backups because browser storage can be evicted.
+Serve the extracted editor assets over HTTPS with COOP/COEP headers, or use a
+trusted localhost origin in WorldWideWeb. Follow [IPAD_ACCEPTANCE.md](IPAD_ACCEPTANCE.md)
+for the target iPad: keep the server's port/path and use `localhost` or
+`127.0.0.1`, wait for the real editor and offline-ready message, then install and
+test the Home Screen app. That route still requires physical-device acceptance.
+WebGPU, shared memory and cross-origin isolation are required. Plain HTTP
+`users-ipad.local` cannot provide those requirements. GitHub Pages cannot set
+the required headers directly; its existing workflow builds the legacy math
+demo. Computation is local once the assets load. Initial shader compilation can
+take several minutes. Export backups because browser storage can be evicted.
 
 The combined experimental editor is distributed under GPL-3.0-or-later, compatible with Blender's GPL-2.0-or-later licensing and its Apache-2.0 shader translation dependencies. See [THIRD_PARTY.md](THIRD_PARTY.md).
 
@@ -68,7 +111,11 @@ The current math build is single-threaded. Shared memory is detected but not use
 
 Open the hosted page in Safari, choose **Share → Add to Home Screen**, and wait for **Downloaded · ready for offline reload** before disconnecting. The service worker caches the app, WASM, build metadata, license, and corresponding source. Storage is subject to browser eviction: offline availability is verified for the current cache, not guaranteed indefinitely. Bump the service worker cache version when deploying changed assets so existing installations receive a coherent update.
 
-## WorldWideWeb on iPad
+## Legacy math demo in WorldWideWeb
+
+For the actual Blender editor, use the editor artifact and
+[IPAD_ACCEPTANCE.md](IPAD_ACCEPTANCE.md). The instructions below apply to the
+older math prototype.
 
 Download the newest successful build's `ipad-workbench` artifact from the repository's Actions tab. Extract it in Files. Select the directory containing `index.html` as WorldWideWeb's root and start serving. Open the supplied address in Safari and keep WorldWideWeb running. Browser scripts use `.js` because some local servers do not recognize the `.mjs` module extension.
 

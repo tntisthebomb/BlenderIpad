@@ -19,3 +19,63 @@ CPython 3.13.13 retains its PSF license, copied beside the local browser runtime
 Blender's original GHOST, allocator, logging and dependency code is fetched from the immutable release pin in `port.lock.json`. Dependency archive hashes are taken from that release's `build_files/build_environment/cmake/versions.cmake` and are retained in `browser-port.lock.json`. No checksums or assertions are weakened to accept a build.
 
 Tint atomic composite lowering includes a narrow backport of upstream Dawn fixes. [Patch provenance](patches/tint-atomics-composite.md) records the original commits and retained BSD-3-Clause licensing. The SDK-matched source pin and compiler validation remain in place.
+
+The optional CPU Cycles profile uses oneTBB 2022.3.0, pinned to the archive checksum
+in Blender's stable dependency manifest. Its Apache-2.0 license is retained in
+the corresponding dependency source. The browser overlay builds the real
+scheduler with assertions and pthreads; Node and isolated-browser probes check
+parallel work and task completion before the profile can be enabled. These
+probes do not establish Cycles rendering support.
+
+CPU Subdivision Surface uses Blender's pinned OpenSubdiv 3.7.0 archive. Its
+upstream license is retained in the corresponding dependency source. The build
+keeps its topology and stencil regression tests; the application separately
+checks a native level-two Catmull–Clark modifier. WebGPU uses CPU evaluation
+until the GPU subdivision path has its own acceptance proof.
+# Translator corrections
+
+`patches/tint-image-overloads.patch` corrects the pinned Dawn/Tint SPIR-V
+`OpImage` overloads for 3D, cube and depth images. Its generated intrinsic table
+was regenerated from the corrected `spirv.def` using that same pinned checkout's
+`go run ./tools/src/cmd/gen templates src/tint/lang/spirv/intrinsic/data.cc.tmpl`
+with Go 1.23.12. Go is only a development generator; the guarded patch includes
+the generated table and does not add a Go dependency to the port build.
+
+`native/browser/webgpu/shader_prepare.hh` lowers switch fallthrough in
+preprocessed GLSL, before glslang creates SSA IDs, and removes local debug names
+that collide in WGSL. Buffer block names remain intact. Interface member names are disambiguated
+across types before Tint flattens them into entry-point outputs. The
+original Tint switch parser is retained: duplicating its SPIR-V blocks proved
+unsafe for actual Eevee light-culling shaders. Tint IR validation stays enabled.
+Numeric browser regressions cover fallthrough, nested loops/switches, conditional
+calls, scoped names, 3D dimensions, texel fetch and read/write storage textures.
+
+`patches/tint-shader-io-output-names.patch` corrects the pinned Tint shader-I/O
+lowering to allocate fresh symbols for flattened output fields. Original
+private struct types can retain their member symbols; reusing those symbols
+in the generated entry-point result caused actual Eevee vertex shaders to fail
+WGSL emission. The guarded overlay retains the upstream BSD-3-Clause header.
+
+`native/browser/webgpu/shader_unorm16_image.hh` lowers normalized 16-bit and
+packed RGB10_A2 storage-image writes to baseline RGBA32F storage, preserving
+their channel-specific clamping, quantization and missing-channel values.
+CPU uploads, clears and packed readback use the corresponding physical format.
+The numeric GPU fixture verifies both exact normalized integers and values
+outside the logical range. The larger allocation still needs iPad memory tests.
+
+`native/browser/webgpu/shader_atomic_image.hh` maps direct R32I/R32UI image
+atomics to storage-buffer atomics. The WebGPU texture backend synchronizes a
+padded buffer with the physical texture before subsequent texture access.
+The numeric regression checks 1,024 contending invocations, minimum/addition,
+out-of-bounds virtual pages and independent texture-copy readback. A full native
+GPU fixture additionally checks intervening ordinary image writes.
+
+`patches/blender-5.2.2-browser-eevee-compute-limits.patch` adapts Eevee to
+256-invocation groups and four writable textures per stage. Shadow kernels
+visit every original tile with fewer physical lanes. Z bins pack the existing
+16-bit min/max indices into one atomic word, retaining 4,096 bins within 16KiB
+of shared storage. The directional shadow amendment serializes its dependent
+levels in one invocation with ping-pong shared planes; its performance on the
+target iPad remains to be measured. World mips and hierarchical depth levels are built in separate passes. The
+shadow pool also respects the adapter's storage-buffer capacity, reserving the
+atomic header and rounding to whole atlas layers.

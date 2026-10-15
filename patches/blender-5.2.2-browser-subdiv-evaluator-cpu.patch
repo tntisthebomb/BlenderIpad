@@ -1,0 +1,54 @@
+--- a/intern/opensubdiv/CMakeLists.txt
++++ b/intern/opensubdiv/CMakeLists.txt
+@@ -71,0 +72,12 @@
++
++  if(EMSCRIPTEN)
++    list(REMOVE_ITEM SRC
++      internal/evaluator/eval_output_gpu.cc
++      internal/evaluator/eval_output_gpu.h
++      internal/evaluator/gpu_compute_evaluator.cc
++      internal/evaluator/gpu_compute_evaluator.h
++      internal/evaluator/gpu_patch_table.cc
++      internal/evaluator/gpu_patch_table.hh
++      internal/evaluator/gpu_vertex_buffer_wrapper.hh
++    )
++  endif()
+--- a/intern/opensubdiv/internal/evaluator/evaluator_cache_impl.cc
++++ b/intern/opensubdiv/internal/evaluator/evaluator_cache_impl.cc
+@@ -7 +7,3 @@
+-#include "internal/evaluator/eval_output_gpu.h"
++#ifndef __EMSCRIPTEN__
++#  include "internal/evaluator/eval_output_gpu.h"
++#endif
+@@ -12,0 +15 @@
++#ifndef __EMSCRIPTEN__
+@@ -13,0 +17 @@
++#endif
+@@ -18,0 +23,4 @@
++#ifdef __EMSCRIPTEN__
++  (void)evaluator_type;
++  return nullptr;
++#else
+@@ -27,0 +36 @@
++#endif
+--- a/intern/opensubdiv/internal/evaluator/evaluator_impl.cc
++++ b/intern/opensubdiv/internal/evaluator/evaluator_impl.cc
+@@ -21 +21,3 @@
+-#include "internal/evaluator/eval_output_gpu.h"
++#ifndef __EMSCRIPTEN__
++#  include "internal/evaluator/eval_output_gpu.h"
++#endif
+@@ -428,0 +431,6 @@
++#ifdef __EMSCRIPTEN__
++  if (evaluator_type != OPENSUBDIV_EVALUATOR_CPU) {
++    return nullptr;
++  }
++  (void)evaluator_cache_descr;
++#endif
+@@ -544,0 +553 @@
++#ifndef __EMSCRIPTEN__
+@@ -560 +569,3 @@
+-  else {
++  else
++#endif
++  {

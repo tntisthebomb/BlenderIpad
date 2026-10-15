@@ -18,6 +18,7 @@
 #include "gpu_shader_interface.hh"
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace blender::gpu {
 
@@ -31,6 +32,7 @@ class WebGPUShaderInterface : public ShaderInterface {
   const ShaderInput *ubo_get_by_wgsl_binding(uint32_t binding) const;
   const ShaderInput *ssbo_get_by_wgsl_binding(uint32_t binding) const;
   const ShaderInput *uniform_get_by_wgsl_binding(uint32_t binding) const;
+  bool is_image_binding(uint32_t binding) const { return image_bindings_.count(binding) != 0; }
 
   /* Canonical bind-group-0 binding for a resource, matching
    * WebGPUShader::resources_declare. Static so the GLSL generator can share it. */
@@ -42,6 +44,7 @@ class WebGPUShaderInterface : public ShaderInterface {
    * original create-info name. Keep names rather than pointers: sort_inputs()
    * reorders the input array, and SSBO locations must remain Blender slots. */
   std::unordered_map<uint32_t, std::string> resource_names_;
+  std::unordered_set<uint32_t> image_bindings_;
   void populate_builtins(const shader::ShaderCreateInfo &info);
 };
 

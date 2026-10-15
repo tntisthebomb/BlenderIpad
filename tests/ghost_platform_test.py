@@ -76,6 +76,49 @@ try:
         assert after["mousedown"] == before["mousedown"] + 1, (before, after)
         assert after["mouseup"] == before["mouseup"] + 1, (before, after)
         assert after["left_button"] == 0
+        # Deliver actual browser multi-touch events through the compiled native
+        # backend and inspect Blender's event queue, including click release.
+        touch_session=context.new_cdp_session(page)
+        def touches(kind,span=35,offset=0,count=2):
+            points=[] if kind=='touchEnd' else [
+                {'id':1,'x':box['x']+200-span+offset,'y':box['y']+150},
+                {'id':2,'x':box['x']+200+span+offset,'y':box['y']+150}]
+            points=points[:count]
+            touch_session.send('Input.dispatchTouchEvent',{'type':kind,'touchPoints':points})
+        before=snapshot()
+        touches('touchStart',count=1)
+        assert snapshot()['left_button']==1
+        touches('touchStart')
+        assert snapshot()['left_button']==0
+        touches('touchMove',offset=20)
+        touches('touchEnd')
+        after=snapshot()
+        assert after['trackpad_pan']>before['trackpad_pan'],(before,after)
+        assert after['pan_x']-before['pan_x']==20,(before,after)
+        assert after['mousedown']==before['mousedown']+1,(before,after)
+        assert after['mouseup']==before['mouseup']+1,(before,after)
+        assert after['left_button']==0,after
+        before=snapshot()
+        touches('touchStart',span=35)
+        touches('touchMove',span=70)
+        touches('touchEnd')
+        after=snapshot()
+        assert after['trackpad_zoom']>before['trackpad_zoom'],(before,after)
+        assert 85<=after['zoom_x']-before['zoom_x']<=88,(before,after)
+        assert after['left_button']==0,after
+        before=snapshot()
+        canvas.tap()
+        after=snapshot()
+        assert after['mousedown']==before['mousedown']+1,(before,after)
+        assert after['mouseup']==before['mouseup']+1 and after['left_button']==0,(before,after)
+        touches('touchStart')
+        touch_session.send('Input.dispatchTouchEvent',{'type':'touchCancel','touchPoints':[]})
+        assert snapshot()['left_button']==0
+        before=snapshot()
+        canvas.tap()
+        after=snapshot()
+        assert after['mousedown']==before['mousedown']+1,(before,after)
+        assert after['mouseup']==before['mouseup']+1 and after['left_button']==0,(before,after)
         page.evaluate("const c=document.getElementById('canvas');c.style.width='640px';c.style.height='360px';dispatchEvent(new Event('resize'))")
         assert snapshot()["width"] == 640 and snapshot()["height"] == 360
         before = snapshot()

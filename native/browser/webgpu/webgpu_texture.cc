@@ -7,6 +7,7 @@
  */
 
 #include <cstring>
+#include <stdexcept>
 
 #include "BLI_math_half.hh"
 #include <cstdlib>
@@ -39,9 +40,9 @@ WGPUTextureFormat webgpu_texture_format(TextureFormat format)
     case TextureFormat::UINT_8:
       return WGPUTextureFormat_R8Uint;
     case TextureFormat::SFLOAT_16:
-      return WGPUTextureFormat_R16Float;
     case TextureFormat::SFLOAT_16_16:
-      return WGPUTextureFormat_RG16Float;
+      /* Single/dual half-float storage images are also outside the pinned
+       * translator's baseline format set. Pad consistently with GLSL images. */
     case TextureFormat::SFLOAT_16_16_16:
       /* No RGB formats in WebGPU: pad to RGBA (uploads expand, alpha = 1).
        * MISSING THIS mapped OCIO's AgX 3D LUT to the default RGBA8Unorm with a
@@ -56,6 +57,14 @@ WGPUTextureFormat webgpu_texture_format(TextureFormat format)
     case TextureFormat::SFLOAT_32_32_32:
     case TextureFormat::SFLOAT_32_32_32_32:
       return WGPUTextureFormat_RGBA32Float;
+    case TextureFormat::UNORM_16:
+    case TextureFormat::UNORM_16_16:
+    case TextureFormat::UNORM_16_16_16:
+    case TextureFormat::UNORM_16_16_16_16:
+    case TextureFormat::UNORM_10_10_10_2:
+      /* Float32 preserves every normalized 16-bit value. Shader stores and
+       * CPU uploads/clears retain the logical clamping and quantization. */
+      return WGPUTextureFormat_RGBA32Float;
     case TextureFormat::UINT_32:
       return WGPUTextureFormat_R32Uint;
     case TextureFormat::UINT_32_32:
@@ -68,10 +77,11 @@ WGPUTextureFormat webgpu_texture_format(TextureFormat format)
       return WGPUTextureFormat_R16Uint;
     case TextureFormat::UINT_16_16_16_16:
       return WGPUTextureFormat_RGBA16Uint;
-    case TextureFormat::UNORM_10_10_10_2:
-      return WGPUTextureFormat_RGB10A2Unorm;
     case TextureFormat::UFLOAT_11_11_10:
-      return WGPUTextureFormat_RG11B10Ufloat;
+      /* Packed RGB is not a baseline WebGPU storage format. Eevee uses this
+       * format for image writes, so expand it consistently with shader image
+       * declarations rather than dropping StorageBinding. */
+      return WGPUTextureFormat_RGBA16Float;
     case TextureFormat::UNORM_16_DEPTH:
       return WGPUTextureFormat_Depth16Unorm;
     case TextureFormat::SFLOAT_32_DEPTH:
@@ -90,6 +100,17 @@ WGPUTextureFormat webgpu_texture_format(TextureFormat format)
  * adapter exposes it), so gate on the device feature: with tier1 the whole EEVEE
  * set gets StorageBinding; without it fall back to the base list so texture
  * creation at least succeeds as sampled/attachment. */
+static bool webgpu_unorm16(TextureFormat format)
+{
+  return format == TextureFormat::UNORM_16 || format == TextureFormat::UNORM_16_16 ||
+         format == TextureFormat::UNORM_16_16_16 || format == TextureFormat::UNORM_16_16_16_16;
+}
+
+static bool webgpu_expanded_unorm(TextureFormat format)
+{
+  return webgpu_unorm16(format) || format == TextureFormat::UNORM_10_10_10_2;
+}
+
 static bool webgpu_format_supports_storage(WGPUTextureFormat f, WGPUDevice device)
 {
   static int tier1 = -1;
@@ -232,19 +253,24 @@ WebGPUTexture::~WebGPUTexture()
   WebGPUContext::scrub_texture_all_contexts(this);
   for (auto &kv : attachment_views_) {
     if (kv.second) {
+      WebGPUContext::invalidate_cached_resource_all_contexts(kv.second, nullptr);
       wgpuTextureViewRelease(kv.second);
     }
   }
   if (sample_view_) {
+    WebGPUContext::invalidate_cached_resource_all_contexts(sample_view_, nullptr);
     wgpuTextureViewRelease(sample_view_);
   }
   if (mip_range_view_) {
+    WebGPUContext::invalidate_cached_resource_all_contexts(mip_range_view_, nullptr);
     wgpuTextureViewRelease(mip_range_view_);
   }
   if (storage_view_) {
+    WebGPUContext::invalidate_cached_resource_all_contexts(storage_view_, nullptr);
     wgpuTextureViewRelease(storage_view_);
   }
   if (view_) {
+    WebGPUContext::invalidate_cached_resource_all_contexts(view_, nullptr);
     wgpuTextureViewRelease(view_);
   }
   {
@@ -263,6 +289,76 @@ WebGPUTexture::~WebGPUTexture()
      * Dawn reclaim the memory once queued work completes. */
     wgpuTextureRelease(texture_);
   }
+}
+
+WebGPUAtomicImage::~WebGPUAtomicImage()
+{
+  if (buffer) {
+    WebGPUContext::invalidate_cached_resource_all_contexts(nullptr, buffer);
+    wgpuBufferRelease(buffer);
+  }
+}
+
+WGPUBuffer WebGPUTexture::atomic_image_buffer()
+{
+  WebGPUContext *ctx = ctx_get();
+  if (!texture_ || !ctx || !ctx->device()) return nullptr;
+  const uint32_t texel_bytes = wgpu_format_ == WGPUTextureFormat_RGBA16Float ? 8u :
+    wgpu_format_ == WGPUTextureFormat_RGBA32Float ? 16u :
+    (wgpu_format_ == WGPUTextureFormat_R32Uint || wgpu_format_ == WGPUTextureFormat_R32Sint ||
+     wgpu_format_ == WGPUTextureFormat_R32Float) ? 4u : 0u;
+  if (!texel_bytes || view_mip_ != 0 || view_layer_ != 0 ||
+      (is_view_ && (uint32_t(w_) != wgpuTextureGetWidth(texture_) ||
+                    uint32_t(h_) != wgpuTextureGetHeight(texture_) ||
+                    uint32_t(layer_count()) != wgpuTextureGetDepthOrArrayLayers(texture_)))) {
+    throw std::runtime_error("WebGPU buffered images require a complete supported base-level view");
+  }
+  auto &state = *atomic_image_;
+  if (!state.buffer) {
+    state.width = wgpuTextureGetWidth(texture_);
+    state.height = wgpuTextureGetHeight(texture_);
+    state.depth = wgpuTextureGetDepthOrArrayLayers(texture_);
+    state.row_bytes = (state.width * texel_bytes + 255u) & ~255u;
+    WGPUBufferDescriptor descriptor = {};
+    descriptor.size = 16u + uint64_t(state.row_bytes) * state.height * state.depth;
+    descriptor.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst;
+    state.buffer = wgpuDeviceCreateBuffer(ctx->device(), &descriptor);
+    const uint32_t header[] = {state.width, state.height, state.depth, state.row_bytes / 4u};
+    wgpuQueueWriteBuffer(ctx->queue(), state.buffer, 0, header, sizeof(header));
+  }
+  if (!state.dirty) {
+    ctx->render_pass_end();
+    WGPUTexelCopyTextureInfo source = {};
+    source.texture = texture_;
+    WGPUTexelCopyBufferInfo destination = {};
+    destination.buffer = state.buffer;
+    destination.layout.offset = 16;
+    destination.layout.bytesPerRow = state.row_bytes;
+    destination.layout.rowsPerImage = state.height;
+    const WGPUExtent3D extent = {state.width, state.height, state.depth};
+    wgpuCommandEncoderCopyTextureToBuffer(ctx->ensure_encoder(), &source, &destination, &extent);
+  }
+  state.dirty = true;
+  return state.buffer;
+}
+
+void WebGPUTexture::sync_atomic_image() const
+{
+  auto &state = *atomic_image_;
+  if (!state.buffer || !state.dirty || !texture_) return;
+  WebGPUContext *ctx = ctx_get();
+  if (!ctx || !ctx->device()) return;
+  ctx->render_pass_end();
+  WGPUTexelCopyBufferInfo source = {};
+  source.buffer = state.buffer;
+  source.layout.offset = 16;
+  source.layout.bytesPerRow = state.row_bytes;
+  source.layout.rowsPerImage = state.height;
+  WGPUTexelCopyTextureInfo destination = {};
+  destination.texture = texture_;
+  const WGPUExtent3D extent = {state.width, state.height, state.depth};
+  wgpuCommandEncoderCopyBufferToTexture(ctx->ensure_encoder(), &source, &destination, &extent);
+  state.dirty = false;
 }
 
 bool WebGPUTexture::init_internal()
@@ -365,6 +461,7 @@ static bool webgpu_format_has_stencil(WGPUTextureFormat f)
 
 WGPUTextureView WebGPUTexture::wgpu_attachment_view(int layer, int mip)
 {
+  sync_atomic_image();
   if (texture_ == nullptr) {
     return nullptr;
   }
@@ -403,6 +500,7 @@ void WebGPUTexture::mip_range_set(int min, int max)
 
 WGPUTextureView WebGPUTexture::wgpu_sample_view()
 {
+  sync_atomic_image();
   if (!webgpu_format_has_stencil(wgpu_format_)) {
     /* Honor the sampling mip window: Blender clamps to the mips it actually
        uploaded/generated; the default view spans the full chain and samples
@@ -472,6 +570,7 @@ WGPUTextureView WebGPUTexture::make_view_of(WGPUTexture other)
 
 WGPUTextureView WebGPUTexture::wgpu_storage_view()
 {
+  sync_atomic_image();
   if (mipmaps_ <= 1 && !is_view_) {
     return view_; /* Default view already spans exactly one mip. */
   }
@@ -515,6 +614,7 @@ bool WebGPUTexture::init_internal(gpu::Texture *src,
     return true;
   }
   texture_ = s->texture_;
+  atomic_image_ = s->atomic_image_;
   wgpuTextureAddRef(texture_);
   is_view_ = true;
   view_layer_ = std::max(layer_offset, 0);
@@ -547,6 +647,7 @@ void WebGPUTexture::update_sub(int mip,
   if (!texture_ || !ctx || !ctx->queue() || !data) {
     return;
   }
+  sync_atomic_image();
   if (is_depth_format()) {
     /* WebGPU forbids writing the depth aspect via WriteTexture. */
     static int s_depth_up = 0;
@@ -586,10 +687,26 @@ void WebGPUTexture::update_sub(int mip,
 
   const void *upload = data;
   void *tmp = nullptr;
-  if (src_px != bpp || src_row_px != w) {
-    const bool needs_convert = (src_px != bpp);
-    enum { CONV_NONE, CONV_F16, CONV_F32, CONV_11_11_10, CONV_10_10_10_2, CONV_UNORM8 } conv =
+  const bool float_to_half = format == GPU_DATA_FLOAT &&
+      (wgpu_format_ == WGPUTextureFormat_RGBA16Float ||
+       wgpu_format_ == WGPUTextureFormat_RG16Float || wgpu_format_ == WGPUTextureFormat_R16Float);
+  const bool normalized_upload = webgpu_expanded_unorm(format_) && format == GPU_DATA_FLOAT;
+  if (src_px != bpp || src_row_px != w || float_to_half || normalized_upload) {
+    const bool needs_convert = (src_px != bpp) || float_to_half || normalized_upload;
+    enum { CONV_NONE, CONV_F16, CONV_F32, CONV_11_11_10, CONV_10_10_10_2, CONV_UNORM8,
+           CONV_PACKED_RGB_TO_F16, CONV_PAD_F16, CONV_PACKED_UNORM_TO_F32 } conv =
         CONV_NONE;
+    if (needs_convert && format == GPU_DATA_HALF_FLOAT && wgpu_format_ == WGPUTextureFormat_RGBA16Float) {
+      conv = CONV_PAD_F16;
+    }
+    if (needs_convert && format_ == TextureFormat::UFLOAT_11_11_10 &&
+        format == GPU_DATA_10_11_11_REV) {
+      conv = CONV_PACKED_RGB_TO_F16;
+    }
+    if (needs_convert && format_ == TextureFormat::UNORM_10_10_10_2 &&
+        format == GPU_DATA_2_10_10_10_REV) {
+      conv = CONV_PACKED_UNORM_TO_F32;
+    }
     if (needs_convert && format == GPU_DATA_FLOAT) {
       switch (wgpu_format_) {
         case WGPUTextureFormat_RGBA16Float:
@@ -652,6 +769,39 @@ void WebGPUTexture::update_sub(int mip,
       uint8_t *dst_row = static_cast<uint8_t *>(tmp) + size_t(row) * w * bpp;
       const uint32_t src_ch = uint32_t(src_px / 4); /* float32 components */
       switch (conv) {
+        case CONV_PACKED_UNORM_TO_F32: {
+          const auto *source = reinterpret_cast<const uint32_t *>(src_row);
+          auto *destination = reinterpret_cast<float *>(dst_row);
+          for (uint32_t x = 0; x < w; x++) {
+            destination[x * 4] = float(source[x] & 1023u) / 1023.0f;
+            destination[x * 4 + 1] = float((source[x] >> 10) & 1023u) / 1023.0f;
+            destination[x * 4 + 2] = float((source[x] >> 20) & 1023u) / 1023.0f;
+            destination[x * 4 + 3] = float(source[x] >> 30) / 3.0f;
+          }
+          break;
+        }
+        case CONV_PAD_F16: {
+          const auto *source = reinterpret_cast<const uint16_t *>(src_row);
+          auto *destination = reinterpret_cast<uint16_t *>(dst_row);
+          const size_t components = src_px / 2;
+          for (uint32_t x = 0; x < w; x++) for (size_t c = 0; c < 4; c++) {
+            destination[x * 4 + c] = c < components ? source[x * components + c] :
+                (c == 3 ? math::float_to_half(1.0f) : uint16_t(0));
+          }
+          break;
+        }
+        case CONV_PACKED_RGB_TO_F16: {
+          const auto *source = reinterpret_cast<const uint32_t *>(src_row);
+          auto *destination = reinterpret_cast<uint16_t *>(dst_row);
+          for (uint32_t x = 0; x < w; x++) {
+            const uint32_t packed = source[x];
+            destination[x * 4] = uint16_t((packed & 0x7ffu) << 4);
+            destination[x * 4 + 1] = uint16_t(((packed >> 11) & 0x7ffu) << 4);
+            destination[x * 4 + 2] = uint16_t(((packed >> 22) & 0x3ffu) << 5);
+            destination[x * 4 + 3] = math::float_to_half(1.0f);
+          }
+          break;
+        }
         case CONV_F16: {
           const uint32_t dst_ch = bpp / 2;
           if (src_ch == dst_ch) {
@@ -666,7 +816,8 @@ void WebGPUTexture::update_sub(int mip,
             uint16_t *d = reinterpret_cast<uint16_t *>(dst_row);
             for (uint32_t x = 0; x < w; x++) {
               for (uint32_t c = 0; c < dst_ch; c++) {
-                const float v = (c < src_ch) ? s[x * src_ch + c] : (c == 3 ? 1.0f : 0.0f);
+                float v = (c < src_ch) ? s[x * src_ch + c] : (c == 3 ? 1.0f : 0.0f);
+                if (format_ == TextureFormat::UFLOAT_11_11_10 && c < 3) v = std::max(v, 0.0f);
                 d[x * dst_ch + c] = math::float_to_half(v);
               }
             }
@@ -680,7 +831,13 @@ void WebGPUTexture::update_sub(int mip,
           float *d = reinterpret_cast<float *>(dst_row);
           for (uint32_t x = 0; x < w; x++) {
             for (uint32_t c = 0; c < dst_ch; c++) {
-              d[x * dst_ch + c] = (c < src_ch) ? s[x * src_ch + c] : (c == 3 ? 1.0f : 0.0f);
+              float v = (c < src_ch) ? s[x * src_ch + c] : (c == 3 ? 1.0f : 0.0f);
+              if (normalized_upload) {
+                const float scale = format_ == TextureFormat::UNORM_10_10_10_2 ?
+                                        (c == 3 ? 3.0f : 1023.0f) : 65535.0f;
+                v = std::round(std::clamp(v, 0.0f, 1.0f) * scale) / scale;
+              }
+              d[x * dst_ch + c] = v;
             }
           }
           break;
@@ -788,6 +945,7 @@ void WebGPUTexture::update_sub(int mip,
 
 void WebGPUTexture::generate_mipmap()
 {
+  sync_atomic_image();
   WebGPUContext *ctx = ctx_get();
   if (ctx != nullptr) {
     ctx->generate_mipmaps(this);
@@ -797,6 +955,8 @@ void WebGPUTexture::generate_mipmap()
 void WebGPUTexture::copy_to(Texture *dst_tex, IndexRange mip_levels)
 {
   WebGPUTexture *dst = static_cast<WebGPUTexture *>(dst_tex);
+  sync_atomic_image();
+  if (dst) dst->sync_atomic_image();
   WebGPUContext *ctx = ctx_get();
   if (ctx == nullptr || texture_ == nullptr || dst == nullptr || dst->texture_ == nullptr) {
     return;
@@ -830,8 +990,28 @@ void WebGPUTexture::copy_to(Texture *dst_tex, IndexRange mip_levels)
   ctx->flush_encoder();
 }
 
-void WebGPUTexture::clear(const double4 data)
+void WebGPUTexture::clear(const double4 source)
 {
+  sync_atomic_image();
+  double4 data = source;
+  const int components = to_component_len(format_);
+  if ((wgpu_format_ == WGPUTextureFormat_RGBA16Float || webgpu_unorm16(format_)) && components < 4) {
+    if (components < 2) data.y = 0;
+    if (components < 3) data.z = 0;
+    data.w = 1;
+    if (format_ == TextureFormat::UFLOAT_11_11_10) {
+      data.x = std::max(data.x, 0.0);
+      data.y = std::max(data.y, 0.0);
+      data.z = std::max(data.z, 0.0);
+    }
+  }
+  if (webgpu_expanded_unorm(format_)) {
+    for (int component = 0; component < components; component++) {
+      const double scale = format_ == TextureFormat::UNORM_10_10_10_2 ?
+                               (component == 3 ? 3.0 : 1023.0) : 65535.0;
+      data[component] = std::round(std::clamp(data[component], 0.0, 1.0) * scale) / scale;
+    }
+  }
   /* Clear via a render pass per layer (works for color and depth formats that
    * carry RenderAttachment usage — Blender's pool textures do). Non-renderable
    * textures fall back to a zero upload when clearing to zero. */
@@ -1014,6 +1194,7 @@ void WebGPUTexture::update_sub(int offset[3],int extent[3],eGPUDataFormat format
 
 void WebGPUTexture::read(int mip, eGPUDataFormat format, void *dst)
 {
+  sync_atomic_image();
   WebGPUContext *ctx = ctx_get();
   if (ctx == nullptr || texture_ == nullptr || dst == nullptr || mip < 0 || mip >= mipmaps_) {
     throw std::runtime_error("WebGPU texture readback resource or mip is invalid");
@@ -1037,6 +1218,9 @@ void WebGPUTexture::read(int mip, eGPUDataFormat format, void *dst)
     default:
       channels = 4; break;
   }
+  /* The public destination uses the logical format, not the padded physical
+   * allocation. Otherwise RGB readback writes beyond Blender's buffer. */
+  channels = std::min(channels, int(to_component_len(format_)));
   int extent[3]={1,1,1};
   mip_size_get(mip,extent);
   const bool array_1d=type_==GPU_TEXTURE_1D_ARRAY;
@@ -1044,6 +1228,45 @@ void WebGPUTexture::read(int mip, eGPUDataFormat format, void *dst)
   const int height=array_1d ? 1 : std::max(extent[1],1);
   const size_t layer_size=read_size_get(mip,format)/size_t(layers);
   for (int layer=0;layer<layers;layer++) {
+    if (format_ == TextureFormat::UNORM_10_10_10_2 && format == GPU_DATA_2_10_10_10_REV) {
+      std::vector<float> values(size_t(extent[0]) * height * 4);
+      if (!ctx->read_color_sync(texture_, wgpu_format_, 0, 0, extent[0], height,
+                               GPU_DATA_FLOAT, 4, values.data(), view_layer_ + layer,
+                               view_mip_ + mip)) {
+        throw std::runtime_error("WebGPU packed normalized readback failed");
+      }
+      auto *packed = reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(dst) +
+                                                 size_t(layer) * layer_size);
+      const auto encode = [](float value, float scale) {
+        return uint32_t(std::round(std::clamp(value, 0.0f, 1.0f) * scale));
+      };
+      for (size_t pixel = 0; pixel < values.size() / 4; pixel++) {
+        packed[pixel] = encode(values[pixel * 4], 1023) |
+                       (encode(values[pixel * 4 + 1], 1023) << 10) |
+                       (encode(values[pixel * 4 + 2], 1023) << 20) |
+                       (encode(values[pixel * 4 + 3], 3) << 30);
+      }
+      continue;
+    }
+    if (format_ == TextureFormat::UFLOAT_11_11_10 && format == GPU_DATA_10_11_11_REV) {
+      std::vector<float> values(size_t(extent[0]) * height * 3);
+      if (!ctx->read_color_sync(texture_, wgpu_format_, 0, 0, extent[0], height,
+                                GPU_DATA_FLOAT, 3, values.data(), view_layer_ + layer,
+                                view_mip_ + mip)) {
+        throw std::runtime_error("WebGPU packed HDR readback failed");
+      }
+      auto *packed = reinterpret_cast<uint32_t *>(static_cast<uint8_t *>(dst) +
+                                                  size_t(layer) * layer_size);
+      for (size_t pixel = 0; pixel < values.size() / 3; pixel++) {
+        const auto r = math::float_to_half(std::max(values[pixel * 3], 0.0f));
+        const auto g = math::float_to_half(std::max(values[pixel * 3 + 1], 0.0f));
+        const auto b = math::float_to_half(std::max(values[pixel * 3 + 2], 0.0f));
+        packed[pixel] = (uint32_t(r >> 4) & 0x7ffu) |
+                        ((uint32_t(g >> 4) & 0x7ffu) << 11) |
+                        ((uint32_t(b >> 5) & 0x3ffu) << 22);
+      }
+      continue;
+    }
     if (!ctx->read_color_sync(texture_,wgpu_format_,0,0,extent[0],height,
                              format,channels,static_cast<uint8_t *>(dst)+size_t(layer)*layer_size,
                              view_layer_+layer,view_mip_+mip)) {

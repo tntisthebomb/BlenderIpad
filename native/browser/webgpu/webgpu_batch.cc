@@ -651,6 +651,8 @@ void WebGPUBatch::record_draw(int vertex_first,
     hash_append(key, &vp_rect[2], sizeof(int) * 2);
   }
 
+  const uint64_t resources=ctx->resource_layout_hash(shader->render_bindings(),shader->interface);
+  hash_append(key,&resources,sizeof(resources));
   WGPURenderPipeline pipeline = ctx->render_pipeline_get(key);
   if (pipeline == nullptr) {
     WGPUColorTargetState targets[GPU_FB_MAX_COLOR_ATTACHMENT] = {};
@@ -1289,6 +1291,8 @@ void webgpu_immediate_draw(GPUPrimType prim_type,
     hash_append(key, &vp_rect[2], sizeof(int) * 2);
   }
 
+  const uint64_t resources=ctx->resource_layout_hash(shader->render_bindings(),shader->interface);
+  hash_append(key,&resources,sizeof(resources));
   WGPURenderPipeline pipeline = ctx->render_pipeline_get(key);
   if (pipeline == nullptr) {
     WGPUColorTargetState targets[GPU_FB_MAX_COLOR_ATTACHMENT] = {};

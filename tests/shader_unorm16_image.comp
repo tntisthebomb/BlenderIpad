@@ -1,0 +1,10 @@
+#version 450
+layout(local_size_x=1) in;
+layout(set=0,binding=0,std430) buffer Results { ivec4 values; } output_data;
+layout(set=0,binding=1,rg16) uniform writeonly image2D target;
+layout(set=0,binding=2,rgb10_a2) uniform writeonly image2D packed_target;
+void main() {
+  imageStore(target,ivec2(0),vec4(0.12345,-0.5,2.0,0.25));
+  imageStore(packed_target,ivec2(0),vec4(0.12345,-0.5,2.0,0.54321));
+  output_data.values=ivec4(0);
+}

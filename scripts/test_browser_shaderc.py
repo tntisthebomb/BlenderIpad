@@ -38,3 +38,10 @@ if __name__ == '__main__':
     run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node', build / 'shader-compiler.js',
         gpu / 'shaders', generated, build / 'portable-math.spv',
         ROOT / 'tests/shader_portable_math.comp', env=env)
+    for name in ('switch-fallthrough', 'switch-phi', 'volume-query', 'readwrite-texture', 'atomic-image', 'zbin-range', 'unorm16-image', 'buffer-image', 'sampler-helpers'):
+        run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node', build / 'shader-compiler.js',
+            gpu / 'shaders', generated, build / (name + '.spv'),
+            ROOT / ('tests/shader_' + name.replace('-', '_') + '.comp'), env=env)
+    run(CACHE / 'emsdk/node/22.16.0_64bit/bin/node', build / 'shader-compiler.js',
+        gpu / 'shaders', generated, build / 'interface-names.spv',
+        ROOT / 'tests/shader_interface_names.vert', '0', env=env)

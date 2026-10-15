@@ -1,0 +1,1190 @@
+--- a/source/blender/draw/engines/eevee/eevee_defines.hh
++++ b/source/blender/draw/engines/eevee/eevee_defines.hh
+@@ -30,12 +30,17 @@
+ 
+ #define CULLING_SELECT_GROUP_SIZE 256
+ #define CULLING_SORT_GROUP_SIZE 256
+-#define CULLING_ZBIN_GROUP_SIZE 1024
++#define CULLING_ZBIN_GROUP_SIZE 256
+ #define CULLING_TILE_GROUP_SIZE 256
+ 
+ /* Reflection Probes. */
+-/* When changed update parallel sum loop in `eevee_lightprobe_sphere_remap_comp.glsl`. */
+-#define SPHERE_PROBE_REMAP_GROUP_SIZE 32
++/* CPU dispatch and shader local size share this value. The ten-step unrolled
++ * reduction also supports 16x16 groups: its last two strides are zero. */
++#if defined(__EMSCRIPTEN__) || defined(GPU_WEBGPU)
++#  define SPHERE_PROBE_REMAP_GROUP_SIZE 16
++#else
++#  define SPHERE_PROBE_REMAP_GROUP_SIZE 32
++#endif
+ #define SPHERE_PROBE_GROUP_SIZE 16
+ #define SPHERE_PROBE_SELECT_GROUP_SIZE 64
+ #define SPHERE_PROBE_MIPMAP_LEVELS 5
+@@ -80,6 +85,9 @@
+ #  define SHADOW_TILEMAP_LOD 2 /* LOG2(SHADOW_TILEMAP_RES) */
+ #else
+ #  define SHADOW_TILEMAP_RES 32
++#define SHADOW_TILEMAP_GROUP_Y 8
++#define SHADOW_TILEMAP_GROUP_SIZE (SHADOW_TILEMAP_RES * SHADOW_TILEMAP_GROUP_Y)
++#define SHADOW_TILEMAP_ROWS (SHADOW_TILEMAP_RES / SHADOW_TILEMAP_GROUP_Y)
+ #  define SHADOW_TILEMAP_LOD 5 /* LOG2(SHADOW_TILEMAP_RES) */
+ #endif
+ #define SHADOW_TILEMAP_LOD0_LEN ((SHADOW_TILEMAP_RES / 1) * (SHADOW_TILEMAP_RES / 1))
+@@ -101,7 +109,7 @@
+ #  define SHADOW_PAGE_RES 8
+ #  define SHADOW_PAGE_LOD 3 /* LOG2(SHADOW_PAGE_RES) */
+ #else
+-#  define SHADOW_PAGE_CLEAR_GROUP_SIZE 32
++#  define SHADOW_PAGE_CLEAR_GROUP_SIZE 16
+ #  define SHADOW_PAGE_RES 256
+ #  define SHADOW_PAGE_LOD 8 /* LOG2(SHADOW_PAGE_RES) */
+ #endif
+--- a/source/blender/draw/engines/eevee/shaders/eevee_lookdev_copy_world.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_lookdev_copy_world.bsl.hh
+@@ -17,18 +17,11 @@
+   [[storage(2, read_no_restrict)]] const LightData &in_sun;
+   [[storage(3, write)]] LightData &out_sun;
+   [[push_constant]] const int4 read_coord_packed;
+-  [[push_constant]] const int4 write_coord_mip0_packed;
+-  [[push_constant]] const int4 write_coord_mip1_packed;
+-  [[push_constant]] const int4 write_coord_mip2_packed;
+-  [[push_constant]] const int4 write_coord_mip3_packed;
+-  [[push_constant]] const int4 write_coord_mip4_packed;
++  [[push_constant]] const int4 write_coord_packed;
++  [[push_constant]] const int mip_level;
+   [[push_constant]] const float4x4 lookdev_rotation;
+   [[sampler(0)]] sampler2DArray in_sphere_tx;
+-  [[image(0, write, SPHERE_PROBE_FORMAT)]] image2DArray out_sphere_mip0;
+-  [[image(1, write, SPHERE_PROBE_FORMAT)]] image2DArray out_sphere_mip1;
+-  [[image(2, write, SPHERE_PROBE_FORMAT)]] image2DArray out_sphere_mip2;
+-  [[image(3, write, SPHERE_PROBE_FORMAT)]] image2DArray out_sphere_mip3;
+-  [[image(4, write, SPHERE_PROBE_FORMAT)]] image2DArray out_sphere_mip4;
++  [[image(0, write, SPHERE_PROBE_FORMAT)]] image2DArray out_sphere_mip;
+ 
+   float4 get_mip_data(int mip,
+                       int2 texel,
+@@ -56,7 +49,7 @@
+                      [[global_invocation_id]] const uint3 global_id)
+ {
+   float3x3 rotation_mat = to_float3x3(srt.lookdev_rotation);
+-  if (all(equal(global_id.xy, uint2(0)))) {
++  if (srt.mip_level == 0 && all(equal(global_id.xy, uint2(0)))) {
+     {
+       SphericalHarmonicL1<float4> sh;
+       sh.L0.M0 = srt.in_sh.L0_M0;
+@@ -80,51 +73,15 @@
+ 
+   int2 local_texel = int2(global_id.xy);
+   SphereProbeUvArea read_coord = reinterpret_as_atlas_coord(srt.read_coord_packed);
+-  SphereProbePixelArea write_coord;
+-  /* Exit when pixel being written doesn't fit in the area reserved for the probe. */
+-  /* We cannot put the following code in a loop because of the different image accesses.
+-   * So we have to manually unroll the loop. */
+-  write_coord = reinterpret_as_write_coord(srt.write_coord_mip0_packed);
++  SphereProbePixelArea write_coord = reinterpret_as_write_coord(srt.write_coord_packed);
+   if (any(greaterThanEqual(local_texel, int2(write_coord.extent)))) {
+     return;
+   }
+-  imageStore(srt.out_sphere_mip0,
++  imageStore(srt.out_sphere_mip,
+              int3(local_texel, write_coord.layer),
+-             srt.get_mip_data(0, local_texel, read_coord, write_coord, rotation_mat));
+-
+-  write_coord = reinterpret_as_write_coord(srt.write_coord_mip1_packed);
+-  if (any(greaterThanEqual(local_texel, int2(write_coord.extent)))) {
+-    return;
+-  }
+-  imageStore(srt.out_sphere_mip1,
+-             int3(local_texel, write_coord.layer),
+-             srt.get_mip_data(1, local_texel, read_coord, write_coord, rotation_mat));
+-
+-  write_coord = reinterpret_as_write_coord(srt.write_coord_mip2_packed);
+-  if (any(greaterThanEqual(local_texel, int2(write_coord.extent)))) {
+-    return;
+-  }
+-  imageStore(srt.out_sphere_mip2,
+-             int3(local_texel, write_coord.layer),
+-             srt.get_mip_data(2, local_texel, read_coord, write_coord, rotation_mat));
+-
+-  write_coord = reinterpret_as_write_coord(srt.write_coord_mip3_packed);
+-  if (any(greaterThanEqual(local_texel, int2(write_coord.extent)))) {
+-    return;
+-  }
+-  imageStore(srt.out_sphere_mip3,
+-             int3(local_texel, write_coord.layer),
+-             srt.get_mip_data(3, local_texel, read_coord, write_coord, rotation_mat));
+-
+-  write_coord = reinterpret_as_write_coord(srt.write_coord_mip4_packed);
+-  if (any(greaterThanEqual(local_texel, int2(write_coord.extent)))) {
+-    return;
+-  }
+-  imageStore(srt.out_sphere_mip4,
+-             int3(local_texel, write_coord.layer),
+-             srt.get_mip_data(4, local_texel, read_coord, write_coord, rotation_mat));
++             srt.get_mip_data(srt.mip_level, local_texel, read_coord, write_coord, rotation_mat));
+ #ifdef __cplusplus
+-  /* If this mismatches, manual unroll needs to be updated. */
++  /* Probe storage and its callers currently provide five levels. */
+   static_assert(SPHERE_PROBE_MIPMAP_LEVELS == 5);
+ #endif
+ }
+--- a/source/blender/draw/engines/eevee/eevee_lookdev.cc
++++ b/source/blender/draw/engines/eevee/eevee_lookdev.cc
+@@ -506,11 +506,7 @@
+     UniformArrayBuffer<LightData, 2> &in_sunlight)
+ {
+   SphereProbeUvArea read_coord = atlas_coord.as_sampling_coord();
+-  SphereProbePixelArea write_coord_mip0 = atlas_coord.as_write_coord(0);
+-  SphereProbePixelArea write_coord_mip1 = atlas_coord.as_write_coord(1);
+-  SphereProbePixelArea write_coord_mip2 = atlas_coord.as_write_coord(2);
+-  SphereProbePixelArea write_coord_mip3 = atlas_coord.as_write_coord(3);
+-  SphereProbePixelArea write_coord_mip4 = atlas_coord.as_write_coord(4);
++
+ 
+   if (world_sphere_probe_.ensure_2d_array(gpu::TextureFormat::SPHERE_PROBE_FORMAT,
+                                           in_sphere_probe.size().xy(),
+@@ -523,32 +519,30 @@
+     world_sphere_probe_.ensure_mip_views();
+   }
+ 
+-  PassSimple pass = {__func__};
+-  pass.init();
+-  pass.shader_set(inst_.shaders.static_shader_get(LOOKDEV_COPY_WORLD));
+-  pass.push_constant("read_coord_packed", reinterpret_cast<int4 *>(&read_coord));
+-  pass.push_constant("write_coord_mip0_packed", reinterpret_cast<int4 *>(&write_coord_mip0));
+-  pass.push_constant("write_coord_mip1_packed", reinterpret_cast<int4 *>(&write_coord_mip1));
+-  pass.push_constant("write_coord_mip2_packed", reinterpret_cast<int4 *>(&write_coord_mip2));
+-  pass.push_constant("write_coord_mip3_packed", reinterpret_cast<int4 *>(&write_coord_mip3));
+-  pass.push_constant("write_coord_mip4_packed", reinterpret_cast<int4 *>(&write_coord_mip4));
+-  pass.push_constant("lookdev_rotation", float4x4::identity());
+-  pass.bind_texture("in_sphere_tx", in_sphere_probe);
+-  pass.bind_image("out_sphere_mip0", world_sphere_probe_.mip_view(0));
+-  pass.bind_image("out_sphere_mip1", world_sphere_probe_.mip_view(1));
+-  pass.bind_image("out_sphere_mip2", world_sphere_probe_.mip_view(2));
+-  pass.bind_image("out_sphere_mip3", world_sphere_probe_.mip_view(3));
+-  pass.bind_image("out_sphere_mip4", world_sphere_probe_.mip_view(4));
+-  pass.bind_ssbo("in_sh", in_volume_probe);
+-  pass.bind_ssbo("out_sh", world_volume_probe_);
+-  pass.bind_ssbo("in_sun", in_sunlight); /* Note only the 1st member of the array is read. */
+-  pass.bind_ssbo("out_sun", world_sunlight_);
+-  int3 dispatch_size = int3(
+-      int2(math::divide_ceil(int2(write_coord_mip0.extent), int2(SPHERE_PROBE_REMAP_GROUP_SIZE))),
+-      1);
+-  pass.dispatch(dispatch_size);
+-
+-  inst_.manager->submit(pass);
++  const float4x4 copy_rotation = float4x4::identity();
++  /* One writable mip per dispatch fits WebGPU's four-image stage limit.
++   * Submit while the referenced mip constants are still alive. */
++  for (int mip = 0; mip < SPHERE_PROBE_MIPMAP_LEVELS; mip++) {
++    SphereProbePixelArea write_coord = atlas_coord.as_write_coord(mip);
++    PassSimple pass = {__func__};
++    pass.init();
++    pass.shader_set(inst_.shaders.static_shader_get(LOOKDEV_COPY_WORLD));
++    pass.push_constant("read_coord_packed", reinterpret_cast<int4 *>(&read_coord));
++    pass.push_constant("write_coord_packed", reinterpret_cast<int4 *>(&write_coord));
++    pass.push_constant("mip_level", mip);
++    pass.push_constant("lookdev_rotation", copy_rotation);
++    pass.bind_texture("in_sphere_tx", in_sphere_probe);
++    pass.bind_image("out_sphere_mip", world_sphere_probe_.mip_view(mip));
++    pass.bind_ssbo("in_sh", in_volume_probe);
++    pass.bind_ssbo("out_sh", world_volume_probe_);
++    pass.bind_ssbo("in_sun", in_sunlight);
++    pass.bind_ssbo("out_sun", world_sunlight_);
++    int3 dispatch_size = int3(
++        int2(math::divide_ceil(int2(write_coord.extent), int2(SPHERE_PROBE_REMAP_GROUP_SIZE))),
++        1);
++    pass.dispatch(dispatch_size);
++    inst_.manager->submit(pass);
++  }
+ 
+   last_rotation_matrix_ = float4x4::identity();
+ }
+@@ -564,38 +558,32 @@
+     float4x4 &rotation)
+ {
+   SphereProbeUvArea read_coord = atlas_coord.as_sampling_coord();
+-  SphereProbePixelArea write_coord_mip0 = atlas_coord.as_write_coord(0);
+-  SphereProbePixelArea write_coord_mip1 = atlas_coord.as_write_coord(1);
+-  SphereProbePixelArea write_coord_mip2 = atlas_coord.as_write_coord(2);
+-  SphereProbePixelArea write_coord_mip3 = atlas_coord.as_write_coord(3);
+-  SphereProbePixelArea write_coord_mip4 = atlas_coord.as_write_coord(4);
+-
+-  PassSimple pass = {__func__};
+-  pass.init();
+-  pass.shader_set(inst_.shaders.static_shader_get(LOOKDEV_COPY_WORLD));
+-  pass.push_constant("read_coord_packed", reinterpret_cast<int4 *>(&read_coord));
+-  pass.push_constant("write_coord_mip0_packed", reinterpret_cast<int4 *>(&write_coord_mip0));
+-  pass.push_constant("write_coord_mip1_packed", reinterpret_cast<int4 *>(&write_coord_mip1));
+-  pass.push_constant("write_coord_mip2_packed", reinterpret_cast<int4 *>(&write_coord_mip2));
+-  pass.push_constant("write_coord_mip3_packed", reinterpret_cast<int4 *>(&write_coord_mip3));
+-  pass.push_constant("write_coord_mip4_packed", reinterpret_cast<int4 *>(&write_coord_mip4));
+-  pass.push_constant("lookdev_rotation", rotation);
+-  pass.bind_texture("in_sphere_tx", &world_sphere_probe_);
+-  pass.bind_image("out_sphere_mip0", dst_sphere_probe.mip_view(0));
+-  pass.bind_image("out_sphere_mip1", dst_sphere_probe.mip_view(1));
+-  pass.bind_image("out_sphere_mip2", dst_sphere_probe.mip_view(2));
+-  pass.bind_image("out_sphere_mip3", dst_sphere_probe.mip_view(3));
+-  pass.bind_image("out_sphere_mip4", dst_sphere_probe.mip_view(4));
+-  pass.bind_ssbo("in_sh", world_volume_probe_);
+-  pass.bind_ssbo("out_sh", dst_volume_probe);
+-  pass.bind_ssbo("in_sun", world_sunlight_);
+-  pass.bind_ssbo("out_sun", dst_sunlight);
+-  int3 dispatch_size = int3(
+-      int2(math::divide_ceil(int2(write_coord_mip0.extent), int2(SPHERE_PROBE_REMAP_GROUP_SIZE))),
+-      1);
+-  pass.dispatch(dispatch_size);
+-
+-  inst_.manager->submit(pass);
++
++
++  /* One writable mip per dispatch fits WebGPU's four-image stage limit.
++   * Submit while the referenced mip constants are still alive. */
++  for (int mip = 0; mip < SPHERE_PROBE_MIPMAP_LEVELS; mip++) {
++    SphereProbePixelArea write_coord = atlas_coord.as_write_coord(mip);
++    PassSimple pass = {__func__};
++    pass.init();
++    pass.shader_set(inst_.shaders.static_shader_get(LOOKDEV_COPY_WORLD));
++    pass.push_constant("read_coord_packed", reinterpret_cast<int4 *>(&read_coord));
++    pass.push_constant("write_coord_packed", reinterpret_cast<int4 *>(&write_coord));
++    pass.push_constant("mip_level", mip);
++    pass.push_constant("lookdev_rotation", rotation);
++    pass.bind_texture("in_sphere_tx", &world_sphere_probe_);
++    pass.bind_image("out_sphere_mip", dst_sphere_probe.mip_view(mip));
++    pass.bind_ssbo("in_sh", world_volume_probe_);
++    pass.bind_ssbo("out_sh", dst_volume_probe);
++    pass.bind_ssbo("in_sun", world_sunlight_);
++    pass.bind_ssbo("out_sun", dst_sunlight);
++    int3 dispatch_size = int3(
++        int2(math::divide_ceil(int2(write_coord.extent), int2(SPHERE_PROBE_REMAP_GROUP_SIZE))),
++        1);
++    pass.dispatch(dispatch_size);
++    inst_.manager->submit(pass);
++  }
++
+   /* Tag world to update the SH stored in the volume probe atlas.
+    * If any volume probe is visible, this will reupload the baked data.
+    * This is the costly part of this feature. */
+--- a/source/blender/draw/engines/eevee/shaders/eevee_shadow_tag_update.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_shadow_tag_update.bsl.hh
+@@ -22,6 +22,10 @@
+ 
+ namespace eevee::shadow {
+ 
++struct TagUpdateTileMaps {
++  [[storage(8, read)]] const ShadowTileMapData (&tilemaps_buf)[];
++};
++
+ struct TagUpdate {
+   [[legacy_info]] ShaderCreateInfo draw_view_culling;
+ 
+@@ -41,7 +45,7 @@
+ 
+ [[vertex]]
+ void tag_update_vert([[resource_table]] TagUpdate &srt,
+-                     [[resource_table]] TileMaps &tilemaps,
++                     [[resource_table]] TagUpdateTileMaps &tilemaps,
+                      [[instance_id]] const int inst_per_tilemap_id,
+                      [[in]] const VertIn &v_in,
+                      [[out]] VertOut &v_out,
+@@ -103,7 +107,7 @@
+ 
+ [[fragment]]
+ void tag_update_frag([[resource_table]] Tiles &tiles,
+-                     [[resource_table]] TileMaps &tilemaps,
++                     [[resource_table]] TagUpdateTileMaps &tilemaps,
+                      [[frag_coord]] const float4 frag_coord,
+                      [[in]] const VertOut &v_out)
+ {
+@@ -118,14 +122,15 @@
+ }
+ 
+ /* Propagate the LOD0 update tag to the lower LOD tiles. */
+-[[compute, local_size(SHADOW_TILEMAP_RES, SHADOW_TILEMAP_RES)]]
++[[compute, local_size(SHADOW_TILEMAP_RES, SHADOW_TILEMAP_GROUP_Y)]]
+ void tag_propagate([[resource_table]] Tiles &tiles,
+                    [[resource_table]] TileMaps &tilemaps,
+                    [[global_invocation_id]] const uint3 global_id)
+ {
+   ShadowTileMapData tilemap = tilemaps.tilemaps_buf[global_id.z];
+ 
+-  uint2 texel = uint2(global_id.xy);
++  for (uint row = 0u; row < SHADOW_TILEMAP_ROWS; row++) {
++    uint2 texel = uint2(global_id.xy) + uint2(0u, row * SHADOW_TILEMAP_GROUP_Y);
+   const int tile_index_lod0 = shadow_tile_offset(texel, tilemap.tiles_index, 0);
+   uint tile_data = tiles.tiles_buf[tile_index_lod0];
+   bool do_update = (tile_data & uint(SHADOW_TAG_UPDATE)) != 0;
+@@ -144,6 +149,7 @@
+       atomicOr(tiles.tiles_buf[tile_index], uint(SHADOW_DO_UPDATE));
+     }
+   }
++  }
+ }
+ 
+ PipelineGraphic tag_update(tag_update_vert, tag_update_frag);
+--- a/source/blender/draw/engines/eevee/shaders/eevee_shadow_page_free.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_shadow_page_free.bsl.hh
+@@ -19,7 +19,7 @@
+ using PageAllocator = eevee::shadow::PageAllocator;
+ using TileMaps = eevee::shadow::TileMaps;
+ 
+-[[compute, local_size(SHADOW_TILEMAP_LOD0_LEN)]]
++[[compute, local_size(SHADOW_TILEMAP_GROUP_SIZE)]]
+ void free([[resource_table]] PageAllocator &allocator,
+           [[resource_table]] TileMaps &tilemaps,
+           [[global_invocation_id]] const uint3 global_id,
+@@ -30,8 +30,8 @@
+   uint tile_start = tilemap_data.tiles_index;
+   for (int lod = 0; lod <= SHADOW_TILEMAP_LOD; lod++) {
+     uint lod_len = uint(SHADOW_TILEMAP_LOD0_LEN >> (lod * 2));
+-    if (local_tile < lod_len) {
+-      uint tile_index = tile_start + local_tile;
++    for (uint tile_lane = local_tile; tile_lane < lod_len; tile_lane += SHADOW_TILEMAP_GROUP_SIZE) {
++      uint tile_index = tile_start + tile_lane;
+ 
+       ShadowTileData tile = shadow_tile_unpack(allocator.tiles_buf[tile_index]);
+ 
+--- a/source/blender/draw/engines/eevee/shaders/eevee_shadow_page_allocate.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_shadow_page_allocate.bsl.hh
+@@ -19,7 +19,7 @@
+ using Statistics = eevee::shadow::Statistics;
+ using TileMaps = eevee::shadow::TileMaps;
+ 
+-[[compute, local_size(SHADOW_TILEMAP_LOD0_LEN)]]
++[[compute, local_size(SHADOW_TILEMAP_GROUP_SIZE)]]
+ void allocate([[resource_table]] PageAllocator &allocator,
+               [[resource_table]] TileMaps &tilemaps,
+               [[resource_table]] Statistics &stats,
+@@ -31,8 +31,8 @@
+   uint tile_start = uint(tilemap_data.tiles_index);
+   for (int lod = 0; lod <= SHADOW_TILEMAP_LOD; lod++) {
+     uint lod_len = uint(SHADOW_TILEMAP_LOD0_LEN >> (lod * 2));
+-    if (local_tile < lod_len) {
+-      uint tile_index = tile_start + local_tile;
++    for (uint tile_lane = local_tile; tile_lane < lod_len; tile_lane += SHADOW_TILEMAP_GROUP_SIZE) {
++      uint tile_index = tile_start + tile_lane;
+ 
+       ShadowTileData tile = shadow_tile_unpack(allocator.tiles_buf[tile_index]);
+       if (tile.is_used && !tile.is_allocated) {
+--- a/source/blender/draw/engines/eevee/shaders/eevee_shadow_tilemap_finalize.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_shadow_tilemap_finalize.bsl.hh
+@@ -53,25 +53,21 @@
+  * This avoids one level of indirection when evaluating shadows and allows
+  * to use a sampler instead of a SSBO bind.
+  */
+-[[compute, local_size(SHADOW_TILEMAP_RES, SHADOW_TILEMAP_RES)]]
++[[compute, local_size(SHADOW_TILEMAP_RES, SHADOW_TILEMAP_GROUP_Y)]]
+ void tilemap_finalize_main([[resource_table]] TilemapFinalize &srt,
+                            [[global_invocation_id]] const uint3 global_id,
+                            [[local_invocation_index]] const uint local_index)
+ 
+ {
+   int tilemap_index = int(global_id.z);
+-  int2 tile_co = int2(global_id.xy);
+ 
+   ShadowTileMapData tilemap_data = srt.tilemaps_buf[tilemap_index];
+   bool is_cubemap = (tilemap_data.projection_type == SHADOW_PROJECTION_CUBEFACE);
+   int lod_max = is_cubemap ? SHADOW_TILEMAP_LOD : 0;
+ 
+-  srt.lod_rendered = 0u;
+-
+-  for (int lod = lod_max; lod >= 0; lod--) {
+-    int2 tile_co_lod = tile_co >> lod;
+-    int tile_index = shadow_tile_offset(uint2(tile_co_lod), tilemap_data.tiles_index, lod);
+-
++  if (local_index == 0u) { srt.lod_rendered = 0u; }
++
++  for (int lod = SHADOW_TILEMAP_LOD; lod >= 0; lod--) {
+     /* Compute update area. */
+     if (local_index == 0u) {
+       srt.rect_min_x = SHADOW_TILEMAP_RES;
+@@ -82,9 +78,13 @@
+ 
+     barrier();
+ 
++    for (int row = 0; row < SHADOW_TILEMAP_ROWS; row++) {
++      int2 tile_co = int2(global_id.xy) + int2(0, row * SHADOW_TILEMAP_GROUP_Y);
++      int2 tile_co_lod = tile_co >> lod;
++      int tile_index = shadow_tile_offset(uint2(tile_co_lod), tilemap_data.tiles_index, lod);
+     ShadowTileData tile = shadow_tile_unpack(srt.tiles_buf[tile_index]);
+     bool lod_valid_thread = all(equal(tile_co, tile_co_lod << lod));
+-    bool do_page_render = tile.is_used && tile.do_update && lod_valid_thread;
++    bool do_page_render = lod <= lod_max && tile.is_used && tile.do_update && lod_valid_thread;
+     if (do_page_render) {
+       atomicMin(srt.rect_min_x, tile_co_lod.x);
+       atomicMin(srt.rect_min_y, tile_co_lod.y);
+@@ -92,12 +92,14 @@
+       atomicMax(srt.rect_max_y, tile_co_lod.y + 1);
+     }
+ 
++    }
++
+     barrier();
+ 
+     int2 rect_min = int2(srt.rect_min_x, srt.rect_min_y);
+     int2 rect_max = int2(srt.rect_max_x, srt.rect_max_y);
+ 
+-    int viewport_index = viewport_select(rect_max - rect_min);
++    int viewport_index = viewport_select(max(rect_max - rect_min, int2(1)));
+     int2 viewport_size = shadow_viewport_size_get(uint(viewport_index));
+ 
+     /* Issue one view if there is an update in the LOD. */
+@@ -162,6 +164,7 @@
+         }
+       }
+     }
++    barrier(); /* Finish all reads before the next LOD resets the bounds. */
+   }
+ 
+   /* Broadcast result of `lod_rendered`. */
+@@ -171,6 +174,8 @@
+    * to the lowest, keeping track of the lowest one allocated which will be use for shadowing.
+    * This guarantee a O(1) lookup time.
+    * Add one render view per LOD that has tiles to be rendered. */
++  for (int row = 0; row < SHADOW_TILEMAP_ROWS; row++) {
++    int2 tile_co = int2(global_id.xy) + int2(0, row * SHADOW_TILEMAP_GROUP_Y);
+   int valid_tile_index = -1;
+   uint valid_lod = 0u;
+   for (int lod = lod_max; lod >= 0; lod--) {
+@@ -195,6 +200,8 @@
+ 
+   uint2 atlas_texel = shadow_tile_coord_in_atlas(uint2(tile_co), tilemap_index);
+   imageStoreFast(srt.tilemaps_img, int2(atlas_texel), uint4(tile_sampling_packed));
++
++  }
+ 
+   if (all(equal(global_id, uint3(0)))) {
+     /* Clamp it as it can underflow if there is too much tile present on screen. */
+@@ -218,7 +225,7 @@
+  *
+  * For each shadow view, copy page atlas location to the indirection table before render.
+  */
+-[[compute, local_size(SHADOW_TILEMAP_RES, SHADOW_TILEMAP_RES)]]
++[[compute, local_size(SHADOW_TILEMAP_RES, SHADOW_TILEMAP_GROUP_Y)]]
+ void rendermap_finalize_main([[resource_table]] RendermapFinalize &srt,
+                              [[global_invocation_id]] const uint3 global_id)
+ {
+@@ -233,7 +240,8 @@
+   int lod = srt.render_view_buf[view_index].tilemap_lod;
+   int2 viewport_size = shadow_viewport_size_get(srt.render_view_buf[view_index].viewport_index);
+ 
+-  int2 tile_co = int2(global_id.xy);
++  for (int row = 0; row < SHADOW_TILEMAP_ROWS; row++) {
++  int2 tile_co = int2(global_id.xy) + int2(0, row * SHADOW_TILEMAP_GROUP_Y);
+   int2 tile_co_lod = tile_co >> lod;
+   bool lod_valid_thread = all(equal(tile_co, tile_co_lod << lod));
+ 
+@@ -272,6 +280,7 @@
+       }
+     }
+   }
++  }
+ }
+ 
+ PipelineCompute tilemap_finalize(eevee::shadow::tilemap_finalize_main);
+--- a/source/blender/draw/engines/eevee/shaders/eevee_shadow_tilemap_init.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_shadow_tilemap_init.bsl.hh
+@@ -40,7 +40,7 @@
+   [[shared]] int directional_range_changed;
+ };
+ 
+-[[compute, local_size(SHADOW_TILEMAP_RES, SHADOW_TILEMAP_RES)]]
++[[compute, local_size(SHADOW_TILEMAP_RES, SHADOW_TILEMAP_GROUP_Y)]]
+ void tilemap_init_main([[resource_table]] TilemapInit &srt,
+                        [[global_invocation_id]] const uint3 global_id,
+                        [[local_invocation_index]] const uint local_index)
+@@ -85,44 +85,41 @@
+ 
+   barrier();
+ 
+-  int2 tile_co = int2(global_id.xy);
+-  int2 tile_shifted = tile_co +
+-                      clamp(tilemap.is_dirty ? int2(SHADOW_TILEMAP_RES) : tilemap.grid_shift,
+-                            int2(-SHADOW_TILEMAP_RES),
+-                            int2(SHADOW_TILEMAP_RES));
+-  int2 tile_wrapped = int2((int2(SHADOW_TILEMAP_RES) + tile_shifted) % SHADOW_TILEMAP_RES);
+-
+-  /* If this tile was shifted in and contains old information, update it.
+-   * Note that cube-map always shift all tiles on update. */
+-  bool do_update = !in_range_inclusive(tile_shifted, int2(0), int2(SHADOW_TILEMAP_RES - 1));
+-
+-  /* TODO(fclem): Might be better to resize the depth stored instead of a full render update. */
+-  if (srt.directional_range_changed != 0) {
+-    do_update = true;
++  /* All lanes visit all LODs, even for directional maps. The bound must be
++   * statically uniform for WGSL's barrier analysis. Each physical lane handles
++   * four rows, loading all shifted values before any lane writes them back. */
++  int lod_max = (tilemap.projection_type == SHADOW_PROJECTION_CUBEFACE) ? SHADOW_TILEMAP_LOD : 0;
++  uint lod_size = uint(SHADOW_TILEMAP_RES);
++  for (int lod = 0; lod <= SHADOW_TILEMAP_LOD; lod++, lod_size >>= 1u) {
++    ShadowTileDataPacked tile[SHADOW_TILEMAP_ROWS];
++    int tile_load[SHADOW_TILEMAP_ROWS];
++    for (int row = 0; row < SHADOW_TILEMAP_ROWS; row++) {
++      int2 tile_co = int2(global_id.xy) + int2(0, row * SHADOW_TILEMAP_GROUP_Y);
++      int2 tile_shifted = tile_co +
++                          clamp(tilemap.is_dirty ? int2(SHADOW_TILEMAP_RES) : tilemap.grid_shift,
++                                int2(-SHADOW_TILEMAP_RES), int2(SHADOW_TILEMAP_RES));
++      int2 tile_wrapped = int2((int2(SHADOW_TILEMAP_RES) + tile_shifted) % SHADOW_TILEMAP_RES);
++      bool do_update = !in_range_inclusive(tile_shifted, int2(0), int2(SHADOW_TILEMAP_RES - 1));
++      do_update = do_update || (srt.directional_range_changed != 0);
++      tile[row] = 0;
++      tile_load[row] = shadow_tile_offset(uint2(tile_wrapped), tilemap.tiles_index, lod);
++      if (lod <= lod_max && all(lessThan(tile_co, int2(int(lod_size))))) {
++        tile[row] = init_tile_data(srt.tiles_buf[tile_load[row]], do_update);
++      }
++    }
++    barrier();
++    for (int row = 0; row < SHADOW_TILEMAP_ROWS; row++) {
++      int2 tile_co = int2(global_id.xy) + int2(0, row * SHADOW_TILEMAP_GROUP_Y);
++      if (lod <= lod_max && all(lessThan(tile_co, int2(int(lod_size))))) {
++        int tile_store = shadow_tile_offset(uint2(tile_co), tilemap.tiles_index, lod);
++        if ((tile_load[row] != tile_store) && flag_test(tile[row], SHADOW_IS_CACHED)) {
++          srt.pages_cached_buf[shadow_tile_unpack(tile[row]).cache_index].y = uint(tile_store);
++        }
++        srt.tiles_buf[tile_store] = tile[row];
++      }
++    }
+   }
+ 
+-  int lod_max = (tilemap.projection_type == SHADOW_PROJECTION_CUBEFACE) ? SHADOW_TILEMAP_LOD : 0;
+-  uint lod_size = uint(SHADOW_TILEMAP_RES);
+-  for (int lod = 0; lod <= lod_max; lod++, lod_size >>= 1u) {
+-    bool thread_active = all(lessThan(tile_co, int2(int(lod_size))));
+-    ShadowTileDataPacked tile = 0;
+-    int tile_load = shadow_tile_offset(uint2(tile_wrapped), tilemap.tiles_index, lod);
+-    if (thread_active) {
+-      tile = init_tile_data(srt.tiles_buf[tile_load], do_update);
+-    }
+-
+-    /* Uniform control flow for barrier. Needed to avoid race condition on shifted loads. */
+-    barrier();
+-
+-    if (thread_active) {
+-      int tile_store = shadow_tile_offset(uint2(tile_co), tilemap.tiles_index, lod);
+-      if ((tile_load != tile_store) && flag_test(tile, SHADOW_IS_CACHED)) {
+-        /* Inlining of shadow_page_cache_update_tile_ref to avoid buffer dependencies. */
+-        srt.pages_cached_buf[shadow_tile_unpack(tile).cache_index].y = uint(tile_store);
+-      }
+-      srt.tiles_buf[tile_store] = tile;
+-    }
+-  }
+ }
+ 
+ PipelineCompute tilemap_init(tilemap_init_main);
+--- a/source/blender/draw/engines/eevee/shaders/eevee_shadow_page_mask.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_shadow_page_mask.bsl.hh
+@@ -45,18 +45,19 @@
+   [[storage(1, read_write)]] uint (&tiles_buf)[];
+ };
+ 
+-[[compute, local_size(SHADOW_TILEMAP_RES, SHADOW_TILEMAP_RES)]]
++[[compute, local_size(SHADOW_TILEMAP_RES, SHADOW_TILEMAP_GROUP_Y)]]
+ void mask([[resource_table]] PageMask &srt,
+           [[resource_table]] TileMaps &tilemaps,
+           [[global_invocation_id]] const uint3 global_id,
+           [[local_invocation_index]] const uint local_tile_index)
+ {
+-  int2 tile_co = int2(global_id.xy);
+   uint tilemap_index = global_id.z;
+   ShadowTileMapData tilemap = tilemaps.tilemaps_buf[tilemap_index];
+ 
+-  /* NOTE: Barriers are ok since this branch is taken by all threads. */
+-  if (tilemap.projection_type == SHADOW_PROJECTION_CUBEFACE) {
++  /* Storage reads are not statically uniform in WGSL. Run the barrier
++   * phases for every map and mask only the tile operations. */
++  bool is_cubemap = tilemap.projection_type == SHADOW_PROJECTION_CUBEFACE;
++  {
+     /* Check if any page is allocated in this tilemap. Force base page if that's the case to avoid
+      * artifact during shadow tracing. */
+     if (local_tile_index == 0u) {
+@@ -67,7 +68,9 @@
+     /* Load all data to LDS. Allows us to do some modification on the flag bits and only flush to
+      * main memory the usage bit. */
+     for (int lod = 0; lod <= SHADOW_TILEMAP_LOD; lod++) {
+-      if (thread_mask(tile_co, lod)) {
++      for (int row = 0; row < SHADOW_TILEMAP_ROWS; row++) {
++        int2 tile_co = int2(global_id.xy) + int2(0, row * SHADOW_TILEMAP_GROUP_Y);
++        if (is_cubemap && thread_mask(tile_co, lod)) {
+         int tile_offset = shadow_tile_offset(uint2(tile_co), tilemap.tiles_index, lod);
+         ShadowTileDataPacked tile_data = srt.tiles_buf[tile_offset];
+ 
+@@ -78,13 +81,14 @@
+         }
+         else {
+           /* Tag base level to be used. */
+-          srt.force_base_page = 1u;
++          atomicOr(srt.force_base_page, 1u);
+         }
+         /* Clear these flags as they could contain any values. */
+         tile_data &= ~(SHADOW_TILE_AMENDED | SHADOW_TILE_MASKED);
+ 
+         int tile_lds = shadow_tile_offset_lds(tile_co, lod);
+         srt.tiles_local[tile_lds] = tile_data;
++      }
+       }
+     }
+ 
+@@ -97,7 +101,9 @@
+      * different LODs. */
+     for (int lod = 1; lod <= SHADOW_TILEMAP_LOD; lod++) {
+       barrier();
+-      if (thread_mask(tile_co, lod)) {
++      for (int row = 0; row < SHADOW_TILEMAP_ROWS; row++) {
++        int2 tile_co = int2(global_id.xy) + int2(0, row * SHADOW_TILEMAP_GROUP_Y);
++        if (is_cubemap && thread_mask(tile_co, lod)) {
+         int2 tile_co_prev_lod = tile_co * 2;
+         int prev_lod = lod - 1;
+ 
+@@ -122,6 +128,7 @@
+           srt.tiles_local[tile_offset] |= SHADOW_TILE_MASKED;
+         }
+       }
++      }
+     }
+ #endif
+ 
+@@ -139,11 +146,14 @@
+     barrier();
+     for (int lod = 0; lod <= SHADOW_TILEMAP_LOD; lod++) {
+       /* TODO(fclem): Could maybe speedup using WaveAllBitOr. */
+-      if (thread_mask(tile_co, lod)) {
++      for (int row = 0; row < SHADOW_TILEMAP_ROWS; row++) {
++        int2 tile_co = int2(global_id.xy) + int2(0, row * SHADOW_TILEMAP_GROUP_Y);
++        if (is_cubemap && thread_mask(tile_co, lod)) {
+         int tile_offset = shadow_tile_offset_lds(tile_co, lod);
+         if ((srt.tiles_local[tile_offset] & SHADOW_DO_UPDATE) != 0) {
+           atomicOr(srt.levels_rendered, 1u << lod);
+         }
++      }
+       }
+     }
+     barrier();
+@@ -157,10 +167,12 @@
+         max_lod = findMSB(srt.levels_rendered & ~(~0u << max_lod));
+       }
+       /* NOTE: Concurrent writing of the same value to the same data. */
+-      tilemaps.tilemaps_buf[tilemap_index].effective_lod_min = max_lod;
++      if (is_cubemap && local_tile_index == 0u) { tilemaps.tilemaps_buf[tilemap_index].effective_lod_min = max_lod; }
+       /* Collapse all bits to highest level. */
+       for (int lod = 0; lod < max_lod; lod++) {
+-        if (thread_mask(tile_co, lod)) {
++        for (int row = 0; row < SHADOW_TILEMAP_ROWS; row++) {
++        int2 tile_co = int2(global_id.xy) + int2(0, row * SHADOW_TILEMAP_GROUP_Y);
++        if (is_cubemap && thread_mask(tile_co, lod)) {
+           int tile_offset = shadow_tile_offset_lds(tile_co, lod);
+           if ((srt.tiles_local[tile_offset] & SHADOW_DO_UPDATE) != 0) {
+             /* This tile is now masked and not considered for rendering. */
+@@ -176,10 +188,11 @@
+           }
+         }
+       }
++      }
+     }
+     else {
+       /* NOTE: Concurrent writing of the same value to the same data. */
+-      tilemaps.tilemaps_buf[tilemap_index].effective_lod_min = 0;
++      if (is_cubemap && local_tile_index == 0u) { tilemaps.tilemaps_buf[tilemap_index].effective_lod_min = 0; }
+     }
+ #else
+     /* NOTE: Concurrent writing of the same value to the same data. */
+@@ -207,9 +220,13 @@
+     }
+ #endif
+ 
++    barrier(); /* Publish the base-page amendment before all lanes read it. */
++
+     /* Flush back visibility bits to the tile SSBO. */
+     for (int lod = 0; lod <= SHADOW_TILEMAP_LOD; lod++) {
+-      if (thread_mask(tile_co, lod)) {
++      for (int row = 0; row < SHADOW_TILEMAP_ROWS; row++) {
++        int2 tile_co = int2(global_id.xy) + int2(0, row * SHADOW_TILEMAP_GROUP_Y);
++        if (is_cubemap && thread_mask(tile_co, lod)) {
+         int tile_lds = shadow_tile_offset_lds(tile_co, lod);
+         if ((srt.tiles_local[tile_lds] & SHADOW_TILE_AMENDED) != 0) {
+           int tile_offset = shadow_tile_offset(uint2(tile_co), tilemap.tiles_index, lod);
+@@ -222,6 +239,7 @@
+           }
+         }
+       }
++      }
+     }
+   }
+ }
+--- a/source/blender/draw/engines/eevee/shaders/eevee_light_culling.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_light_culling.bsl.hh
+@@ -196,9 +196,8 @@
+  */
+ 
+ struct ZBinning {
+-  /* Fits the limit of 32KB. */
+-  [[shared]] uint zbin_max[CULLING_ZBIN_COUNT];
+-  [[shared]] uint zbin_min[CULLING_ZBIN_COUNT];
++  /* Packed min/max fit WebGPU's 16KiB workgroup-storage budget. */
++  [[shared]] uint zbin_range[CULLING_ZBIN_COUNT];
+ 
+   [[storage(0, read)]] const LightCullingData &light_cull_buf;
+   [[storage(1, read)]] const LightData (&light_buf)[];
+@@ -214,8 +213,7 @@
+   const uint zbin_local = local_id.x * zbin_iter;
+ 
+   for (uint i = 0u, l = zbin_local; i < zbin_iter; i++, l++) {
+-    srt.zbin_max[l] = 0x0u;
+-    srt.zbin_min[l] = ~0x0u;
++    srt.zbin_range[l] = 0x0000FFFFu;
+   }
+   barrier();
+ 
+@@ -240,15 +238,23 @@
+     z_max = clamp(z_max, 0, CULLING_ZBIN_COUNT - 1);
+     /* Register to Z bins. */
+     for (int z = z_min; z <= z_max; z++) {
+-      atomicMin(srt.zbin_min[z], index);
+-      atomicMax(srt.zbin_max[z], index);
++      uint observed = atomicOr(srt.zbin_range[z], 0u);
++      while (true) {
++        uint desired = (max(observed >> 16u, index) << 16u) |
++                       min(observed & 0xFFFFu, index);
++        uint previous = atomicCompSwap(srt.zbin_range[z], observed, desired);
++        if (previous == observed) {
++          break;
++        }
++        observed = previous;
++      }
+     }
+   }
+   barrier();
+ 
+   /* Write result to Z-bins buffer. Pack min & max into 1 `uint`. */
+   for (uint i = 0u, l = zbin_local; i < zbin_iter; i++, l++) {
+-    srt.out_zbin_buf[l] = (srt.zbin_max[l] << 16u) | (srt.zbin_min[l] & 0xFFFFu);
++    srt.out_zbin_buf[l] = srt.zbin_range[l];
+   }
+ }
+ 
+--- a/source/blender/draw/engines/eevee/shaders/eevee_shadow_tilemap_amend.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_shadow_tilemap_amend.bsl.hh
+@@ -28,7 +28,7 @@
+   [[storage(4, read)]] const ShadowTileMapData (&tilemaps_buf)[];
+   [[storage(5, read_write)]] LightData (&light_buf_write)[];
+ 
+-  [[shared]] uint tiles_local[SHADOW_TILEMAP_RES][SHADOW_TILEMAP_RES];
++  [[shared]] uint tiles_local[2 * SHADOW_TILEMAP_LOD0_LEN];
+ 
+   [[image(0, read_write, UINT_32)]] uimage2D tilemaps_img;
+ };
+@@ -49,6 +49,9 @@
+     int lod_max = light.sun().clipmap_lod_max - light.sun().clipmap_lod_min;
+     /* Iterate in reverse. */
+     for (int lod = lod_max; lod >= 0; lod--) {
++      /* One invocation visits every tile; sequential stores need no workgroup barrier. */
++      for (int tile_index = 0; tile_index < SHADOW_TILEMAP_LOD0_LEN; tile_index++) {
++        tile_co = int2(tile_index % SHADOW_TILEMAP_RES, tile_index / SHADOW_TILEMAP_RES);
+       int tilemap_index = light.tilemap_index + lod;
+       uint2 atlas_texel = shadow_tile_coord_in_atlas(uint2(tile_co), tilemap_index);
+ 
+@@ -63,7 +66,7 @@
+ 
+         /* Load tile from the previous LOD. */
+         ShadowSamplingTilePacked tile_prev_packed =
+-            srt.tiles_local[tile_co_prev.y][tile_co_prev.x];
++            srt.tiles_local[((lod + 1) & 1) * SHADOW_TILEMAP_LOD0_LEN + tile_co_prev.y * SHADOW_TILEMAP_RES + tile_co_prev.x];
+         ShadowSamplingTile tile_prev = shadow_sampling_tile_unpack(tile_prev_packed);
+ 
+         /* We can only propagate LODs up to a certain level.
+@@ -96,9 +99,10 @@
+         }
+       }
+ 
+-      barrier();
+-      srt.tiles_local[tile_co.y][tile_co.x] = (tile.is_valid) ? tile_packed : SHADOW_NO_DATA;
+-      barrier();
++
++      srt.tiles_local[(lod & 1) * SHADOW_TILEMAP_LOD0_LEN + tile_co.y * SHADOW_TILEMAP_RES + tile_co.x] = (tile.is_valid) ? tile_packed : SHADOW_NO_DATA;
++
++      }
+     }
+   }
+ 
+@@ -128,7 +132,7 @@
+                                                      AmendCtx &,
+                                                      TilemapAmend &);
+ 
+-[[compute, local_size(SHADOW_TILEMAP_RES, SHADOW_TILEMAP_RES)]] void tilemap_amend(
++[[compute, local_size(1)]] void tilemap_amend(
+     [[resource_table]] TilemapAmend &srt,
+     [[resource_table]] LightRenderData &lrd,
+     [[global_invocation_id]] const uint3 global_id)
+--- a/source/blender/draw/engines/eevee/shaders/eevee_hiz_update.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_hiz_update.bsl.hh
+@@ -1,206 +1,56 @@
+ /* SPDX-FileCopyrightText: 2022-2023 Blender Authors
+- *
+  * SPDX-License-Identifier: GPL-2.0-or-later */
+-
+-/**
+- * Shader that down-sample depth buffer, creating a Hierarchical-Z buffer.
+- * Saves max value of each 2x2 texel in the mipmap above the one we are
+- * rendering to. Adapted from
+- * http://rastergrid.com/blog/2010/10/hierarchical-z-map-based-occlusion-culling/
+- *
+- * Major simplification has been made since we pad the buffer to always be
+- * bigger than input to avoid mipmapping misalignment.
+- *
+- * Start by copying the base level by quad loading the depth.
+- * Then each thread compute it's local depth for level 1.
+- * After that we use shared variables to do inter thread communication and
+- * downsample to max level.
+- */
+-
+ #pragma once
+-
+ #include "eevee_defines.hh"
+ #include "eevee_reverse_z_lib.bsl.hh"
+ #include "gpu_shader_math_vector_lib.glsl"
+ #include "gpu_shader_math_vector_reduce_lib.glsl"
+ 
+ namespace eevee::hiz {
+-
+ struct Update {
+-  [[specialization_constant(true)]] bool update_mip_0;
+-
+   [[compilation_constant]] bool use_layer;
+-
+   [[sampler(0), condition(!use_layer)]] sampler2DDepth depth_tx;
+   [[sampler(0), condition(use_layer)]] sampler2DArrayDepth depth_layered_tx;
+   [[push_constant, condition(use_layer)]] int layer_id;
+-
+-  [[storage(0, read_write)]] uint &finished_tile_counter;
+-
+-  [[image(0, write, SFLOAT_32)]] image2D out_mip_0;
+-  [[image(1, write, SFLOAT_32)]] image2D out_mip_1;
+-  [[image(2, write, SFLOAT_32)]] image2D out_mip_2;
+-  [[image(3, write, SFLOAT_32)]] image2D out_mip_3;
+-  [[image(4, write, SFLOAT_32)]] image2D out_mip_4;
+-  [[image(5, read_write, SFLOAT_32)]] image2D out_mip_5;
+-  [[image(6, write, SFLOAT_32)]] image2D out_mip_6;
+-
+-  [[shared]] float local_depths[HIZ_GROUP_SIZE][HIZ_GROUP_SIZE];
+-
+-  /* Load values from the previous LOD level. */
+-  float4 load_local_depths(int2 pixel)
+-  {
+-    pixel *= 2;
+-    return float4(local_depths[pixel.y + 1][pixel.x + 0],
+-                  local_depths[pixel.y + 1][pixel.x + 1],
+-                  local_depths[pixel.y + 0][pixel.x + 1],
+-                  local_depths[pixel.y + 0][pixel.x + 0]);
+-  }
+-
+-  void store_local_depth(int2 pixel, float depth)
+-  {
+-    local_depths[pixel.y][pixel.x] = depth;
+-  }
++  [[push_constant]] int mip_level;
++  [[image(0, read, SFLOAT_32)]] image2D in_mip;
++  [[image(1, write, SFLOAT_32)]] image2D out_mip;
+ };
+ 
++/* Separate dispatches provide visibility between levels without inter-workgroup
++ * spin counters, and use two storage images instead of seven. */
+ [[compute, local_size(HIZ_GROUP_SIZE, HIZ_GROUP_SIZE)]]
+ void update_main([[resource_table]] Update &srt,
+-                 [[local_invocation_id]] const uint3 local_id,
+-                 [[work_group_id]] const uint3 group_id)
++                 [[global_invocation_id]] const uint3 global_id)
+ {
+-  int2 local_px = int2(local_id.xy);
+-  /* Bottom left corner of the kernel. */
+-  int2 kernel_origin = int2(HIZ_GROUP_SIZE * group_id.xy);
+-
+-  /* Copy level 0. */
+-  int2 src_px = int2(kernel_origin + local_px) * 2;
+-  float4 samp;
+-
+-  if (srt.use_layer) [[static_branch]] {
+-    float2 samp_co = float2(src_px + 1) / float2(textureSize(srt.depth_layered_tx, 0).xy);
+-    samp = textureGather(srt.depth_layered_tx, float3(samp_co, float(srt.layer_id)));
++  int2 pixel = int2(global_id.xy);
++  if (any(greaterThanEqual(pixel, imageSize(srt.out_mip)))) {
++    return;
++  }
++  float depth;
++  if (srt.mip_level == 0) {
++    if (srt.use_layer) [[static_branch]] {
++      int2 source_pixel = min(pixel, textureSize(srt.depth_layered_tx, 0).xy - 1);
++      depth = reverse_z::read(texelFetch(srt.depth_layered_tx, int3(source_pixel, srt.layer_id), 0).x);
++    }
++    else {
++      int2 source_pixel = min(pixel, textureSize(srt.depth_tx, 0) - 1);
++      depth = reverse_z::read(texelFetch(srt.depth_tx, source_pixel, 0).x);
++    }
+   }
+   else {
+-    float2 samp_co = float2(src_px + 1) / float2(textureSize(srt.depth_tx, 0));
+-    samp = textureGather(srt.depth_tx, samp_co);
++    int2 source_pixel = pixel * 2;
++    int2 border = imageSize(srt.in_mip) - 1;
++    depth = max(max(imageLoad(srt.in_mip, min(source_pixel, border)).x,
++                    imageLoad(srt.in_mip, min(source_pixel + int2(1, 0), border)).x),
++                max(imageLoad(srt.in_mip, min(source_pixel + int2(0, 1), border)).x,
++                    imageLoad(srt.in_mip, min(source_pixel + int2(1, 1), border)).x));
+   }
+-
+-  samp = reverse_z::read(samp);
+-
+-  if (srt.update_mip_0) {
+-    imageStoreFast(srt.out_mip_0, src_px + int2(0, 1), samp.xxxx);
+-    imageStoreFast(srt.out_mip_0, src_px + int2(1, 1), samp.yyyy);
+-    imageStoreFast(srt.out_mip_0, src_px + int2(1, 0), samp.zzzz);
+-    imageStoreFast(srt.out_mip_0, src_px + int2(0, 0), samp.wwww);
+-  }
+-
+-  /* Level 1. (No load) */
+-  float max_depth = reduce_max(samp);
+-  int2 dst_px = int2(kernel_origin + local_px);
+-  imageStoreFast(srt.out_mip_1, dst_px, float4(max_depth));
+-  srt.store_local_depth(local_px, max_depth);
+-
+-  /* Level 2. */
+-  {
+-    barrier(); /* Wait for previous writes to finish. */
+-    bool active_thread = all(lessThan(uint2(local_px), uint2(HIZ_GROUP_SIZE) >> uint(1)));
+-    if (active_thread) {
+-      max_depth = reduce_max(srt.load_local_depths(local_px));
+-      dst_px = int2((kernel_origin >> 1) + local_px);
+-      imageStoreFast(srt.out_mip_2, dst_px, float4(max_depth));
+-    }
+-    barrier(); /* Wait for previous reads to finish. */
+-    if (active_thread) {
+-      srt.store_local_depth(local_px, max_depth);
+-    }
+-  }
+-  /* Level 3. */
+-  {
+-    barrier(); /* Wait for previous writes to finish. */
+-    bool active_thread = all(lessThan(uint2(local_px), uint2(HIZ_GROUP_SIZE) >> uint(2)));
+-    if (active_thread) {
+-      max_depth = reduce_max(srt.load_local_depths(local_px));
+-      dst_px = int2((kernel_origin >> 2) + local_px);
+-      imageStoreFast(srt.out_mip_3, dst_px, float4(max_depth));
+-    }
+-    barrier(); /* Wait for previous reads to finish. */
+-    if (active_thread) {
+-      srt.store_local_depth(local_px, max_depth);
+-    }
+-  }
+-  /* Level 4. */
+-  {
+-    barrier(); /* Wait for previous writes to finish. */
+-    bool active_thread = all(lessThan(uint2(local_px), uint2(HIZ_GROUP_SIZE) >> uint(3)));
+-    if (active_thread) {
+-      max_depth = reduce_max(srt.load_local_depths(local_px));
+-      dst_px = int2((kernel_origin >> 3) + local_px);
+-      imageStoreFast(srt.out_mip_4, dst_px, float4(max_depth));
+-    }
+-    barrier(); /* Wait for previous reads to finish. */
+-    if (active_thread) {
+-      srt.store_local_depth(local_px, max_depth);
+-    }
+-  }
+-  /* Level 5. */
+-  {
+-    barrier(); /* Wait for previous writes to finish. */
+-    bool active_thread = all(lessThan(uint2(local_px), uint2(HIZ_GROUP_SIZE) >> uint(4)));
+-    if (active_thread) {
+-      max_depth = reduce_max(srt.load_local_depths(local_px));
+-      dst_px = int2((kernel_origin >> 4) + local_px);
+-      imageStoreFast(srt.out_mip_5, dst_px, float4(max_depth));
+-    }
+-    barrier(); /* Wait for previous reads to finish. */
+-    if (active_thread) {
+-      srt.store_local_depth(local_px, max_depth);
+-    }
+-  }
+-
+-  /* Since we pad the destination texture, the mip size is equal to the dispatch size. */
+-  uint2 mip5_size = uint2(imageSize(srt.out_mip_5).xy);
+-  uint tile_count = mip5_size.x * mip5_size.y;
+-  /* Let the last tile handle the remaining LOD. */
+-  bool last_tile = atomicAdd(srt.finished_tile_counter, 1u) + 1u < tile_count;
+-  if (last_tile == false) {
+-    return;
+-  }
+-  /* Reset for next dispatch. */
+-  srt.finished_tile_counter = 0u;
+-
+-  int2 iter = divide_ceil(imageSize(srt.out_mip_5), int2(HIZ_GROUP_SIZE * 2u));
+-  int2 image_border = imageSize(srt.out_mip_5) - 1;
+-  for (int y = 0; y < iter.y; y++) {
+-    for (int x = 0; x < iter.x; x++) {
+-      /* Load result of the other work groups. */
+-      kernel_origin = int2(HIZ_GROUP_SIZE) * int2(x, y);
+-      src_px = int2(kernel_origin + local_px) * 2;
+-      float4 samp;
+-      samp.x = imageLoadFast(srt.out_mip_5, min(src_px + int2(0, 1), image_border)).x;
+-      samp.y = imageLoadFast(srt.out_mip_5, min(src_px + int2(1, 1), image_border)).x;
+-      samp.z = imageLoadFast(srt.out_mip_5, min(src_px + int2(1, 0), image_border)).x;
+-      samp.w = imageLoadFast(srt.out_mip_5, min(src_px + int2(0, 0), image_border)).x;
+-      /* Level 6. */
+-      float max_depth = reduce_max(samp);
+-      int2 dst_px = int2(kernel_origin + local_px);
+-      imageStoreFast(srt.out_mip_6, dst_px, float4(max_depth));
+-      srt.store_local_depth(local_px, max_depth);
+-
+-      /* Level 7 requires barriers inside a non-uniform control flow. */
+-      // downsample_level(out_mip_7, 1);
+-
+-      /* Limited by OpenGL maximum of 8 image slot. */
+-      // downsample_level(out_mip_8, 2);
+-      // downsample_level(out_mip_9, 3);
+-      // downsample_level(out_mip_10, 4);
+-    }
+-  }
++  imageStore(srt.out_mip, pixel, float4(depth));
+ }
+-
+ }  // namespace eevee::hiz
+-
+ #ifndef GLSL_CPP_STUBS
+ PipelineCompute eevee_hiz_update(eevee::hiz::update_main, eevee::hiz::Update{.use_layer = false});
+ PipelineCompute eevee_hiz_update_layer(eevee::hiz::update_main,
+-                                       eevee::hiz::Update{.use_layer = true});
++                                     eevee::hiz::Update{.use_layer = true});
+ #endif
+--- a/source/blender/draw/engines/eevee/eevee_hizbuffer.cc
++++ b/source/blender/draw/engines/eevee/eevee_hizbuffer.cc
+@@ -20,8 +20,6 @@
+   /* Padding to avoid complexity during down-sampling and screen tracing. */
+   int2 hiz_extent = math::ceil_to_multiple(math::max(render_extent, probe_extent),
+                                            int2(1u << (HIZ_MIP_COUNT - 1)));
+-  /* Each thread update 4 LOD0 pixels. So the actual extent of each group is double of it size. */
+-  int2 dispatch_size = math::divide_ceil(hiz_extent, int2(HIZ_GROUP_SIZE) * 2);
+ 
+   eGPUTextureUsage usage = GPU_TEXTURE_USAGE_SHADER_READ | GPU_TEXTURE_USAGE_SHADER_WRITE;
+   for ([[maybe_unused]] const int i : IndexRange(hiz_tx_.size())) {
+@@ -33,50 +31,6 @@
+   }
+ 
+   data_.uv_scale = float2(render_extent) / float2(hiz_extent);
+-
+-  /* TODO(@fclem): There might be occasions where we might not want to
+-   * copy mip 0 for performance reasons if there is no need for it. */
+-  bool update_mip_0 = true;
+-
+-  {
+-    PassSimple &pass = hiz_update_ps_;
+-    gpu::Shader *sh = inst_.shaders.static_shader_get(HIZ_UPDATE);
+-    pass.init();
+-    pass.specialize_constant(sh, "update_mip_0", update_mip_0);
+-    pass.shader_set(sh);
+-    pass.bind_ssbo("finished_tile_counter", atomic_tile_counter_);
+-    /* TODO(fclem): Should be a parameter to avoid confusion. */
+-    pass.bind_texture("depth_tx", &src_tx_);
+-    pass.bind_image("out_mip_0", &hiz_mip_ref_[0]);
+-    pass.bind_image("out_mip_1", &hiz_mip_ref_[1]);
+-    pass.bind_image("out_mip_2", &hiz_mip_ref_[2]);
+-    pass.bind_image("out_mip_3", &hiz_mip_ref_[3]);
+-    pass.bind_image("out_mip_4", &hiz_mip_ref_[4]);
+-    pass.bind_image("out_mip_5", &hiz_mip_ref_[5]);
+-    pass.bind_image("out_mip_6", &hiz_mip_ref_[6]);
+-    pass.dispatch(int3(dispatch_size, 1));
+-    pass.barrier(GPU_BARRIER_TEXTURE_FETCH);
+-  }
+-  {
+-    PassSimple &pass = hiz_update_layer_ps_;
+-    gpu::Shader *sh = inst_.shaders.static_shader_get(HIZ_UPDATE_LAYER);
+-    pass.init();
+-    pass.specialize_constant(sh, "update_mip_0", update_mip_0);
+-    pass.shader_set(sh);
+-    pass.bind_ssbo("finished_tile_counter", atomic_tile_counter_);
+-    /* TODO(fclem): Should be a parameter to avoid confusion. */
+-    pass.bind_texture("depth_layered_tx", &src_tx_);
+-    pass.bind_image("out_mip_0", &hiz_mip_ref_[0]);
+-    pass.bind_image("out_mip_1", &hiz_mip_ref_[1]);
+-    pass.bind_image("out_mip_2", &hiz_mip_ref_[2]);
+-    pass.bind_image("out_mip_3", &hiz_mip_ref_[3]);
+-    pass.bind_image("out_mip_4", &hiz_mip_ref_[4]);
+-    pass.bind_image("out_mip_5", &hiz_mip_ref_[5]);
+-    pass.bind_image("out_mip_6", &hiz_mip_ref_[6]);
+-    pass.push_constant("layer_id", &layer_id_);
+-    pass.dispatch(int3(dispatch_size, 1));
+-    pass.barrier(GPU_BARRIER_TEXTURE_FETCH);
+-  }
+ 
+   if (inst_.debug_mode == eDebugMode::DEBUG_HIZ_VALIDATION) {
+     debug_draw_ps_.init();
+@@ -101,11 +55,26 @@
+     hiz_mip_ref_[i] = hiz_tx_.current().mip_view(i);
+   }
+ 
+-  if (layer_id_ == -1) {
+-    inst_.manager->submit(hiz_update_ps_);
+-  }
+-  else {
+-    inst_.manager->submit(hiz_update_layer_ps_);
++  /* One destination mip per pass fits portable storage-image limits. */
++  for (int mip = 0; mip < HIZ_MIP_COUNT; mip++) {
++    PassSimple pass = {__func__};
++    pass.init();
++    pass.shader_set(inst_.shaders.static_shader_get(layer_id_ == -1 ? HIZ_UPDATE : HIZ_UPDATE_LAYER));
++    if (layer_id_ == -1) {
++      pass.bind_texture("depth_tx", &src_tx_);
++    }
++    else {
++      pass.bind_texture("depth_layered_tx", &src_tx_);
++      pass.push_constant("layer_id", layer_id_);
++    }
++    pass.push_constant("mip_level", mip);
++    /* Mip zero does not read in_mip. Bind a distinct subresource anyway. */
++    pass.bind_image("in_mip", &hiz_mip_ref_[mip == 0 ? 1 : mip - 1]);
++    pass.bind_image("out_mip", &hiz_mip_ref_[mip]);
++    int2 extent = int2(GPU_texture_width(hiz_mip_ref_[mip]), GPU_texture_height(hiz_mip_ref_[mip]));
++    pass.dispatch(int3(math::divide_ceil(extent, int2(HIZ_GROUP_SIZE)), 1));
++    pass.barrier(GPU_BARRIER_TEXTURE_FETCH);
++    inst_.manager->submit(pass);
+   }
+ 
+   is_dirty_ = false;
+--- a/source/blender/draw/engines/eevee/eevee_shadow.cc
++++ b/source/blender/draw/engines/eevee/eevee_shadow.cc
+@@ -11,6 +11,7 @@
+ #include "BLI_math_matrix.hh"
+ #include "GPU_batch_utils.hh"
+ #include "GPU_compute.hh"
++#include "GPU_capabilities.hh"
+ 
+ #include "GPU_context.hh"
+ #include "eevee_instance.hh"
+@@ -601,9 +602,20 @@
+   }
+ 
+   /* Pool size is in MBytes. */
+-  const size_t pool_byte_size = enabled_ ? size_t(scene.eevee.shadow_pool_size) * square_i(1024) :
++  size_t pool_byte_size = enabled_ ? size_t(scene.eevee.shadow_pool_size) * square_i(1024) :
+                                            1;
+   const size_t page_byte_size = square_i(shadow_page_size_) * sizeof(int);
++  if (enabled_ && GPU_backend_get_type() == GPU_BACKEND_WEBGPU) {
++    /* The atomic image has a 16-byte header and whole physical atlas layers.
++     * Reserve that header before rounding down to the adapter's buffer limit. */
++    const size_t limit = GPU_max_storage_buffer_size();
++    const size_t layer_bytes = page_byte_size * SHADOW_PAGE_PER_LAYER;
++    const size_t supported_pool = limit > 16 ? ((limit - 16) / layer_bytes) * layer_bytes : 0;
++    if (pool_byte_size > supported_pool) {
++      pool_byte_size = supported_pool;
++      inst_.info_append_i18n("Shadow pool limited by WebGPU storage-buffer capacity.");
++    }
++  }
+   shadow_page_len_ = int(divide_ceil_ul(pool_byte_size, page_byte_size));
+   shadow_page_len_ = min_ii(shadow_page_len_, SHADOW_MAX_PAGE);
+ 
+--- a/source/blender/draw/engines/eevee/shaders/eevee_gbuffer_write.bsl.hh
++++ b/source/blender/draw/engines/eevee/shaders/eevee_gbuffer_write.bsl.hh
+@@ -38,6 +38,7 @@
+ 
+ /* WORKAROUND: Arrays cannot be sized using compilation_constant. */
+ #ifdef SRT_CONSTANT_gbuffer_layer_max
++#  undef GBUFFER_LAYER_MAX
+ #  define GBUFFER_LAYER_MAX SRT_CONSTANT_gbuffer_layer_max
+ #endif
+ 

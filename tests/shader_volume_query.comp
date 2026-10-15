@@ -1,0 +1,9 @@
+#version 450
+layout(local_size_x=1) in;
+layout(set=0, binding=0, std430) buffer Results { ivec4 value; } output_data;
+layout(set=0, binding=1) uniform sampler3D volume_texture;
+void main() {
+  ivec3 dimensions = textureSize(volume_texture, 0);
+  int texel = int(round(texelFetch(volume_texture, ivec3(1, 2, 3), 0).r * 255.0));
+  output_data.value = ivec4(dimensions, texel);
+}

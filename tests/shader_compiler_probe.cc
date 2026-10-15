@@ -9,6 +9,11 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
+#include "../native/browser/webgpu/shader_prepare.hh"
+#include "../native/browser/webgpu/shader_atomic_image.hh"
+#include "../native/browser/webgpu/shader_unorm16_image.hh"
+#include "../native/browser/webgpu/shader_buffer_image.hh"
+#include "../native/browser/webgpu/shader_spirv_cleanup.hh"
 
 static std::string read_file(const std::filesystem::path &path)
 {
@@ -58,12 +63,12 @@ class Includes : public shaderc::CompileOptions::IncluderInterface {
 int main(int argc, char **argv)
 {
   try {
-    if (argc != 4 && argc != 5) throw std::runtime_error("expected source, generated, output and optional shader paths");
+    if (argc != 4 && argc != 5 && argc != 6) throw std::runtime_error("expected source, generated, output and optional shader paths");
     shaderc::Compiler compiler;
     shaderc::CompileOptions options;
     options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_0);
     options.SetIncluder(std::make_unique<Includes>(argv[1], argv[2]));
-    const std::string compute = argc == 5 ? read_file(argv[4]) : R"glsl(#version 450
+    const std::string compute = argc >= 5 ? read_file(argv[4]) : R"glsl(#version 450
 #define GPU_VULKAN
 #define GPU_COMPUTE_SHADER
 #include "gpu_shader_compat_glsl.glsl"
@@ -80,11 +85,23 @@ void main() {
   output_data.values[4] = float4(success ? 1.0f : 0.0f);
 }
 )glsl";
-    const auto result = compiler.CompileGlslToSpv(compute, shaderc_compute_shader,
+    const int stage = argc == 6 ? std::stoi(argv[5]) : 2;
+    if (stage < 0 || stage > 2) throw std::runtime_error("unsupported shader stage");
+    const auto kind = static_cast<shaderc_shader_kind>(stage);
+    const auto preprocessed = compiler.PreprocessGlsl(compute, kind,
+                                                     "blender-matrix.comp", options);
+    if (preprocessed.GetCompilationStatus() != shaderc_compilation_status_success)
+      throw std::runtime_error(preprocessed.GetErrorMessage());
+    const auto prepared = blender::gpu::webgpu_prepare::lower_buffer_images(blender::gpu::webgpu_prepare::lower_unorm16_images(blender::gpu::webgpu_prepare::lower_atomic_images(
+        blender::gpu::webgpu_prepare::lower_switches(
+        std::string(preprocessed.cbegin(), preprocessed.cend())))));
+    const auto result = compiler.CompileGlslToSpv(prepared, kind,
                                                "blender-matrix.comp", options);
     if (result.GetCompilationStatus() != shaderc_compilation_status_success)
       throw std::runtime_error(result.GetErrorMessage());
-    const std::vector<uint32_t> words(result.cbegin(), result.cend());
+    std::vector<uint32_t> words(result.cbegin(), result.cend());
+    blender::gpu::webgpu_prepare::remove_dead_resources(words);
+    blender::gpu::webgpu_prepare::unique_local_names(words);
     spvtools::SpirvTools validator(SPV_ENV_VULKAN_1_0);
     validator.SetMessageConsumer([](spv_message_level_t, const char *, const spv_position_t &,
                                     const char *message) { std::cerr << message << '\n'; });
@@ -99,7 +116,7 @@ void main() {
     auto invalid = words;
     invalid[0] = 0;
     if (validator.Validate(invalid)) throw std::runtime_error("invalid SPIR-V was accepted");
-    std::cout << "PASS: " << (argc == 5 ? "port shader regression" : "actual Blender matrix library")
+    std::cout << "PASS: " << (argc >= 5 ? "port shader regression" : "actual Blender matrix library")
               << " compiled to valid SPIR-V; invalid inputs rejected.\n";
     return 0;
   } catch (const std::exception &error) {

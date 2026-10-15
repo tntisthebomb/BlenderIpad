@@ -3,3 +3,4 @@ web/engine/
 test-results/
 __pycache__/
 dist/
+work/

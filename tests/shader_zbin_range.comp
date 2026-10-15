@@ -1,0 +1,22 @@
+#version 450
+layout(local_size_x=256) in;
+layout(set=0,binding=0,std430) buffer Results { uint values[]; } output_data;
+shared uint zbin_range[4096];
+void main() {
+  uint index=gl_LocalInvocationID.x;
+  for(uint bin=index;bin<4096;bin+=256) zbin_range[bin]=0x0000ffffu;
+  barrier();
+  uint first=index*13u;
+  uint last=first+index%31u;
+  for(uint bin=first;bin<=last;bin++) {
+    uint observed=atomicOr(zbin_range[bin],0u);
+    while(true) {
+      uint desired=(max(observed>>16u,index)<<16u)|min(observed&0xffffu,index);
+      uint previous=atomicCompSwap(zbin_range[bin],observed,desired);
+      if(previous==observed) break;
+      observed=previous;
+    }
+  }
+  barrier();
+  for(uint bin=index;bin<4096;bin+=256) output_data.values[bin]=zbin_range[bin];
+}

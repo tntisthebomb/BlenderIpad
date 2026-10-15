@@ -1,0 +1,5 @@
+--- a/intern/cycles/cmake/macros.cmake
++++ b/intern/cycles/cmake/macros.cmake
+@@ -129 +129 @@
+-  if(UNIX AND NOT APPLE)
++  if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)

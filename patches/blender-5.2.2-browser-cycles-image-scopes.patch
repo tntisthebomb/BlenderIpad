@@ -1,0 +1,8 @@
+--- a/intern/cycles/kernel/device/cpu/image.h
++++ b/intern/cycles/kernel/device/cpu/image.h
+@@ -312,0 +313,3 @@
++#ifdef __EMSCRIPTEN__
++  static ccl_never_inline OutT interp(const KernelImageInfo &info, const float x, float y)
++#else
+@@ -313,0 +317 @@
++#endif

@@ -86,10 +86,44 @@ void WebGPUContext::scrub_texture_all_contexts(WebGPUTexture *tex)
   }
 }
 
+void WebGPUContext::clear_pipeline_cache_all_contexts()
+{
+  /* Pipeline keys include shader addresses. Retaining them after a shader is
+   * freed lets allocator reuse select a different shader's layout and code. */
+  for (WebGPUContext *ctx : g_all_contexts) {
+    for (auto &entry : ctx->render_pipelines_) {
+      if (entry.second) wgpuRenderPipelineRelease(entry.second);
+    }
+    for (auto &entry : ctx->compute_pipelines_) {
+      if (entry.second) wgpuComputePipelineRelease(entry.second);
+    }
+    ctx->render_pipelines_.clear();
+    ctx->compute_pipelines_.clear();
+  }
+}
+
 void WebGPUContext::clear_bind_group_cache_all_contexts()
 {
   for (WebGPUContext *ctx : g_all_contexts) {
     ctx->clear_bind_group_cache();
+  }
+}
+
+void WebGPUContext::invalidate_cached_resource_all_contexts(WGPUTextureView view,
+                                                           WGPUBuffer buffer)
+{
+  for (WebGPUContext *ctx : g_all_contexts) {
+    for (auto it = ctx->bind_group_cache_.begin(); it != ctx->bind_group_cache_.end();) {
+      const auto &entries = it->second.entries;
+      const bool matches = std::any_of(entries.begin(), entries.end(), [&](const auto &entry) {
+        return (view && entry.textureView == view) || (buffer && entry.buffer == buffer);
+      });
+      if (matches) {
+        ctx->cached_bind_group_release(it->second);
+        it = ctx->bind_group_cache_.erase(it);
+      }
+      else ++it;
+    }
   }
 }
 
@@ -198,6 +232,12 @@ WebGPUContext::~WebGPUContext()
     }
   }
   clear_bind_group_cache();
+  for (const auto &item : snapshot_textures_) {
+    if (item.second) wgpuTextureRelease(item.second);
+  }
+  for (const auto &item : snapshot_buffers_) {
+    if (item.second) wgpuBufferRelease(item.second);
+  }
   for (const auto &item : state_samplers_.items()) {
     if (item.value) wgpuSamplerRelease(item.value);
   }
@@ -1307,6 +1347,33 @@ WebGPUTexture *WebGPUContext::bound_texture_for_binding(
   return nullptr;
 }
 
+bool WebGPUContext::requires_unfilterable_sample(WebGPUTexture *texture) const
+{
+  if (!texture) return false;
+  if (texture->is_depth_format()) return true;
+  switch (texture->wgpu_format()) {
+    case WGPUTextureFormat_R32Float:
+    case WGPUTextureFormat_RG32Float:
+    case WGPUTextureFormat_RGBA32Float:
+      return !wgpuDeviceHasFeature(device_, WGPUFeatureName_Float32Filterable);
+    default:
+      return false;
+  }
+}
+
+uint64_t WebGPUContext::resource_layout_hash(const std::vector<WgslResourceBinding> &bindings,
+                                            ShaderInterface *iface)
+{
+  uint64_t hash=1469598103934665603ull;
+  for (const auto &binding : bindings) {
+    if (binding.kind != WgslResourceBinding::TEXTURE) continue;
+    WebGPUTexture *texture=bound_texture_for_binding(iface,bindings,binding.binding);
+    const uint64_t format=texture ? uint64_t(texture->wgpu_format()) : 0;
+    hash=(hash ^ format)*1099511628211ull;
+  }
+  return hash;
+}
+
 WGPUBindGroupLayout WebGPUContext::make_bind_group_layout(
     const std::vector<WgslResourceBinding> &bindings, bool is_compute, ShaderInterface *iface)
 {
@@ -1334,46 +1401,36 @@ WGPUBindGroupLayout WebGPUContext::make_bind_group_layout(
         e.buffer.type = WGPUBufferBindingType_Uniform;
         break;
       case WgslResourceBinding::SSBO:
+      case WgslResourceBinding::ATOMIC_IMAGE:
         e.buffer.type = b.buffer_type;
         break;
       case WgslResourceBinding::TEXTURE: {
         e.texture.sampleType = b.tex_sample;
         e.texture.viewDimension = b.view_dim;
         e.texture.multisampled = false;
-        /* Depth textures sample as unfilterable-float: their WGSL type is
-         * texture_2d<f32> (Tint), but a Float (filterable) layout entry rejects
-         * the depth-only view at bind-group creation. Resolve the currently
-         * bound texture (pipelines are created at first draw, textures already
-         * bound) and downgrade the sample type for depth formats. */
+        /* Depth and float32 formats without optional filtering support must
+         * use an unfilterable layout even for textureLoad/nearest sampling.
+         * The resource format also participates in the pipeline cache key. */
         if (iface != nullptr && e.texture.sampleType == WGPUTextureSampleType_Float) {
           const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(b.binding);
           int slot = in ? in->binding : -1;
           WebGPUTexture *t = (slot >= 0 && slot < WEBGPU_MAX_TEX) ? bound_tex_[slot] : nullptr;
-          if (t) {
-            switch (t->wgpu_format()) {
-              case WGPUTextureFormat_Depth16Unorm:
-              case WGPUTextureFormat_Depth24Plus:
-              case WGPUTextureFormat_Depth24PlusStencil8:
-              case WGPUTextureFormat_Depth32Float:
-              case WGPUTextureFormat_Depth32FloatStencil8:
-                e.texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
-                break;
-              default:
-                break;
-            }
+          if (requires_unfilterable_sample(t)) {
+            e.texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
           }
         }
         break;
       }
       case WgslResourceBinding::SAMPLER:
         e.sampler.type = b.sampler_type;
-        /* Samplers paired with depth textures (bound as unfilterable-float)
-         * must be non-filtering; the bind group binds nearest_sampler() then. */
+        /* Unfilterable textures require a non-filtering sampler layout.
+         * Float32 still uses its requested state: never silently replace a
+         * requested linear filter with nearest sampling. */
         if (iface != nullptr && b.binding >= 128 &&
             e.sampler.type == WGPUSamplerBindingType_Filtering)
         {
           WebGPUTexture *paired = bound_texture_for_binding(iface, bindings, b.binding - 128);
-          if (paired && paired->is_depth_format()) {
+          if (requires_unfilterable_sample(paired)) {
             e.sampler.type = WGPUSamplerBindingType_NonFiltering;
           }
         }
@@ -1458,6 +1515,14 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
         e.size = WGPU_WHOLE_SIZE;
         break;
       }
+      case WgslResourceBinding::ATOMIC_IMAGE: {
+        const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(b.binding);
+        int slot = in ? in->binding : -1;
+        WebGPUTexture *t = (slot >= 0 && slot < WEBGPU_MAX_IMAGE) ? bound_image_[slot] : nullptr;
+        e.buffer = t ? t->atomic_image_buffer() : nullptr;
+        e.size = WGPU_WHOLE_SIZE;
+        break;
+      }
       case WgslResourceBinding::TEXTURE: {
         const ShaderInput *in = static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(b.binding);
         int slot = in ? in->binding : -1;
@@ -1499,12 +1564,17 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
             const ShaderInput *in_tex = iface ? static_cast<WebGPUShaderInterface *>(iface)->uniform_get_by_wgsl_binding(tb.binding) :
                                                 nullptr;
             if (in_tex != nullptr) {
-              e.sampler = sampler_for_state(bound_tex_state_get(in_tex->binding));
+              GPUSamplerState state=bound_tex_state_get(in_tex->binding);
+              WebGPUTexture *texture=bound_texture_for_binding(iface,bindings,tb.binding);
+              if (state.type==GPU_SAMPLER_STATE_TYPE_INTERNAL && texture) state=texture->sampler_state;
+              e.sampler = sampler_for_state(state);
             }
             break;
           }
           WebGPUTexture *paired = bound_texture_for_binding(iface, bindings, b.binding - 128);
-          if (paired && paired->is_depth_format()) {
+          if (paired && (paired->is_depth_format() ||
+                         (requires_unfilterable_sample(paired) && !b.sampler_used))) {
+            /* A texelFetch-only shader never consults sampler filtering. */
             e.sampler = nearest_sampler();
           }
         }
@@ -1580,6 +1650,15 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
     return nullptr;
   }
 
+  /* Snapshot views start with a caller-owned reference. Bind groups and cache
+   * entries acquire the ownership they need before this scope releases it. */
+  struct TemporaryViews {
+    std::vector<WGPUTextureView> handles;
+    ~TemporaryViews() {
+      for (WGPUTextureView view : handles) wgpuTextureViewRelease(view);
+    }
+  } temporary_views;
+
   /* Sampled-texture vs storage-texture aliasing on the SAME texture within one
    * bind group is invalid in WebGPU (per-subresource usage scopes) — sample a
    * snapshot copy instead (GL semantics: reads see pre-pass contents). */
@@ -1614,6 +1693,7 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
                   bindings[j].res_name.c_str());
           fflush(stderr);
         }
+        temporary_views.handles.push_back(snap);
         entries[i].textureView = snap;
       }
       break;
@@ -1675,7 +1755,9 @@ WGPUBindGroup WebGPUContext::build_bind_group(WebGPUShader *shader,
    * bound buffer). See pass_buffer_usage_. */
   pending_draw_buffers_.clear();
   for (size_t i = 0; i < entries.size(); i++) {
-    if (entries[i].buffer != nullptr && bindings[i].kind == WgslResourceBinding::SSBO) {
+    if (entries[i].buffer != nullptr &&
+        (bindings[i].kind == WgslResourceBinding::SSBO ||
+         bindings[i].kind == WgslResourceBinding::ATOMIC_IMAGE)) {
       const bool writable = bindings[i].buffer_type == WGPUBufferBindingType_Storage;
       pending_draw_buffers_.emplace_back(entries[i].buffer, writable);
       if (getenv("WGPU_LOG_SSBOUSE") && strstr(shader->name_get().c_str(), "MAV") != nullptr) {

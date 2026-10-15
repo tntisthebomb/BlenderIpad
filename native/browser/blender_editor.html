@@ -3,6 +3,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#252525">
 <title>Blender</title>
 <style>
@@ -13,75 +15,283 @@ button,.file-button {background:#454545;color:#eee;border:1px solid #666;border-
 #file-message {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 dialog {background:#303030;color:#eee;border:1px solid #666;border-radius:8px}
 #saved-files {display:block;min-width:260px;margin:12px 0}
-#status {position:fixed;inset:0;display:grid;place-items:center;padding:2rem;background:#252525}
+#status {position:fixed;inset:0;display:grid;place-items:center;padding:2rem;background:#252525;text-align:center}
 #status[hidden] {display:none}
+#startup-details {max-height:35vh;overflow:auto;text-align:left;white-space:pre-wrap;user-select:text;-webkit-user-select:text;font:12px monospace}
+#local-addresses a {display:inline-block;color:#a9d4ff;padding:12px}
 </style>
 <body>
 <header><label class="file-button">Import files<input id="import-files" type="file" multiple hidden></label>
-<button id="export-files" type="button">Export saved file</button><span id="file-message" role="status"></span></header>
+<label class="file-button">Import folder<input id="import-folder" type="file" webkitdirectory multiple hidden></label>
+<button id="export-files" type="button">Export saved file</button>
+<button id="device-report" type="button">Device report</button><span id="file-message" role="status"></span></header>
 <canvas id="canvas" tabindex="0" aria-label="Blender editor"></canvas>
 <dialog id="file-dialog"><label for="saved-files">Saved files</label><select id="saved-files"></select>
 <button id="download-file" type="button">Download</button><button id="close-files" type="button">Close</button></dialog>
-<div id="status" role="status">Loading Blender…</div>
-<script src="blender-core.js"></script>
+<div id="status" role="status"><div><p id="status-message">Loading Blender…</p>
+<p id="local-addresses" hidden>Keep WorldWideWeb running and open in Safari:<br>
+<a id="try-localhost">Try localhost</a><a id="try-loopback">Try 127.0.0.1</a></p>
+<p id="tablet-note" hidden>This experimental build has not passed iPad testing. Starting it may make the device unresponsive.</p>
+<button id="start-editor" type="button" hidden>Start Blender</button>
+<p><a href="ipad-startup.html" style="color:#a9d4ff">Check device without loading Blender</a></p>
+<details><summary>Startup details (select to copy)</summary><pre id="startup-details"></pre></details>
+<button id="recover-files" type="button" hidden>Export saved files</button>
+<button id="error-device-report" type="button">Download device report</button>
+<button id="retry-startup" type="button" hidden>Reload Blender</button></div></div>
+
 <script>
+// Touch-capable Apple devices use the bounded viewport and explicit launch.
+// iPad desktop mode reports Macintosh, so its platform string alone is insufficient.
+const tabletMode=/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (/Mac/.test(navigator.platform) && navigator.maxTouchPoints>1);
+const launchKey='blender-explicit-launch:'+location.pathname;
+const startup={phase:'Checking browser',stages:[],remainingDependencies:null};
+const startupTime=performance.now();
+let lastDependencyRefresh=0;
+function startupPhase(phase) {
+  startup.phase=phase;
+  startup.stages.push({phase,seconds:Math.round((performance.now()-startupTime)/1000)});
+  startup.stages=startup.stages.slice(-16);
+  document.getElementById('status-message').textContent=phase;
+  refreshStartup();
+}
+function refreshStartup() {
+  const memoryBytes=window.blenderEditor?.getBlenderMemoryBytes?.() ?? null;
+  window.blenderDeviceReport={...window.blenderDeviceReport,startup:{...startup,memoryBytes},tabletMode,
+    viewport:{width:canvas.width,height:canvas.height}};
+  document.getElementById('startup-details').textContent=JSON.stringify(window.blenderDeviceReport,null,2);
+  // A browser kill cannot run cleanup. Preserve only a small phase checkpoint;
+  // never restart heavy work automatically after such a reload.
+  try {sessionStorage.setItem('blender-startup-last',JSON.stringify({phase:startup.phase,memoryBytes,
+    seconds:Math.round((performance.now()-startupTime)/1000)}));} catch {}
+}
+async function startupStep(phase,operation,timeout=180000) {
+  startupPhase(phase);let timer;
+  try {return await Promise.race([operation(),new Promise((_,reject)=>{
+    timer=setTimeout(()=>reject(new Error('Startup stalled: '+phase+'. Close this tab; do not keep retrying.')),timeout);
+  })]);} finally {clearTimeout(timer);}
+}
 window.editorOutput=[];
 window.editorErrors=[];
 function log(message) {
   editorOutput.push(String(message));
   if (editorOutput.length>1000) editorOutput.shift();
+  if (String(message).includes('WGPU_FIRST_CONTENT') && !document.body.dataset.error) {
+    startupPhase('Viewport presented');
+    document.body.dataset.rendered='true';
+    document.getElementById('status').hidden=true;
+    const message=document.getElementById('file-message');
+    if (!message.textContent) message.textContent='Downloaded · ready for offline reload';
+  }
 }
 const canvas=document.getElementById('canvas');
 const status=document.getElementById('status');
-function fail(error) {
+const statusMessage=document.getElementById('status-message');
+function fail(error,kind) {
   const message=String(error);
+  // Keep the recovery screen stable when an already-failed device reports
+  // further errors from queued native draws. Device loss is the useful cause.
+  if (document.body.dataset.deviceLost ||
+      (document.body.dataset.error && kind!=='device-loss')) return;
+  if (kind==='device-loss') document.body.dataset.deviceLost='true';
   editorErrors.push(message);
+  startup.error=message;refreshStartup();
   document.body.dataset.error=message;
   status.hidden=false;
-  status.textContent=message;
+  statusMessage.textContent=message;
+  document.getElementById('retry-startup').hidden=false;
+  document.getElementById('error-device-report').hidden=false;
+  document.getElementById('recover-files').hidden=false;
+  try {window.blenderEditor?.pauseBlenderLoop();}
+  catch (pauseError) {console.error('Unable to pause failed Blender runtime',pauseError);}
 }
+document.getElementById('retry-startup').addEventListener('click',()=>location.reload());
+document.getElementById('recover-files').addEventListener('click',()=>{
+  status.hidden=true;
+  document.getElementById('export-files').click();
+});
 canvas.addEventListener('pointerdown',()=>canvas.focus({preventScroll:true}));
 canvas.addEventListener('contextmenu',event=>event.preventDefault());
+document.addEventListener('visibilitychange',()=>{
+  if (document.hidden) {
+    // Release native key/button state before iPadOS suspends the application.
+    canvas.dispatchEvent(new FocusEvent('blur'));
+    window.blenderEditor?.pauseBlenderLoop();
+    if (window.blenderEditor) syncProjects().catch(error=>{
+      document.getElementById('file-message').textContent='Saved files could not be stored. Export a backup: '+error;
+    });
+  } else if (!document.body.dataset.error) {
+    window.blenderEditor?.resumeBlenderLoop();
+    resizeCanvas();
+    window.dispatchEvent(new Event('resize'));
+    canvas.focus({preventScroll:true});
+  }
+});
 function resizeCanvas() {
-  const scale=window.devicePixelRatio || 1;
+  const ratio=window.devicePixelRatio || 1;
+  // Bound the initial render targets on iPad: Retina doubles both dimensions,
+  // multiplying all full-screen GPU attachments by four.
+  const scale=tabletMode ? Math.min(1,1280/Math.max(1,canvas.clientWidth),
+    800/Math.max(1,canvas.clientHeight)) : ratio;
   canvas.width=Math.max(1,Math.round(canvas.clientWidth*scale));
   canvas.height=Math.max(1,Math.round(canvas.clientHeight*scale));
 }
 window.addEventListener('resize',resizeCanvas);
+function waitForInstallation(registration) {
+  if (registration.active?.state==='activated') return Promise.resolve(registration);
+  return new Promise((resolve,reject)=>{
+    const watched=new Set();
+    const finish=error=>{
+      clearTimeout(timer);
+      registration.removeEventListener('updatefound',watch);
+      for (const worker of watched) worker.removeEventListener('statechange',changed);
+      if (error) reject(error);else resolve(registration);
+    };
+    const changed=()=>{
+      if (registration.active?.state==='activated') finish();
+      else if ([...watched].some(worker=>worker.state==='redundant')) {
+        finish(new Error('Blender could not finish downloading. Keep WorldWideWeb running, check that all build files were extracted, then reload.'));
+      }
+    };
+    const watch=()=>{
+      const worker=registration.installing || registration.waiting || registration.active;
+      if (worker && !watched.has(worker)) {watched.add(worker);worker.addEventListener('statechange',changed);}
+      changed();
+    };
+    const timer=setTimeout(()=>finish(new Error('Blender installation timed out. Keep the server running and reload to try again.')),300000);
+    registration.addEventListener('updatefound',watch);
+    watch();
+  });
+}
 (async()=>{
-  if (!isSecureContext) throw new Error('Open Blender using HTTPS or localhost.');
+  window.blenderDeviceReport={secureContext:isSecureContext,crossOriginIsolated,
+    standalone:matchMedia('(display-mode: standalone)').matches,devicePixelRatio,
+    userAgent:navigator.userAgent,webGPU:!!navigator.gpu};
+  try {window.blenderDeviceReport.previousAttempt=JSON.parse(sessionStorage.getItem('blender-startup-last') || 'null');} catch {}
+  refreshStartup();
+  if (!isSecureContext) {
+    const address=new URL(location.href);
+    if (address.protocol==='http:' && !['localhost','127.0.0.1','[::1]'].includes(address.hostname)) {
+      // Keep the actual server port and extracted folder path. Let the user
+      // choose the new origin explicitly; never move their project storage.
+      address.username='';address.password='';
+      address.hostname='localhost';document.getElementById('try-localhost').href=address.href;
+      address.hostname='127.0.0.1';document.getElementById('try-loopback').href=address.href;
+      document.getElementById('local-addresses').hidden=false;
+    }
+    throw new Error('Open Blender in Safari using HTTPS or localhost. Keep WorldWideWeb running and preserve its port and folder path.');
+  }
   if (!('serviceWorker' in navigator)) throw new Error('Offline installation is unavailable in this browser.');
-  status.textContent='Installing Blender for offline use…';
-  await navigator.serviceWorker.register('./service-worker.js');
-  await navigator.serviceWorker.ready;
-  if (!navigator.serviceWorker.controller) {
+  if (tabletMode) {
+    const continueLaunch=sessionStorage.getItem(launchKey)==='true';
+    sessionStorage.removeItem(launchKey);
+    if (!continueLaunch) {
+      startupPhase('Ready for device check — Blender has not loaded');
+      document.getElementById('tablet-note').hidden=false;
+      const start=document.getElementById('start-editor');start.hidden=false;
+      document.getElementById('recover-files').hidden=false;
+      await new Promise(resolve=>start.addEventListener('click',()=>{
+        start.hidden=true;document.getElementById('tablet-note').hidden=true;resolve();
+      },{once:true}));
+    }
+  }
+  startupPhase('Installing Blender for offline use');
+  const registration=await navigator.serviceWorker.register('./service-worker.js');
+  await waitForInstallation(registration);
+  const showUpdate=()=>{
+    if (registration.waiting) document.getElementById('file-message').textContent='Update ready. Save your project and close all Blender tabs to install it.';
+  };
+  registration.addEventListener('updatefound',()=>{
+    registration.installing?.addEventListener('statechange',showUpdate);
+  });
+  showUpdate();
+  if (!navigator.serviceWorker.controller || !crossOriginIsolated) {
+    const key='blender-isolation-reload:'+registration.scope;
+    if (sessionStorage.getItem(key)) {
+      throw new Error('This browser could not enable isolation for Blender. Use a trusted localhost or HTTPS address and download the device report.');
+    }
+    sessionStorage.setItem(key,'true');
+    if (tabletMode) sessionStorage.setItem(launchKey,'true');
     location.reload();
     return;
   }
-  status.textContent='Loading Blender…';
+  sessionStorage.removeItem('blender-isolation-reload:'+registration.scope);
+  startupPhase('Checking graphics support');
   if (!crossOriginIsolated) throw new Error('This server must enable cross-origin isolation to run Blender.');
   if (!navigator.gpu) throw new Error('WebGPU is unavailable. Open Blender in a supported browser using HTTPS or localhost.');
-  const adapter=await navigator.gpu.requestAdapter();
+  const adapter=await startupStep('Finding graphics adapter',()=>navigator.gpu.requestAdapter(),30000);
   if (!adapter) throw new Error('No WebGPU graphics adapter is available.');
+  window.blenderDeviceReport.adapterFeatures=[...adapter.features];
   if (!adapter.features.has('depth32float-stencil8')) throw new Error('This graphics device lacks the depth/stencil format required by this build.');
-  const features=['float32-filterable','depth32float-stencil8'].filter(feature=>adapter.features.has(feature));
-  const device=await adapter.requestDevice({requiredFeatures:features});
+  if (!adapter.features.has('indirect-first-instance')) throw new Error('This graphics device lacks indirect drawing with first-instance offsets required by this build.');
+  const features=['float32-filterable','depth32float-stencil8','indirect-first-instance'].filter(feature=>adapter.features.has(feature));
+  // WebGPU defaults are the portable minimum, not the adapter's actual
+  // capabilities. Record the adapter's limits separately from those requested.
+  const requiredLimits={},adapterLimits={};
+  const backendLimits={maxStorageTexturesPerShaderStage:16,maxStorageBuffersPerShaderStage:32,
+    maxUniformBuffersPerShaderStage:32,maxSampledTexturesPerShaderStage:32,maxSamplersPerShaderStage:32,
+    maxBufferSize:1073741824,maxStorageBufferBindingSize:1073741824};
+  for (const name of ['maxComputeInvocationsPerWorkgroup','maxComputeWorkgroupSizeX',
+    'maxComputeWorkgroupSizeY','maxComputeWorkgroupSizeZ','maxComputeWorkgroupStorageSize',
+    'maxStorageTexturesPerShaderStage','maxStorageBuffersPerShaderStage',
+    'maxUniformBuffersPerShaderStage','maxSampledTexturesPerShaderStage',
+    'maxSamplersPerShaderStage','maxColorAttachments','maxColorAttachmentBytesPerSample',
+    'maxStorageBufferBindingSize','maxUniformBufferBindingSize','maxBufferSize']) {
+    if (typeof adapter.limits[name]==='number') {
+      adapterLimits[name]=adapter.limits[name];
+      requiredLimits[name]=Math.min(adapter.limits[name],backendLimits[name] ?? adapter.limits[name]);
+    }
+  }
+  window.blenderDeviceReport.adapterLimits=adapterLimits;
+  window.blenderDeviceReport.requestedLimits=requiredLimits;
+  const device=await startupStep('Creating graphics device',()=>adapter.requestDevice({requiredFeatures:features,requiredLimits}),30000);
   device.addEventListener('uncapturederror',event=>fail(event.error.message));
-  device.lost.then(info=>fail('Graphics device lost: '+info.message));
+  device.lost.then(info=>fail('Graphics device lost: '+info.message,'device-loss'));
   resizeCanvas();
-  const module=await createBlenderCore({canvas,preinitializedWebGPUDevice:device,noInitialRun:true,
+  await startupStep('Loading engine script',()=>new Promise((resolve,reject)=>{
+    const script=document.createElement('script');script.src='./blender-core.js';
+    script.onload=resolve;script.onerror=()=>reject(new Error('Blender engine script could not load.'));
+    document.head.append(script);
+  }),30000);
+  const module=await startupStep('Loading engine and restoring projects',()=>createBlenderCore({canvas,
+    preinitializedWebGPUDevice:device,noInitialRun:true,browserLowResource:tabletMode,
+    monitorRunDependencies:count=>{
+      startup.remainingDependencies=count;
+      const now=performance.now();
+      // The package has thousands of files. Avoid synchronous storage/DOM work
+      // for every dependency while the filesystem is being populated.
+      if (count===0 || now-lastDependencyRefresh>500) {lastDependencyRefresh=now;refreshStartup();}
+    },
     print:log,printErr:log,
     onAbort:fail,onExit:code=>{document.body.dataset.exit=String(code);}
-  });
+  }));
   window.blenderEditor=module;
+  refreshStartup();
+  window.blenderDeviceReport={
+    ...window.blenderDeviceReport,
+    secureContext:isSecureContext,crossOriginIsolated,standalone:matchMedia('(display-mode: standalone)').matches,
+    devicePixelRatio,features:[...device.features],limits:{maxBufferSize:device.limits.maxBufferSize,
+      maxTextureDimension2D:device.limits.maxTextureDimension2D,
+      maxStorageBufferBindingSize:device.limits.maxStorageBufferBindingSize},
+    userAgent:navigator.userAgent
+  };
   document.body.dataset.ready='true';
-  await module.runBlenderMain(window.editorArguments || ['--offline-mode','--disable-autoexec','--threads','2',
-                   '--python','/browser_startup.py']);
+  await startupStep('Starting native Blender',()=>module.runBlenderMain(window.editorArguments ||
+    ['--offline-mode','--disable-autoexec','--threads',tabletMode ? '1' : '2','--python','/browser_startup.py']));
+  if (document.body.dataset.error) return;
   canvas.focus({preventScroll:true});
-  status.hidden=true;
+  status.hidden=document.body.dataset.rendered==='true';
+  if (!status.hidden) startupPhase('Preparing Blender’s viewport');
   document.body.dataset.started='true';
+  if (navigator.storage?.persist) {
+    navigator.storage.persist().then(retained=>{
+      document.body.dataset.persistentStorage=String(retained);
+      if (!retained) document.getElementById('file-message').textContent='Offline ready. Export backups; browser storage may be cleared.';
+    }).catch(()=>{});
+  }
 })().catch(fail);
 </script>
 <script src="editor_files.js"></script>
+<script src="editor_input.js"></script>
 </body>
 </html>
