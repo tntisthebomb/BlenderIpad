@@ -223,7 +223,8 @@ function waitForInstallation(registration) {
   if (!adapter) throw new Error('No WebGPU graphics adapter is available.');
   window.blenderDeviceReport.adapterFeatures=[...adapter.features];
   if (!adapter.features.has('depth32float-stencil8')) throw new Error('This graphics device lacks the depth/stencil format required by this build.');
-  const features=['float32-filterable','depth32float-stencil8'].filter(feature=>adapter.features.has(feature));
+  if (!adapter.features.has('indirect-first-instance')) throw new Error('This graphics device lacks indirect drawing with first-instance offsets required by this build.');
+  const features=['float32-filterable','depth32float-stencil8','indirect-first-instance'].filter(feature=>adapter.features.has(feature));
   // WebGPU defaults are the portable minimum, not the adapter's actual
   // capabilities. Record the adapter's limits separately from those requested.
   const requiredLimits={},adapterLimits={};

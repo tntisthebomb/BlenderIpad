@@ -90,7 +90,7 @@ void WebGPUFrameBuffer::execute_pending_clears()
    * to "the next draw's pass" is wrong for clear-only framebuffers: engines
    * (workbench resources_.clear_fb) clear via a dedicated fb that aliases the
    * render targets but never receives draws, so a deferred clear never runs. */
-  bool any_pending = depth_clear_pending_;
+  bool any_pending = depth_clear_pending_ || stencil_clear_pending_;
   for (int i = 0; i < GPU_FB_MAX_COLOR_ATTACHMENT && !any_pending; i++) {
     any_pending |= color_clear_pending_[i];
   }
@@ -109,7 +109,7 @@ void WebGPUFrameBuffer::execute_pending_clears()
 void WebGPUFrameBuffer::clear(GPUFrameBufferBits buffers,
                               const double4 clear_color,
                               float clear_depth,
-                              uint /*clear_stencil*/)
+                              uint clear_stencil)
 {
   if (buffers & GPU_COLOR_BIT) {
     for (int i = 0; i < GPU_FB_MAX_COLOR_ATTACHMENT; i++) {
@@ -120,6 +120,10 @@ void WebGPUFrameBuffer::clear(GPUFrameBufferBits buffers,
   if (buffers & GPU_DEPTH_BIT) {
     depth_clear_pending_ = true;
     clear_depth_ = clear_depth;
+  }
+  if (buffers & GPU_STENCIL_BIT) {
+    stencil_clear_pending_ = true;
+    clear_stencil_ = clear_stencil;
   }
   execute_pending_clears();
 }
@@ -284,15 +288,16 @@ WGPURenderPassEncoder WebGPUFrameBuffer::begin_render_pass(WGPUCommandEncoder en
           case WGPUTextureFormat_Depth24PlusStencil8:
           case WGPUTextureFormat_Depth32FloatStencil8:
             /* Stencil aspect present: WebGPU requires its ops to be set too. */
-            depth_att.stencilLoadOp = depth_clear_pending_ ? WGPULoadOp_Clear : WGPULoadOp_Load;
+            depth_att.stencilLoadOp = stencil_clear_pending_ ? WGPULoadOp_Clear : WGPULoadOp_Load;
             depth_att.stencilStoreOp = WGPUStoreOp_Store;
-            depth_att.stencilClearValue = 0;
+            depth_att.stencilClearValue = clear_stencil_;
             break;
           default:
             break;
         }
         has_depth = true;
         depth_clear_pending_ = false;
+        stencil_clear_pending_ = false;
       }
     }
   }

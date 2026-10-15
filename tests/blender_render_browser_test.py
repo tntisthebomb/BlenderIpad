@@ -30,6 +30,10 @@ try:
             '--no-sandbox','--enable-unsafe-webgpu','--enable-features=Vulkan',
             '--use-angle=swiftshader','--enable-unsafe-swiftshader'])
         context=browser.new_context()
+        context.add_init_script('''const request=GPUAdapter.prototype.requestDevice;
+          GPUAdapter.prototype.requestDevice=async function(options){
+            const device=await request.call(this,options);window.renderTestFeatures=[...device.features];return device;
+          };''')
         page=context.new_page()
         errors=[]
         page.on('pageerror',lambda error:errors.append(str(error)))
@@ -41,7 +45,7 @@ try:
         page.goto(f'http://127.0.0.1:{server.server_port}/core.html')
         page.wait_for_function('document.body.dataset.ready || document.body.dataset.error',timeout=300000)
         assert page.locator('body').get_attribute('data-ready')=='true',page.locator('body').get_attribute('data-error')
-        assert page.evaluate('crossOriginIsolated')
+        assert page.evaluate('crossOriginIsolated && renderTestFeatures.includes("indirect-first-instance")')
         page.evaluate('source=>blenderCore.FS.writeFile("/gpu_test.py",source)',(ROOT/'tests/blender_render_scene.py').read_text())
         context.set_offline(True)
         page.evaluate("""engine=>{setTimeout(()=>{

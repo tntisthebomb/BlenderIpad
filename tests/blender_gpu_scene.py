@@ -252,6 +252,25 @@ for label,options,layers in [
     assert all(math.isclose(a,b,rel_tol=0,abs_tol=1/255) for a,b in zip(actual,values)),label
     checks[label]=True
 
+# Depth and stencil are independent aspects. Keep these resources alive so
+# the browser harness can verify both aspects directly after native execution.
+stencil_targets=[]
+for width,stencil_value,depth_value,clear_depth,clear_stencil in (
+    (17,90,0.25,0.75,None),
+    (19,165,0.25,None,60),
+    (21,123,0.5,None,None),
+):
+    depth_texture=gpu.types.GPUTexture((width,13),format='DEPTH32F_STENCIL8')
+    framebuffer=gpu.types.GPUFrameBuffer(depth_slot=depth_texture)
+    with framebuffer.bind():
+        framebuffer.clear(depth=depth_value,stencil=stencil_value)
+        if clear_depth is not None:
+            framebuffer.clear(depth=clear_depth)
+        if clear_stencil is not None:
+            framebuffer.clear(stencil=clear_stencil)
+    stencil_targets.append((depth_texture,framebuffer))
+checks['depth_stencil_clear']=True
+
 offscreen=gpu.types.GPUOffScreen(32,32,format='RGBA8')
 with offscreen.bind():
     framebuffer=gpu.state.active_framebuffer_get()

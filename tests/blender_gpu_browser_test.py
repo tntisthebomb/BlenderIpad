@@ -26,7 +26,14 @@ try:
             '--no-sandbox','--enable-unsafe-webgpu','--enable-features=Vulkan',
             '--use-angle=swiftshader','--enable-unsafe-swiftshader'])
         context=browser.new_context()
-        context.add_init_script('''const request=GPUAdapter.prototype.requestDevice;
+        context.add_init_script('''window.nativeDepthTargets=[];
+          const createTexture=GPUDevice.prototype.createTexture;
+          GPUDevice.prototype.createTexture=function(desc){
+            const texture=createTexture.call(this,desc);
+            if(texture.format==='depth32float-stencil8'&&texture.height===13&&[17,19,21].includes(texture.width))nativeDepthTargets.push(texture);
+            return texture;
+          };
+          const request=GPUAdapter.prototype.requestDevice;
           GPUAdapter.prototype.requestDevice=function(options={}) {
             return request.call(this,{...options,requiredFeatures:
               [...(options.requiredFeatures || [])].filter(feature=>feature!=='float32-filterable')}).then(device=>{window.nativeTestDevice=device;return device;});
@@ -56,7 +63,30 @@ try:
                                  'switch_fallthrough':True,'volume_query':True,
                                  'atomic_image_coherence':True,'buffered_image_coherence':True,'float32_nearest_sampling':True,'shader_lifetime_cache':True,
                                  'array_layers':True,'cube_faces':True,'builtin_shader_triangle':True,
-                                 'font_storage_shader':True},checks
+                                 'font_storage_shader':True,'depth_stencil_clear':True},checks
+        aspect_checks=page.evaluate('''async()=>{
+          const device=nativeTestDevice,results=[];
+          for(const texture of nativeDepthTargets){
+            const expected={17:[90,0.75],19:[60,0.25],21:[123,0.5]}[texture.width];
+            for(const [aspect,index,bytes] of [['stencil-only',0,1],['depth-only',1,4]]){
+              device.pushErrorScope('validation');
+              const buffer=device.createBuffer({size:256*13,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+              const encoder=device.createCommandEncoder();
+              encoder.copyTextureToBuffer({texture,aspect},{buffer,bytesPerRow:256,rowsPerImage:13},[texture.width,13,1]);
+              device.queue.submit([encoder.finish()]);await buffer.mapAsync(GPUMapMode.READ);
+              const data=new DataView(buffer.getMappedRange());let valid=true;
+              for(let y=0;y<13;y++)for(let x=0;x<texture.width;x++){
+                const offset=y*256+x*bytes,value=bytes===1?data.getUint8(offset):data.getFloat32(offset,true);
+                valid&&=value===expected[index];
+              }
+              buffer.unmap();buffer.destroy();
+              const error=await device.popErrorScope();
+              results.push({width:texture.width,aspect,valid,error:error?.message});
+            }
+          }
+          return results;
+        }''')
+        assert len(aspect_checks)==6 and all(item['valid'] and not item.get('error') for item in aspect_checks),aspect_checks
         assert not errors,errors
         diagnostics.write(json.dumps(page.evaluate('({stdout:coreOutput,stderr:coreErrors})'),indent=2))
         diagnostics.close()

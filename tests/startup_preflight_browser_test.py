@@ -15,9 +15,9 @@ class Handler(SimpleHTTPRequestHandler):
 
 GPU='''
 const limits={maxStorageTexturesPerShaderStage:4,maxStorageBuffersPerShaderStage:8,maxBufferSize:1073741824};
-const device={features:new Set(['depth32float-stencil8']),limits,addEventListener(){},lost:new Promise(()=>{})};
+const device={features:new Set(['depth32float-stencil8','indirect-first-instance']),limits,addEventListener(){},lost:new Promise(()=>{})};
 Object.defineProperty(navigator,'gpu',{value:{requestAdapter:async()=>({features:device.features,limits,
-  requestDevice:async()=>{window.deviceRequests=(window.deviceRequests||0)+1;return device;}})}});
+  requestDevice:async options=>{window.requestedFeatures=options.requiredFeatures;window.deviceRequests=(window.deviceRequests||0)+1;return device;}})}});
 Object.defineProperty(navigator,'platform',{get:()=> 'MacIntel'});
 Object.defineProperty(navigator,'maxTouchPoints',{get:()=>5});
 Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw new Error('Clipboard denied fixture')}}});
@@ -71,6 +71,7 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-preflight-') as direct
             # First install isolation reload carries exactly one explicit launch.
             page.wait_for_function('document.body.dataset.started',timeout=30000)
             assert page.evaluate('crossOriginIsolated')
+            assert page.evaluate('requestedFeatures.includes("indirect-first-instance")')
             assert page.evaluate('fixtureOptions.lowResource') is True
             args=page.evaluate('fixtureOptions.args')
             assert args[args.index('--threads')+1]=='1',args
@@ -82,6 +83,15 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-preflight-') as direct
             assert not page.evaluate('window.blenderEditor'), 'A reload must not automatically restart the heavy engine'
             assert page.evaluate('blenderDeviceReport.previousAttempt.phase')=='Viewport presented'
             assert not errors,errors
-            context.close();browser.close()
+            context.close()
+            unsupported=browser.new_context(has_touch=True)
+            unsupported.add_init_script(GPU.replace("'depth32float-stencil8','indirect-first-instance'", "'depth32float-stencil8'"))
+            page=unsupported.new_page()
+            page.goto(origin+'/')
+            page.locator('#start-editor').click()
+            page.wait_for_function('document.body.dataset.error',timeout=30000)
+            assert 'indirect drawing' in page.locator('body').inner_text()
+            assert not page.evaluate('window.deviceRequests || window.blenderEditor')
+            unsupported.close();browser.close()
     finally:server.shutdown();server.server_close()
 print('PASS: engine-free preflight, selectable/downloadable report, no GPU device, iPad explicit start, bounded viewport and no restart loop (infrastructure fixtures only).')

@@ -30,6 +30,8 @@ class WebGPUFrameBuffer : public FrameBuffer {
   bool color_clear_pending_[GPU_FB_MAX_COLOR_ATTACHMENT] = {};
   double4 clear_color_[GPU_FB_MAX_COLOR_ATTACHMENT] = {};
   bool depth_clear_pending_ = false;
+  bool stencil_clear_pending_ = false;
+  uint clear_stencil_ = 0;
   float clear_depth_ = 1.0f;
 
   /* Attachment-less rendering (EEVEE shadow atlas / tag passes write only via
