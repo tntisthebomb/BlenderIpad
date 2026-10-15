@@ -58,18 +58,18 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    attempt=page.evaluate('blenderStartupStats.snapshot().attemptId')
    # This browser page cannot run its timer or save recovery records while
    # this synchronous task blocks. The other worker must save independently.
-   page.evaluate("window.probeSawCommit=false;setTimeout(()=>{const end=performance.now()+7000;while(performance.now()<end){if(Atomics.load(probeView,0))probeSawCommit=true;}},250)")
+   page.evaluate("window.probeSawCommit=false;window.probeFinished=false;setTimeout(()=>{const end=performance.now()+7000;while(performance.now()<end){if(Atomics.load(probeView,0))probeSawCommit=true;}probeFinished=true;},250)")
+   page.wait_for_function('probeFinished',timeout=15000)
+   assert page.evaluate('probeSawCommit'),'Worker did not durably save while the main event loop was blocked'
+   print('PASS: synchronous write flushed while main thread was blocked',flush=True)
+   # Apple WebKit can hold an exclusive file lock for the access handle.
+   # Close the writer before reading, exactly as manual-tab recovery does.
+   page.close()
    reader=context.new_page();reader.goto(origin+'/reader.html')
-   deadline=time.monotonic()+15;saved=None
-   while time.monotonic()<deadline:
-    saved=reader.evaluate('readRecovery()')
-    if saved and saved['maxHeartbeatGapMs']>=2000:break
-    reader.wait_for_timeout(250)
-   assert saved['attemptId']==attempt and saved['maxHeartbeatGapMs']>=2000,saved
+   saved=reader.evaluate('readRecovery()')
+   assert saved and saved['attemptId']==attempt and saved['maxHeartbeatGapMs']>=2000,saved
    assert saved['checkpoint']['phase']=='Preparing viewport fixture',saved
    assert 'last useful native breadcrumb' in saved['checkpoint']['lines'],saved
-   assert page.evaluate('probeSawCommit'),'Worker did not durably save while the main event loop was blocked'
-   page.close()
    # Simulate losing the page's local checkpoint too: the worker's durable
    # record must be sufficient for recovery without starting the engine.
    reader.evaluate('localStorage.removeItem("blender-startup-stats-last")');reader.close()

@@ -19,6 +19,7 @@ jobs:
           .cache/browser-tests/bin/python -m pip install playwright==1.62.0
           .cache/browser-tests/bin/python -m playwright install webkit
       - name: Verify recorder recovery in WebKit without loading Blender
+        timeout-minutes: 3
         run: .cache/browser-tests/bin/python tests/startup_watchdog_browser_test.py --browser webkit
       - name: Preserve WebKit recovery evidence
         if: always()
