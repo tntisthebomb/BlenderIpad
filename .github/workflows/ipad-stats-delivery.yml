@@ -1,0 +1,36 @@
+name: Finalize verified Blender startup statistics download
+on:
+  push:
+    branches: [codex/ipad-stats-delivery]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Retrieve the seven-check accepted diagnostic runtime
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Blender-iPad-startup-stats-full
+          github-token: ${{ github.token }}
+          run-id: '38799565531'
+          path: work/accepted
+      - name: Verify all tested assets and correct final metadata hashes
+        run: python3 scripts/finalize_startup_diagnostic.py --input-dir work/accepted --output work/full --patch-output work/update
+      - name: Upload small update
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Blender-iPad-startup-stats-update
+          path: work/update/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload full replacement folder
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Blender-iPad-startup-stats-full
+          path: work/full/*
+          if-no-files-found: error
+          retention-days: 30

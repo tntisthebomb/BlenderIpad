@@ -26,14 +26,14 @@ def main():
     if before!=assets():raise SystemExit('Runtime changed during its acceptance tests.')
     for name,expected in manifest['nativeEngineAssets'].items():
         if digest(RUNTIME/name)!=expected:raise SystemExit('Native engine changed: '+name)
+    manifest['validation']='automated-frontend-checks-passed'
+    (RUNTIME/'delivery-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     proof={'profile':'experimental-startup-diagnostic','version':[5,2,2],
-        'checks':list(TESTS),'assets':before,
+        'checks':list(TESTS),'assets':assets(),
         'tests':{name:digest(ROOT/name) for name in TESTS},
         'nativeEngineSource':manifest['nativeEngineSource'],
         'frontendSource':manifest['frontendSource'],'physicalSafariAccepted':False}
     (RUNTIME/'editor-validation.json').write_text(json.dumps(proof,indent=2)+'\n')
-    manifest['validation']='automated-frontend-checks-passed'
-    (RUNTIME/'delivery-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     patch=ROOT/'work/startup-stats-update';patch.mkdir(parents=True,exist_ok=False)
     for name in manifest['overlayFiles']:shutil.copyfile(RUNTIME/name,patch/name)
     for name in ('README.txt','delivery-manifest.json','editor-validation.json','LICENSE.txt',
