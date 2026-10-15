@@ -203,6 +203,7 @@ try:
             if options.tablet:
                 # Portrait now renders below CSS resolution. Native region
                 # bounds and touch selection must follow the backing scale.
+                page.wait_for_function('canvas.clientHeight>canvas.clientWidth && canvas.height===800 && canvas.width<canvas.clientWidth',timeout=30000)
                 page.wait_for_function("""()=>{const r=JSON.parse(blenderEditor.FS.readFile('/editor-state.json',{encoding:'utf8'})).view.region;
                   return r[0]+r[2]<=canvas.width+2 && r[1]+r[3]<=canvas.height+2;}""",timeout=30000)
                 page.evaluate("blenderEditor.FS.writeFile('/editor-command.json',JSON.stringify({operation:'deselect',path:'/projects/keyboard-scene.blend'}))")
