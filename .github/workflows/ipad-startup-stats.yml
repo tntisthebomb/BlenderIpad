@@ -1,7 +1,7 @@
 name: Validate and package full Blender startup statistics
 on:
   push:
-    branches: [codex/ipad-startup-stats]
+    branches: [codex/ipad-startup-stats, codex/ipad-wasm-streaming]
   workflow_dispatch:
 permissions:
   contents: read

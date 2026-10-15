@@ -1,7 +1,9 @@
 Blender iPad startup statistics diagnostic
 
-This adds a screenshot panel to the full Blender loader. It does not fix the
-previous freezing or claim successful iPad acceptance. The native engine files
+This adds a screenshot panel to the full Blender loader and corrects the WASM
+response MIME type for local servers, including WorldWideWeb. Safari can then
+use streaming compilation instead of buffering the whole binary as a fallback.
+This does not establish that the previous freezing is fixed. The native engine files
 are byte-for-byte identical to the earlier 893f616 build.
 
 SMALL UPDATE ZIP (for the Blender folder you already have):

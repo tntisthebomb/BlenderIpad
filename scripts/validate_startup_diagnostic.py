@@ -9,7 +9,7 @@ import sys
 
 ROOT=Path(__file__).resolve().parents[1]
 RUNTIME=ROOT/'.cache/blender-webgpu-browser'
-TESTS=('tests/startup_stats_browser_test.py','tests/startup_preflight_browser_test.py',
+TESTS=('tests/wasm_mime_browser_test.py','tests/startup_stats_browser_test.py','tests/startup_preflight_browser_test.py',
        'tests/editor_install_failure_test.py','tests/editor_files_browser_test.py',
        'tests/offline_shell_browser_test.py','tests/blender_tablet_startup_browser_test.py',
        'tests/blender_editor_browser_test.py')

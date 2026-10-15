@@ -11,6 +11,9 @@ from PIL import Image
 
 ROOT=Path(__file__).resolve().parents[1]
 class Handler(SimpleHTTPRequestHandler):
+    # Model the incorrect WASM MIME header seen on the physical iPad. The
+    # exact original type was not reported. Exercise real engine streaming.
+    extensions_map={**SimpleHTTPRequestHandler.extensions_map,'.wasm':'application/octet-stream'}
     def log_message(self,*args):pass
 server=ThreadingHTTPServer(('127.0.0.1',0),partial(Handler,directory=str(ROOT/'.cache/blender-webgpu-browser')))
 Thread(target=server.serve_forever,daemon=True).start()
@@ -52,6 +55,7 @@ try:
         assert stats['shaderModules']>0 and stats['renderPipelines']>0,stats
         assert stats['texturesCreated']>0 and stats['buffersCreated']>0,stats
         assert stats['phase']=='Viewport presented',stats
+        assert stats['wasmMode']=='streaming' and stats['wasmMimeType']=='application/wasm',stats
         assert len(workers)==4,workers
         state=page.evaluate('''({report:blenderDeviceReport,ready:blenderEditor.projectStorageReady,
           wasmMemoryBytes:blenderEditor.getBlenderMemoryBytes(),width:canvas.width,height:canvas.height})''')
@@ -63,6 +67,7 @@ try:
         picture=Image.open(screenshot).convert('RGB')
         assert len(picture.getcolors(picture.width*picture.height))>64,'Blank tablet editor'
         assert not errors,errors
+        assert not page.evaluate('editorOutput.some(line=>line.includes("wasm streaming compile failed") || line.includes("falling back to ArrayBuffer instantiation"))'), 'Real engine fell back to buffering its WASM'
         (ROOT/'.cache/blender-tablet-startup-report.json').write_text(json.dumps(state,indent=2)+'\n')
         page.reload()
         page.wait_for_selector('#start-editor',state='visible')

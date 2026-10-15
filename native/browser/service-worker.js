@@ -31,6 +31,12 @@ self.addEventListener('fetch',event=>{
     const response=cached || await fetch(request);
     if (!response.ok || response.type==='opaque') return response;
     const headers=new Headers(response.headers);
+    // Local file servers may label WASM as application/octet-stream. Streaming
+    // compilation requires this exact media type, even for cached responses.
+    // Fix the response metadata without buffering or changing the binary body.
+    if (new URL(request.url).pathname.endsWith('.wasm')) {
+      headers.set('Content-Type','application/wasm');
+    }
     headers.set('Cross-Origin-Opener-Policy','same-origin');
     headers.set('Cross-Origin-Embedder-Policy','require-corp');
     headers.set('Cross-Origin-Resource-Policy','same-origin');

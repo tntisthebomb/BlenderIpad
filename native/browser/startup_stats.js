@@ -4,8 +4,9 @@
   'use strict';
   const key='blender-startup-stats-last';
   let began=performance.now();
-  const state={version:'startup-stats-v1',active:false,phase:'Waiting to start',phaseSeconds:0,
+  const state={version:'startup-stats-v2',active:false,phase:'Waiting to start',phaseSeconds:0,
     elapsedSeconds:0,operation:'None yet',label:'',wasmMemoryBytes:null,dependencies:null,
+    wasmMode:'not started',wasmMimeType:null,
     shaderModules:0,renderPipelines:0,computePipelines:0,texturesCreated:0,buffersCreated:0,
     bufferBytesRequested:0,lines:[],updatedAt:null};
   let previous=null,memory=null,lastSaved=0,compact=false;
@@ -22,13 +23,14 @@
     state.elapsedSeconds=Math.round((performance.now()-began)/1000);
     try{state.wasmMemoryBytes=memory?.buffer.byteLength ?? window.blenderEditor?.getBlenderMemoryBytes?.() ?? state.wasmMemoryBytes;}catch{}
     const view=!state.active&&previous ? previous : state;
-    title.textContent=!state.active&&previous ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v1';
+    title.textContent=!state.active&&previous ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v2';
     const mib=value=>(value/1048576).toFixed(1)+' MiB';
     text.textContent=[
       'Step: '+view.phase,
       'Elapsed: '+view.elapsedSeconds+' s · in step: '+Math.max(0,view.elapsedSeconds-view.phaseSeconds)+' s',
       'Last operation: '+view.operation+(view.label?' · '+view.label:''),
       'WASM memory: '+(view.wasmMemoryBytes===null?'not available yet':mib(view.wasmMemoryBytes))+' · total iPad RAM use unavailable',
+      'WASM loader: '+(view.wasmMode??'not recorded')+' · MIME: '+(view.wasmMimeType??'not recorded'),
       'Dependencies left: '+(view.dependencies??'not reported'),
       'Creation requests: '+view.shaderModules+' shaders · '+view.renderPipelines+' render pipelines · '+view.computePipelines+' compute pipelines',
       'GPU resource requests: '+view.texturesCreated+' textures · '+view.buffersCreated+' buffers',
@@ -53,6 +55,12 @@
   for(const name of ['instantiateStreaming','instantiate']){
     const original=WebAssembly[name];if(typeof original!=='function')continue;
     WebAssembly[name]=function(...args){
+      state.wasmMode=name==='instantiateStreaming'?'streaming':(args[0] instanceof WebAssembly.Module?'compiled module':'buffered');
+      if(name==='instantiateStreaming'){
+        Promise.resolve(args[0]).then(response=>{
+          state.wasmMimeType=response?.headers?.get?.('Content-Type')??null;update(true,true);
+        },()=>{});
+      }
       findMemory(args[1]);operation('Compiling / instantiating WebAssembly');
       return Reflect.apply(original,this,args);
     };
