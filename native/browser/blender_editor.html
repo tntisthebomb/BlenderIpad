@@ -48,6 +48,14 @@ const launchKey='blender-explicit-launch:'+location.pathname;
 const startup={phase:'Checking browser',stages:[],remainingDependencies:null};
 const startupTime=performance.now();
 let lastDependencyRefresh=0;
+let launchAttemptActive=false;
+let graphicsDevice=null;
+function boundedFailure(message) {
+  // WebKit puts the Metal compiler's explanation AFTER the generated source.
+  // Retain the end as well as the heading without persisting megabytes of code.
+  const text=String(message);
+  return text.length<=16000 ? text : text.slice(0,2000)+'\n[generated source omitted]\n'+text.slice(-14000);
+}
 function startupPhase(phase) {
   startup.phase=phase;
   startup.stages.push({phase,seconds:Math.round((performance.now()-startupTime)/1000)});
@@ -62,8 +70,15 @@ function refreshStartup() {
   document.getElementById('startup-details').textContent=JSON.stringify(window.blenderDeviceReport,null,2);
   // A browser kill cannot run cleanup. Preserve only a small phase checkpoint;
   // never restart heavy work automatically after such a reload.
-  try {sessionStorage.setItem('blender-startup-last',JSON.stringify({phase:startup.phase,memoryBytes,
-    seconds:Math.round((performance.now()-startupTime)/1000)}));} catch {}
+  if (launchAttemptActive) {
+    const checkpoint=JSON.stringify({phase:startup.phase,memoryBytes,
+      seconds:Math.round((performance.now()-startupTime)/1000),
+      ...(startup.error ? {error:startup.error} : {})});
+    try {sessionStorage.setItem('blender-startup-last',checkpoint);} catch {}
+    // Survive loss of Safari's tab process. The idle screen must not overwrite
+    // the previous launch's last useful checkpoint.
+    try {localStorage.setItem('blender-startup-last',checkpoint);} catch {}
+  }
 }
 async function startupStep(phase,operation,timeout=180000) {
   startupPhase(phase);let timer;
@@ -88,7 +103,7 @@ const canvas=document.getElementById('canvas');
 const status=document.getElementById('status');
 const statusMessage=document.getElementById('status-message');
 function fail(error,kind) {
-  const message=String(error);
+  const message=boundedFailure(error);
   // Keep the recovery screen stable when an already-failed device reports
   // further errors from queued native draws. Device loss is the useful cause.
   if (document.body.dataset.deviceLost ||
@@ -98,12 +113,18 @@ function fail(error,kind) {
   startup.error=message;refreshStartup();
   document.body.dataset.error=message;
   status.hidden=false;
-  statusMessage.textContent=message;
+  const compilerError=message.lastIndexOf(' - error ');
+  const explanation=compilerError>=0 ? message.slice(compilerError+9) : message;
+  statusMessage.textContent=explanation.length>1600 ? explanation.slice(0,800)+' … '+explanation.slice(-800) : explanation;
   document.getElementById('retry-startup').hidden=false;
   document.getElementById('error-device-report').hidden=false;
   document.getElementById('recover-files').hidden=false;
   try {window.blenderEditor?.pauseBlenderLoop();}
   catch (pauseError) {console.error('Unable to pause failed Blender runtime',pauseError);}
+  // Pausing the animation loop alone leaves queued GPU work and compilation
+  // alive. Retire the failed device while keeping project recovery available.
+  const failedDevice=graphicsDevice;graphicsDevice=null;
+  try {failedDevice?.destroy();} catch {}
 }
 document.getElementById('retry-startup').addEventListener('click',()=>location.reload());
 document.getElementById('recover-files').addEventListener('click',()=>{
@@ -167,7 +188,14 @@ function waitForInstallation(registration) {
   window.blenderDeviceReport={secureContext:isSecureContext,crossOriginIsolated,
     standalone:matchMedia('(display-mode: standalone)').matches,devicePixelRatio,
     userAgent:navigator.userAgent,webGPU:!!navigator.gpu};
-  try {window.blenderDeviceReport.previousAttempt=JSON.parse(sessionStorage.getItem('blender-startup-last') || 'null');} catch {}
+  for (const storage of ['sessionStorage','localStorage']) {
+    try {
+      const previous=JSON.parse(window[storage].getItem('blender-startup-last') || 'null');
+      if (previous && !['Checking browser','Ready for device check — Blender has not loaded'].includes(previous.phase)) {
+        window.blenderDeviceReport.previousAttempt=previous;break;
+      }
+    } catch {}
+  }
   refreshStartup();
   if (!isSecureContext) {
     const address=new URL(location.href);
@@ -195,6 +223,7 @@ function waitForInstallation(registration) {
       },{once:true}));
     }
   }
+  launchAttemptActive=true;
   startupPhase('Installing Blender for offline use');
   const registration=await navigator.serviceWorker.register('./service-worker.js');
   await waitForInstallation(registration);
@@ -245,8 +274,12 @@ function waitForInstallation(registration) {
   window.blenderDeviceReport.adapterLimits=adapterLimits;
   window.blenderDeviceReport.requestedLimits=requiredLimits;
   const device=await startupStep('Creating graphics device',()=>adapter.requestDevice({requiredFeatures:features,requiredLimits}),30000);
-  device.addEventListener('uncapturederror',event=>fail(event.error.message));
-  device.lost.then(info=>fail('Graphics device lost: '+info.message,'device-loss'));
+  graphicsDevice=device;
+  device.addEventListener('uncapturederror',event=>{event.preventDefault();fail(event.error.message);});
+  device.lost.then(info=>{
+    if (info.reason==='destroyed' && document.body.dataset.error) return;
+    fail('Graphics device lost: '+info.message,'device-loss');
+  });
   resizeCanvas();
   await startupStep('Loading engine script',()=>new Promise((resolve,reject)=>{
     const script=document.createElement('script');script.src='./blender-core.js';
@@ -266,6 +299,7 @@ function waitForInstallation(registration) {
     onAbort:fail,onExit:code=>{document.body.dataset.exit=String(code);}
   }));
   window.blenderEditor=module;
+  if (document.body.dataset.error) {module.pauseBlenderLoop();return;}
   refreshStartup();
   window.blenderDeviceReport={
     ...window.blenderDeviceReport,

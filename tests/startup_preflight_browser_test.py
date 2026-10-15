@@ -15,7 +15,9 @@ class Handler(SimpleHTTPRequestHandler):
 
 GPU='''
 const limits={maxStorageTexturesPerShaderStage:4,maxStorageBuffersPerShaderStage:8,maxBufferSize:1073741824};
-const device={features:new Set(['depth32float-stencil8','indirect-first-instance']),limits,addEventListener(){},lost:new Promise(()=>{})};
+let resolveLost;const lost=new Promise(resolve=>resolveLost=resolve);
+const device=Object.assign(new EventTarget(),{features:new Set(['depth32float-stencil8','indirect-first-instance']),limits,lost,destroy(){window.destroyedDevices=(window.destroyedDevices||0)+1;resolveLost({reason:'destroyed',message:'retired'});}});
+window.triggerGPUFailure=message=>{const event=new Event('uncapturederror',{cancelable:true});event.error={message};device.dispatchEvent(event);};
 Object.defineProperty(navigator,'gpu',{value:{requestAdapter:async()=>({features:device.features,limits,
   requestDevice:async options=>{window.requestedFeatures=options.requiredFeatures;window.deviceRequests=(window.deviceRequests||0)+1;return device;}})}});
 Object.defineProperty(navigator,'platform',{get:()=> 'MacIntel'});
@@ -23,7 +25,7 @@ Object.defineProperty(navigator,'maxTouchPoints',{get:()=>5});
 Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw new Error('Clipboard denied fixture')}}});
 '''
 ENGINE='''window.createBlenderCore=async options=>({
-  getBlenderMemoryBytes:()=>134217728,pauseBlenderLoop(){},resumeBlenderLoop(){},
+  getBlenderMemoryBytes:()=>134217728,pauseBlenderLoop(){window.pausedLoops=(window.pausedLoops||0)+1;},resumeBlenderLoop(){},
   runBlenderMain:async args=>{window.fixtureOptions={lowResource:options.browserLowResource,args};options.print('WGPU_FIRST_CONTENT');}
 });'''
 with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-preflight-') as directory:
@@ -92,6 +94,32 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-preflight-') as direct
             page.wait_for_function('document.body.dataset.error',timeout=30000)
             assert 'indirect drawing' in page.locator('body').inner_text()
             assert not page.evaluate('window.deviceRequests || window.blenderEditor')
-            unsupported.close();browser.close()
+            unsupported.close()
+            failure=browser.new_context(has_touch=True)
+            failure.add_init_script(GPU)
+            page=failure.new_page();page.goto(origin+'/')
+            page.locator('#start-editor').click()
+            page.wait_for_function('document.body.dataset.started',timeout=30000)
+            # WebKit appends the useful compiler reason after its entire MSL.
+            huge='Failed to compile the shader source, generated metal: '+('source '*8000)+' - error program_source:42: invalid test shader'
+            page.evaluate('message=>triggerGPUFailure(message)',huge)
+            page.wait_for_function('window.destroyedDevices===1')
+            assert page.evaluate('window.pausedLoops')==1
+            assert page.locator('#status-message').inner_text()=='program_source:42: invalid test shader'
+            assert 'invalid test shader' in page.evaluate('blenderDeviceReport.startup.error')
+            assert len(page.evaluate('blenderDeviceReport.startup.error'))<=16100
+            assert 'Graphics device lost' not in page.locator('#status-message').inner_text(), 'Intentional destruction must preserve original error'
+            # Simulate loss of the tab's session storage; durable checkpoints
+            # remain readable in an idle tab without launching Blender again.
+            page.evaluate('sessionStorage.clear()')
+            fresh=failure.new_page();fresh.goto(origin+'/')
+            fresh.wait_for_selector('#start-editor',state='visible')
+            assert 'invalid test shader' in fresh.evaluate('blenderDeviceReport.previousAttempt.error')
+            assert not fresh.evaluate('window.blenderEditor || window.deviceRequests')
+            fresh.goto(origin+'/ipad-startup.html')
+            recovered=json.loads(fresh.locator('#report').input_value())
+            assert 'invalid test shader' in recovered['previousAttempts']['blender-startup-last']['error']
+            assert not fresh.evaluate('window.deviceRequests')
+            failure.close();browser.close()
     finally:server.shutdown();server.server_close()
 print('PASS: engine-free preflight, selectable/downloadable report, no GPU device, iPad explicit start, bounded viewport and no restart loop (infrastructure fixtures only).')

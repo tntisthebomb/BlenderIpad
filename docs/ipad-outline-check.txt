@@ -1,0 +1,30 @@
+Blender iPad outline shader check (not a Blender build)
+
+Keep the Blender engine's tabs closed. Do not clear Safari website data.
+
+Extract this small ZIP. Move ipad-shader-check.html into the existing Blender
+folder that WorldWideWeb serves (the folder containing index.html).
+Do not replace any existing engine files or change the selected server folder.
+
+Keep WorldWideWeb running and open Safari at:
+http://localhost:8080/ipad-shader-check.html
+
+Tap Check outline shader once. When finished, use Copy report or Download report
+and send the report in the chat. If the whole iPad slows down, close the tab.
+
+The page is self-contained and makes no engine requests. It creates one graphics
+device, compiles four small shader variants and destroys the device. It does
+not start Blender, access projects, register a worker or allocate scene textures.
+Its 30-second deadline does not automatically retry.
+
+The original fragment shader was captured from the exact delivered engine:
+source commit 893f6163652f5cde223f9781a61ef4931f4b3444
+artifact https://github.com/tntisthebomb/BlenderIpad/actions/runs/38705147615/artifacts/11958485469
+original shader SHA256 90ae17e1cdfbd88290bf1a7839ba5fc30dd4889ebb09bb9f6439efa414418dd2
+
+The other cases isolate unused sampler references and integer-load helper calls.
+Their successful compilation in Chromium and matching outline pixels do not
+establish that they compile on Safari. No full port completion is claimed.
+
+This HTML contains its own corresponding JavaScript and WGSL source.
+License: GPL-2.0-or-later; see LICENSE.

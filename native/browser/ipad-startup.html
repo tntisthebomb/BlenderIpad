@@ -31,7 +31,16 @@ const report={diagnostic:'ipad-preflight-v2',engineStarted:false,url:location.hr
   availableMemoryBytes:null,devicePixelRatio:window.devicePixelRatio,
   screen:{width:screen.width,height:screen.height},errors:[]};
 for(const key of ['blender-startup-last','blender-startup-check-last']) {
-  try {const saved=sessionStorage.getItem(key);if(saved) (report.previousAttempts ??= {})[key]=JSON.parse(saved);} catch {}
+  for(const storage of ['sessionStorage','localStorage']) {
+    try {
+      const saved=window[storage].getItem(key);
+      if(saved) {
+        const previous=JSON.parse(saved);
+        if(['Checking browser','Ready for device check — Blender has not loaded'].includes(previous.phase))continue;
+        (report.previousAttempts ??= {})[key]=previous;break;
+      }
+    } catch {}
+  }
 }
 const output=document.getElementById('report'),message=document.getElementById('message');
 function refresh(){output.value=JSON.stringify(report,null,2);}

@@ -1,0 +1,128 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Blender outline shader check</title>
+<style>
+body{margin:0;padding:24px;background:#252525;color:#eee;font:17px system-ui}
+main{max-width:800px;margin:auto}p{line-height:1.5}
+button{font:inherit;padding:12px;margin:6px 6px 6px 0;background:#454545;color:#fff;border:1px solid #888;border-radius:6px}
+textarea{box-sizing:border-box;width:100%;height:45vh;min-height:220px;background:#181818;color:#eee;padding:12px;font:13px monospace}
+</style>
+<main>
+<h1>Blender outline shader check</h1>
+<p>This checks the small outline shader seen in your error. It does not load Blender, access projects, install offline files, or render a scene.</p>
+<p id="message" role="status">Ready. Nothing has started.</p>
+<button id="check" type="button">Check outline shader</button>
+<button id="copy" type="button">Copy report</button>
+<button id="download" type="button">Download report</button>
+<p><label for="report">Report — you can also select and copy this text:</label></p>
+<textarea id="report" readonly spellcheck="false"></textarea>
+</main>
+<script id="shader-cases" type="application/json">[
+  {
+    "name": "original-893-outline",
+    "code": "diagnostic(off, derivative_uniformity);\ndiagnostic(off, subgroup_uniformity);\n\nvar<private> gpu_viewport_index_var : i32;\n\nvar<private> gpu_point_size_var : f32;\n\n@group(0u) @binding(128u) var object_id_buffer_sampler : sampler;\n\n@group(0u) @binding(0u) var object_id_buffer_image : texture_2d<u32>;\n\nstruct tint_symbol {\n  member_66_0 : vec4<f32>,\n  member_66_1 : vec4<f32>,\n  member_66_2 : vec4<f32>,\n}\n\nstruct tint_symbol_1 {\n  member_69_0 : vec2<f32>,\n  member_69_1 : vec2<f32>,\n  member_69_2 : vec4<f32>,\n  member_69_3 : vec4<f32>,\n  member_69_4 : f32,\n  member_69_5 : f32,\n  member_69_6 : f32,\n  member_69_7 : f32,\n  member_69_8 : array<tint_symbol, 4u>,\n  member_69_9 : vec4<f32>,\n  member_69_10 : i32,\n  member_69_11 : i32,\n  member_69_12 : f32,\n  member_69_13 : f32,\n  member_69_14 : f32,\n  member_69_15 : f32,\n  member_69_16 : f32,\n  member_69_17 : f32,\n  member_69_18 : f32,\n  member_69_19 : f32,\n  member_69_20 : f32,\n  member_69_21 : f32,\n  member_69_22 : i32,\n  member_69_23 : u32,\n  member_69_24 : f32,\n  member_69_25 : i32,\n  member_69_26 : vec4<f32>,\n}\n\nstruct S {\n  member_70_0 : tint_symbol_1,\n}\n\n@group(0u) @binding(1u) var<uniform> v : S;\n\nvar<private> frag_color : vec4<f32>;\n\nfn main_inner(gl_FragCoord : vec4<f32>) {\n  var v_1 : vec2<f32>;\n  var v_2 : vec3<f32>;\n  var v_3 : u32;\n  var v_4 : vec2<f32>;\n  var v_5 : vec4<u32>;\n  var v_6 : vec2<f32>;\n  var v_7 : vec2<f32>;\n  var v_8 : vec2<f32>;\n  var v_9 : vec2<f32>;\n  var v_10 : f32;\n  gpu_viewport_index_var = 0i;\n  gpu_point_size_var = 1.0f;\n  _ = object_id_buffer_sampler;\n  v_1 = (gl_FragCoord.xy / vec2<f32>(vec2<i32>(textureDimensions(object_id_buffer_image, 0i))));\n  let v_11 = v.member_70_0.member_69_1;\n  v_2 = (vec3<f32>(v_11.x, v_11.y, 0.0f) * v.member_70_0.member_69_20);\n  v_4 = v_1;\n  _ = object_id_buffer_sampler;\n  v_3 = v_12(object_id_buffer_image, &(v_4)).x;\n  v_6 = (v_1 + v_2.zy);\n  _ = object_id_buffer_sampler;\n  let v_13 = v_12(object_id_buffer_image, &(v_6)).x;\n  v_7 = (v_1 - v_2.zy);\n  _ = object_id_buffer_sampler;\n  let v_14 = v_12(object_id_buffer_image, &(v_7)).x;\n  v_8 = (v_1 + v_2.xz);\n  _ = object_id_buffer_sampler;\n  let v_15 = v_12(object_id_buffer_image, &(v_8)).x;\n  v_9 = (v_1 - v_2.xz);\n  _ = object_id_buffer_sampler;\n  v_5 = vec4<u32>(v_13, v_14, v_15, v_12(object_id_buffer_image, &(v_9)).x);\n  let v_16 = v_3;\n  v_10 = (1.0f - dot(select(vec4<f32>(), vec4<f32>(1.0f), (vec4<u32>(v_16, v_16, v_16, v_16) == v_5)), vec4<f32>(0.25f)));\n  frag_color = (v.member_70_0.member_69_2 * v_10);\n}\n\n@fragment\nfn main(@builtin(position) gl_FragCoord : vec4<f32>) -> @location(0u) vec4<f32> {\n  main_inner(gl_FragCoord);\n  return frag_color;\n}\n\nfn v_12(v_17 : texture_2d<u32>, v_18 : ptr<function, vec2<f32>>) -> vec4<u32> {\n  var v_19 : vec2<i32>;\n  var v_20 : vec2<i32>;\n  v_19 = vec2<i32>(textureDimensions(v_17, 0i));\n  v_20 = clamp(vec2<i32>(floor((*(v_18) * vec2<f32>(v_19)))), vec2<i32>(), (v_19 - vec2<i32>(1i)));\n  return textureLoad(v_17, v_20, 0i);\n}\n",
+    "sha256": "90ae17e1cdfbd88290bf1a7839ba5fc30dd4889ebb09bb9f6439efa414418dd2"
+  },
+  {
+    "name": "outline-without-dead-sampler",
+    "code": "diagnostic(off, derivative_uniformity);\ndiagnostic(off, subgroup_uniformity);\n\nvar<private> gpu_viewport_index_var : i32;\n\nvar<private> gpu_point_size_var : f32;\n\n\n@group(0u) @binding(0u) var object_id_buffer_image : texture_2d<u32>;\n\nstruct tint_symbol {\n  member_66_0 : vec4<f32>,\n  member_66_1 : vec4<f32>,\n  member_66_2 : vec4<f32>,\n}\n\nstruct tint_symbol_1 {\n  member_69_0 : vec2<f32>,\n  member_69_1 : vec2<f32>,\n  member_69_2 : vec4<f32>,\n  member_69_3 : vec4<f32>,\n  member_69_4 : f32,\n  member_69_5 : f32,\n  member_69_6 : f32,\n  member_69_7 : f32,\n  member_69_8 : array<tint_symbol, 4u>,\n  member_69_9 : vec4<f32>,\n  member_69_10 : i32,\n  member_69_11 : i32,\n  member_69_12 : f32,\n  member_69_13 : f32,\n  member_69_14 : f32,\n  member_69_15 : f32,\n  member_69_16 : f32,\n  member_69_17 : f32,\n  member_69_18 : f32,\n  member_69_19 : f32,\n  member_69_20 : f32,\n  member_69_21 : f32,\n  member_69_22 : i32,\n  member_69_23 : u32,\n  member_69_24 : f32,\n  member_69_25 : i32,\n  member_69_26 : vec4<f32>,\n}\n\nstruct S {\n  member_70_0 : tint_symbol_1,\n}\n\n@group(0u) @binding(1u) var<uniform> v : S;\n\nvar<private> frag_color : vec4<f32>;\n\nfn main_inner(gl_FragCoord : vec4<f32>) {\n  var v_1 : vec2<f32>;\n  var v_2 : vec3<f32>;\n  var v_3 : u32;\n  var v_4 : vec2<f32>;\n  var v_5 : vec4<u32>;\n  var v_6 : vec2<f32>;\n  var v_7 : vec2<f32>;\n  var v_8 : vec2<f32>;\n  var v_9 : vec2<f32>;\n  var v_10 : f32;\n  gpu_viewport_index_var = 0i;\n  gpu_point_size_var = 1.0f;\n  v_1 = (gl_FragCoord.xy / vec2<f32>(vec2<i32>(textureDimensions(object_id_buffer_image, 0i))));\n  let v_11 = v.member_70_0.member_69_1;\n  v_2 = (vec3<f32>(v_11.x, v_11.y, 0.0f) * v.member_70_0.member_69_20);\n  v_4 = v_1;\n  v_3 = v_12(object_id_buffer_image, &(v_4)).x;\n  v_6 = (v_1 + v_2.zy);\n  let v_13 = v_12(object_id_buffer_image, &(v_6)).x;\n  v_7 = (v_1 - v_2.zy);\n  let v_14 = v_12(object_id_buffer_image, &(v_7)).x;\n  v_8 = (v_1 + v_2.xz);\n  let v_15 = v_12(object_id_buffer_image, &(v_8)).x;\n  v_9 = (v_1 - v_2.xz);\n  v_5 = vec4<u32>(v_13, v_14, v_15, v_12(object_id_buffer_image, &(v_9)).x);\n  let v_16 = v_3;\n  v_10 = (1.0f - dot(select(vec4<f32>(), vec4<f32>(1.0f), (vec4<u32>(v_16, v_16, v_16, v_16) == v_5)), vec4<f32>(0.25f)));\n  frag_color = (v.member_70_0.member_69_2 * v_10);\n}\n\n@fragment\nfn main(@builtin(position) gl_FragCoord : vec4<f32>) -> @location(0u) vec4<f32> {\n  main_inner(gl_FragCoord);\n  return frag_color;\n}\n\nfn v_12(v_17 : texture_2d<u32>, v_18 : ptr<function, vec2<f32>>) -> vec4<u32> {\n  var v_19 : vec2<i32>;\n  var v_20 : vec2<i32>;\n  v_19 = vec2<i32>(textureDimensions(v_17, 0i));\n  v_20 = clamp(vec2<i32>(floor((*(v_18) * vec2<f32>(v_19)))), vec2<i32>(), (v_19 - vec2<i32>(1i)));\n  return textureLoad(v_17, v_20, 0i);\n}\n",
+    "sha256": "67358e097f5682a35ef74ba7296ce29503354175f1b1b3e0074ead232f7f4248"
+  },
+  {
+    "name": "outline-direct-loads",
+    "code": "diagnostic(off, derivative_uniformity);\ndiagnostic(off, subgroup_uniformity);\n\nvar<private> gpu_viewport_index_var : i32;\n\nvar<private> gpu_point_size_var : f32;\n\n@group(0u) @binding(128u) var object_id_buffer_sampler : sampler;\n\n@group(0u) @binding(0u) var object_id_buffer_image : texture_2d<u32>;\n\nstruct tint_symbol {\n  member_66_0 : vec4<f32>,\n  member_66_1 : vec4<f32>,\n  member_66_2 : vec4<f32>,\n}\n\nstruct tint_symbol_1 {\n  member_69_0 : vec2<f32>,\n  member_69_1 : vec2<f32>,\n  member_69_2 : vec4<f32>,\n  member_69_3 : vec4<f32>,\n  member_69_4 : f32,\n  member_69_5 : f32,\n  member_69_6 : f32,\n  member_69_7 : f32,\n  member_69_8 : array<tint_symbol, 4u>,\n  member_69_9 : vec4<f32>,\n  member_69_10 : i32,\n  member_69_11 : i32,\n  member_69_12 : f32,\n  member_69_13 : f32,\n  member_69_14 : f32,\n  member_69_15 : f32,\n  member_69_16 : f32,\n  member_69_17 : f32,\n  member_69_18 : f32,\n  member_69_19 : f32,\n  member_69_20 : f32,\n  member_69_21 : f32,\n  member_69_22 : i32,\n  member_69_23 : u32,\n  member_69_24 : f32,\n  member_69_25 : i32,\n  member_69_26 : vec4<f32>,\n}\n\nstruct S {\n  member_70_0 : tint_symbol_1,\n}\n\n@group(0u) @binding(1u) var<uniform> v : S;\n\nvar<private> frag_color : vec4<f32>;\n\nfn main_inner(gl_FragCoord : vec4<f32>) {\n  var v_1 : vec2<f32>;\n  var v_2 : vec3<f32>;\n  var v_3 : u32;\n  var v_4 : vec2<f32>;\n  var v_5 : vec4<u32>;\n  var v_6 : vec2<f32>;\n  var v_7 : vec2<f32>;\n  var v_8 : vec2<f32>;\n  var v_9 : vec2<f32>;\n  var v_10 : f32;\n  gpu_viewport_index_var = 0i;\n  gpu_point_size_var = 1.0f;\n  _ = object_id_buffer_sampler;\n  v_1 = (gl_FragCoord.xy / vec2<f32>(vec2<i32>(textureDimensions(object_id_buffer_image, 0i))));\n  let v_11 = v.member_70_0.member_69_1;\n  v_2 = (vec3<f32>(v_11.x, v_11.y, 0.0f) * v.member_70_0.member_69_20);\n  v_4 = v_1;\n  _ = object_id_buffer_sampler;\n  v_3 = textureLoad(object_id_buffer_image, clamp(vec2<i32>(floor(v_4 * vec2<f32>(textureDimensions(object_id_buffer_image, 0i)))), vec2<i32>(), vec2<i32>(textureDimensions(object_id_buffer_image, 0i)) - vec2<i32>(1i)), 0i).x;\n  v_6 = (v_1 + v_2.zy);\n  _ = object_id_buffer_sampler;\n  let v_13 = textureLoad(object_id_buffer_image, clamp(vec2<i32>(floor(v_6 * vec2<f32>(textureDimensions(object_id_buffer_image, 0i)))), vec2<i32>(), vec2<i32>(textureDimensions(object_id_buffer_image, 0i)) - vec2<i32>(1i)), 0i).x;\n  v_7 = (v_1 - v_2.zy);\n  _ = object_id_buffer_sampler;\n  let v_14 = textureLoad(object_id_buffer_image, clamp(vec2<i32>(floor(v_7 * vec2<f32>(textureDimensions(object_id_buffer_image, 0i)))), vec2<i32>(), vec2<i32>(textureDimensions(object_id_buffer_image, 0i)) - vec2<i32>(1i)), 0i).x;\n  v_8 = (v_1 + v_2.xz);\n  _ = object_id_buffer_sampler;\n  let v_15 = textureLoad(object_id_buffer_image, clamp(vec2<i32>(floor(v_8 * vec2<f32>(textureDimensions(object_id_buffer_image, 0i)))), vec2<i32>(), vec2<i32>(textureDimensions(object_id_buffer_image, 0i)) - vec2<i32>(1i)), 0i).x;\n  v_9 = (v_1 - v_2.xz);\n  _ = object_id_buffer_sampler;\n  v_5 = vec4<u32>(v_13, v_14, v_15, textureLoad(object_id_buffer_image, clamp(vec2<i32>(floor(v_9 * vec2<f32>(textureDimensions(object_id_buffer_image, 0i)))), vec2<i32>(), vec2<i32>(textureDimensions(object_id_buffer_image, 0i)) - vec2<i32>(1i)), 0i).x);\n  let v_16 = v_3;\n  v_10 = (1.0f - dot(select(vec4<f32>(), vec4<f32>(1.0f), (vec4<u32>(v_16, v_16, v_16, v_16) == v_5)), vec4<f32>(0.25f)));\n  frag_color = (v.member_70_0.member_69_2 * v_10);\n}\n\n@fragment\nfn main(@builtin(position) gl_FragCoord : vec4<f32>) -> @location(0u) vec4<f32> {\n  main_inner(gl_FragCoord);\n  return frag_color;\n}\n",
+    "sha256": "e17e35326b67047e8976010859c27ba265abe8dab345862d2ea3886a5fec01ac"
+  },
+  {
+    "name": "outline-direct-loads-without-dead-sampler",
+    "code": "diagnostic(off, derivative_uniformity);\ndiagnostic(off, subgroup_uniformity);\n\nvar<private> gpu_viewport_index_var : i32;\n\nvar<private> gpu_point_size_var : f32;\n\n\n@group(0u) @binding(0u) var object_id_buffer_image : texture_2d<u32>;\n\nstruct tint_symbol {\n  member_66_0 : vec4<f32>,\n  member_66_1 : vec4<f32>,\n  member_66_2 : vec4<f32>,\n}\n\nstruct tint_symbol_1 {\n  member_69_0 : vec2<f32>,\n  member_69_1 : vec2<f32>,\n  member_69_2 : vec4<f32>,\n  member_69_3 : vec4<f32>,\n  member_69_4 : f32,\n  member_69_5 : f32,\n  member_69_6 : f32,\n  member_69_7 : f32,\n  member_69_8 : array<tint_symbol, 4u>,\n  member_69_9 : vec4<f32>,\n  member_69_10 : i32,\n  member_69_11 : i32,\n  member_69_12 : f32,\n  member_69_13 : f32,\n  member_69_14 : f32,\n  member_69_15 : f32,\n  member_69_16 : f32,\n  member_69_17 : f32,\n  member_69_18 : f32,\n  member_69_19 : f32,\n  member_69_20 : f32,\n  member_69_21 : f32,\n  member_69_22 : i32,\n  member_69_23 : u32,\n  member_69_24 : f32,\n  member_69_25 : i32,\n  member_69_26 : vec4<f32>,\n}\n\nstruct S {\n  member_70_0 : tint_symbol_1,\n}\n\n@group(0u) @binding(1u) var<uniform> v : S;\n\nvar<private> frag_color : vec4<f32>;\n\nfn main_inner(gl_FragCoord : vec4<f32>) {\n  var v_1 : vec2<f32>;\n  var v_2 : vec3<f32>;\n  var v_3 : u32;\n  var v_4 : vec2<f32>;\n  var v_5 : vec4<u32>;\n  var v_6 : vec2<f32>;\n  var v_7 : vec2<f32>;\n  var v_8 : vec2<f32>;\n  var v_9 : vec2<f32>;\n  var v_10 : f32;\n  gpu_viewport_index_var = 0i;\n  gpu_point_size_var = 1.0f;\n  v_1 = (gl_FragCoord.xy / vec2<f32>(vec2<i32>(textureDimensions(object_id_buffer_image, 0i))));\n  let v_11 = v.member_70_0.member_69_1;\n  v_2 = (vec3<f32>(v_11.x, v_11.y, 0.0f) * v.member_70_0.member_69_20);\n  v_4 = v_1;\n  v_3 = textureLoad(object_id_buffer_image, clamp(vec2<i32>(floor(v_4 * vec2<f32>(textureDimensions(object_id_buffer_image, 0i)))), vec2<i32>(), vec2<i32>(textureDimensions(object_id_buffer_image, 0i)) - vec2<i32>(1i)), 0i).x;\n  v_6 = (v_1 + v_2.zy);\n  let v_13 = textureLoad(object_id_buffer_image, clamp(vec2<i32>(floor(v_6 * vec2<f32>(textureDimensions(object_id_buffer_image, 0i)))), vec2<i32>(), vec2<i32>(textureDimensions(object_id_buffer_image, 0i)) - vec2<i32>(1i)), 0i).x;\n  v_7 = (v_1 - v_2.zy);\n  let v_14 = textureLoad(object_id_buffer_image, clamp(vec2<i32>(floor(v_7 * vec2<f32>(textureDimensions(object_id_buffer_image, 0i)))), vec2<i32>(), vec2<i32>(textureDimensions(object_id_buffer_image, 0i)) - vec2<i32>(1i)), 0i).x;\n  v_8 = (v_1 + v_2.xz);\n  let v_15 = textureLoad(object_id_buffer_image, clamp(vec2<i32>(floor(v_8 * vec2<f32>(textureDimensions(object_id_buffer_image, 0i)))), vec2<i32>(), vec2<i32>(textureDimensions(object_id_buffer_image, 0i)) - vec2<i32>(1i)), 0i).x;\n  v_9 = (v_1 - v_2.xz);\n  v_5 = vec4<u32>(v_13, v_14, v_15, textureLoad(object_id_buffer_image, clamp(vec2<i32>(floor(v_9 * vec2<f32>(textureDimensions(object_id_buffer_image, 0i)))), vec2<i32>(), vec2<i32>(textureDimensions(object_id_buffer_image, 0i)) - vec2<i32>(1i)), 0i).x);\n  let v_16 = v_3;\n  v_10 = (1.0f - dot(select(vec4<f32>(), vec4<f32>(1.0f), (vec4<u32>(v_16, v_16, v_16, v_16) == v_5)), vec4<f32>(0.25f)));\n  frag_color = (v.member_70_0.member_69_2 * v_10);\n}\n\n@fragment\nfn main(@builtin(position) gl_FragCoord : vec4<f32>) -> @location(0u) vec4<f32> {\n  main_inner(gl_FragCoord);\n  return frag_color;\n}\n",
+    "sha256": "0565fb0948a95f06cf6a59cf0f053de0fd5e49f410b84fddfc7bb0e391b8d869"
+  }
+]</script>
+<script>
+'use strict';
+const cases=JSON.parse(document.getElementById('shader-cases').textContent);
+const report={diagnostic:'ipad-outline-compiler-v1',engineStarted:false,
+  engineSource:'893f6163652f5cde223f9781a61ef4931f4b3444',
+  url:location.href,userAgent:navigator.userAgent,secureContext:isSecureContext,
+  webGPU:!!navigator.gpu,results:[],errors:[]};
+const output=document.getElementById('report'),message=document.getElementById('message');
+function refresh(){
+  output.value=JSON.stringify(report,null,2);
+  try{localStorage.setItem('blender-outline-check-last',output.value);}catch{}
+}
+function errorText(error){
+  const text=String(error?.message || error);
+  const separator=text.lastIndexOf(' - error ');
+  const useful=separator>=0 ? text.slice(separator+9) : text;
+  return useful.length>12000 ? useful.slice(0,1000)+'\n[details omitted]\n'+useful.slice(-11000) : useful;
+}
+refresh();
+document.getElementById('check').onclick=async()=>{
+  document.getElementById('check').disabled=true;
+  let device,timer,timeout=false;
+  const expired=new Promise((_,reject)=>{timer=setTimeout(()=>{
+    timeout=true;device?.destroy();reject(new Error('Shader check timed out. It will not retry.'));
+  },30000);});
+  const bounded=operation=>Promise.race([operation,expired]);
+  try{
+    if(!isSecureContext) throw new Error('Open this file through WorldWideWeb at http://localhost:8080/.');
+    if(!navigator.gpu) throw new Error('WebGPU is unavailable.');
+    message.textContent='Checking graphics adapter — Blender is not loading.';
+    const adapter=await bounded(navigator.gpu.requestAdapter({powerPreference:'low-power'}));
+    if(!adapter) throw new Error('No graphics adapter was available.');
+    const pendingDevice=adapter.requestDevice();
+    // If adapter/device creation outlives the deadline, retire the late device.
+    pendingDevice.then(value=>{if(timeout)value.destroy();},()=>{});
+    device=await bounded(pendingDevice);
+    device.addEventListener('uncapturederror',event=>{
+      event.preventDefault();report.errors.push(errorText(event.error));refresh();
+    });
+    device.lost.then(info=>{
+      if(info.reason!=='destroyed') {report.errors.push('Device lost: '+info.message);refresh();}
+    });
+    const vertex=device.createShaderModule({label:'outline-check-fullscreen',code:`
+      @vertex fn main(@builtin(vertex_index) index:u32)->@builtin(position) vec4<f32>{
+        let x=f32((index<<1u)&2u);let y=f32(index&2u);
+        return vec4<f32>(x*2.0-1.0,y*2.0-1.0,0.0,1.0);
+      }`});
+    const group=device.createBindGroupLayout({entries:[
+      {binding:0,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'uint'}},
+      {binding:1,visibility:GPUShaderStage.FRAGMENT,buffer:{type:'uniform',minBindingSize:352}},
+      {binding:128,visibility:GPUShaderStage.FRAGMENT,sampler:{type:'non-filtering'}}]});
+    const layout=device.createPipelineLayout({bindGroupLayouts:[group]});
+    for(const test of cases){
+      message.textContent='Compiling '+test.name+' — Blender is not loading.';
+      const result={name:test.name,sha256:test.sha256};
+      report.results.push(result);refresh();
+      try{
+        const fragment=device.createShaderModule({label:test.name,code:test.code});
+        await bounded(device.createRenderPipelineAsync({label:test.name,layout,
+          vertex:{module:vertex,entryPoint:'main'},
+          fragment:{module:fragment,entryPoint:'main',targets:[{format:'rgba16float'}]},
+          primitive:{topology:'triangle-list'}}));
+        result.compiled=true;
+      }catch(error){result.compiled=false;result.error=errorText(error);}
+      refresh();
+      if(timeout)break;
+    }
+    message.textContent='Check finished. Blender has not loaded. Copy this report and send it in the chat.';
+  }catch(error){report.errors.push(errorText(error));message.textContent=errorText(error);}
+  finally{clearTimeout(timer);device?.destroy();refresh();}
+};
+document.getElementById('copy').onclick=async()=>{
+  output.focus();output.select();output.setSelectionRange(0,output.value.length);
+  try{await navigator.clipboard.writeText(output.value);message.textContent='Report copied. Paste it into the chat.';}
+  catch{message.textContent='Report selected. Touch and hold the selection, then choose Copy.';}
+};
+document.getElementById('download').onclick=()=>{
+  const url=URL.createObjectURL(new Blob([output.value],{type:'application/json'}));
+  const link=document.createElement('a');link.href=url;link.download='BlenderIpad-outline-check.json';
+  document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+};
+</script>
+</html>

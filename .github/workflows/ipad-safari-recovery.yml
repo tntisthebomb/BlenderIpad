@@ -1,0 +1,43 @@
+name: Check Safari shader diagnostics and startup recovery
+
+on:
+  push:
+    branches: [codex/ipad-safari-recovery]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install small test runner
+        run: |
+          python3 -m venv .cache/browser-tests
+          .cache/browser-tests/bin/python -m pip install playwright==1.62.0
+      - name: Validate outline pixels, error recovery and project backups
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+        run: |
+          .cache/browser-tests/bin/python tests/ipad_outline_shader_browser_test.py
+          .cache/browser-tests/bin/python tests/startup_preflight_browser_test.py
+          .cache/browser-tests/bin/python tests/editor_install_failure_test.py
+          .cache/browser-tests/bin/python tests/editor_files_browser_test.py
+      - name: Prepare engine-free diagnostic download
+        run: |
+          mkdir -p diagnostic-download
+          cp native/browser/ipad-shader-check.html diagnostic-download/
+          cp docs/ipad-outline-check.txt diagnostic-download/README.txt
+          cp LICENSE diagnostic-download/
+          sha256sum diagnostic-download/ipad-shader-check.html > diagnostic-download/SHA256SUMS.txt
+      - name: Upload diagnostic only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Blender-iPad-outline-check
+          path: diagnostic-download/*
+          if-no-files-found: error
+          retention-days: 30
