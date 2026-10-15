@@ -1,0 +1,69 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="icon" href="data:,">
+<title>Blender device check</title>
+<style>
+body{margin:0;background:#252525;color:#eee;font:17px system-ui;padding:24px}
+main{max-width:760px;margin:auto}button{font:inherit;min-height:48px;padding:10px;margin:6px 6px 6px 0;background:#454545;color:#fff;border:1px solid #888;border-radius:6px}
+textarea{width:100%;box-sizing:border-box;height:46vh;min-height:220px;background:#181818;color:#eee;padding:12px;font:13px monospace}
+p{line-height:1.5}a{color:#a9d4ff}
+</style>
+<main><h1>Blender device check</h1>
+<p>This page does not load Blender, allocate its memory, install offline files, or start a render. You can copy the report before starting anything else.</p>
+<p id="message" role="status">Browser information collected. Blender has not started.</p>
+<button id="check" type="button">Check graphics support</button>
+<button id="copy" type="button">Copy report</button>
+<button id="download" type="button">Download report</button>
+<p><label for="report">Device report — you can also select and copy this text:</label></p>
+<textarea id="report" readonly spellcheck="false"></textarea>
+<p>If Blender previously slowed down the entire iPad, leave its tab closed. This check does not establish that the full port can run on your device.</p>
+</main>
+<script>
+'use strict';
+const report={diagnostic:'ipad-preflight-v2',engineStarted:false,url:location.href,
+  userAgent:navigator.userAgent,platform:navigator.platform,maxTouchPoints:navigator.maxTouchPoints,
+  secureContext:isSecureContext,crossOriginIsolated,webGPU:!!navigator.gpu,
+  hardwareConcurrency:navigator.hardwareConcurrency,deviceMemoryGiB:navigator.deviceMemory ?? null,
+  // Safari does not expose available device memory. Never infer it from GPU limits.
+  availableMemoryBytes:null,devicePixelRatio:window.devicePixelRatio,
+  screen:{width:screen.width,height:screen.height},errors:[]};
+for(const key of ['blender-startup-last','blender-startup-check-last']) {
+  try {const saved=sessionStorage.getItem(key);if(saved) (report.previousAttempts ??= {})[key]=JSON.parse(saved);} catch {}
+}
+const output=document.getElementById('report'),message=document.getElementById('message');
+function refresh(){output.value=JSON.stringify(report,null,2);}
+refresh();
+document.getElementById('check').onclick=async()=>{
+  const button=document.getElementById('check');button.disabled=true;
+  message.textContent='Checking the graphics adapter. Blender is not loading.';
+  let timer;
+  try {
+    if(!isSecureContext) throw new Error('Open this check at HTTPS or localhost.');
+    if(!navigator.gpu) throw new Error('WebGPU is unavailable in this browser.');
+    const adapter=await Promise.race([navigator.gpu.requestAdapter({powerPreference:'low-power'}),
+      new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Graphics adapter check timed out.')),10000);})]);
+    if(!adapter) throw new Error('No graphics adapter was available.');
+    report.adapterFeatures=[...adapter.features];
+    report.adapterLimits=Object.fromEntries(['maxComputeInvocationsPerWorkgroup','maxComputeWorkgroupStorageSize',
+      'maxStorageTexturesPerShaderStage','maxStorageBuffersPerShaderStage','maxBufferSize',
+      'maxStorageBufferBindingSize','maxTextureDimension2D'].map(name=>[name,adapter.limits[name]]));
+    message.textContent='Graphics information collected. Blender has not started.';
+    // Deliberately do not create a GPU device, buffer, shared memory or engine.
+  } catch(error) {report.errors.push(String(error));message.textContent=String(error);}
+  finally {clearTimeout(timer);button.disabled=false;refresh();}
+};
+document.getElementById('copy').onclick=async()=>{
+  refresh();output.focus();output.select();output.setSelectionRange(0,output.value.length);
+  try {await navigator.clipboard.writeText(output.value);message.textContent='Report copied. Paste it into the chat.';}
+  catch {message.textContent='Report selected. Touch and hold the selected text, then choose Copy.';}
+};
+document.getElementById('download').onclick=()=>{
+  refresh();const url=URL.createObjectURL(new Blob([output.value],{type:'application/json'}));
+  const link=document.createElement('a');link.href=url;link.download='BlenderIpad-preflight.json';
+  document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+};
+</script>
+</html>

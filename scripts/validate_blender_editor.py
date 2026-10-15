@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 from setup_browser import CACHE, ROOT
 
-ASSETS = ('index.html', 'editor.html', 'editor_files.js', 'editor_input.js', 'blender-core.js',
+ASSETS = ('index.html', 'editor.html', 'ipad-startup.html', 'editor_files.js', 'editor_input.js', 'blender-core.js',
           'blender-core.wasm', 'blender-core.data', 'manifest.webmanifest',
           'icon.svg', 'icon-192.png', 'icon-512.png', 'service-worker.js')
 TESTS = ('tests/blender_gpu_browser_test.py', 'tests/blender_gpu_scene.py',
@@ -15,7 +15,7 @@ TESTS = ('tests/blender_gpu_browser_test.py', 'tests/blender_gpu_scene.py',
          'tests/blender_render_browser_test.py', 'tests/blender_render_scene.py',
          'tests/offline_shell_browser_test.py', 'tests/editor_files_browser_test.py',
          'tests/blender_modeling_browser_test.py', 'tests/blender_modeling_scene.py',
-         'tests/editor_install_failure_test.py',
+         'tests/editor_install_failure_test.py', 'tests/startup_preflight_browser_test.py',
          'tests/shader_semantics_browser_test.py', 'tests/shader_switch_fallthrough.comp',
          'tests/shader_switch_phi.comp', 'tests/shader_volume_query.comp',
          'tests/shader_atomic_image.comp', 'tests/shader_readwrite_texture.comp',
@@ -62,7 +62,8 @@ if __name__ == '__main__':
         check(engine, 'tests/blender_render_browser_test.py', '--engine', engine)
     for script in (
                    'tests/blender_modeling_browser_test.py', 'tests/blender_editor_browser_test.py', 'tests/offline_shell_browser_test.py',
-                   'tests/editor_files_browser_test.py', 'tests/editor_install_failure_test.py'):
+                   'tests/editor_files_browser_test.py', 'tests/editor_install_failure_test.py',
+                   'tests/startup_preflight_browser_test.py'):
         check(script, script)
     if snapshot() != before:
         raise SystemExit('Assets or acceptance fixtures changed during validation.')

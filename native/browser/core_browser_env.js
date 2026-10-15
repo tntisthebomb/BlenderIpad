@@ -11,7 +11,7 @@ Module['preRun'].push(function () {
   // OIIO constructs its default pool before applying Blender's --threads
   // override. Avoid creating a hardware-sized pool and synchronously joining
   // workers that the browser has not yet had an opportunity to start.
-  ENV['OPENIMAGEIO_THREADS'] = '2';
+  ENV['OPENIMAGEIO_THREADS'] = Module['browserLowResource'] ? '1' : '2';
   FS.mkdirTree('/cache');
 });
 
@@ -49,3 +49,7 @@ Module['resumeBlenderLoop'] = function () {
   blenderLoopPaused = false;
   Module['runtimeKeepalivePop']();
 };
+
+// Read the internal heap from its own generated scope. Do not access Module.HEAPU8:
+// unexported Emscripten symbols can have getters which abort the application.
+Module['getBlenderMemoryBytes'] = function () { return HEAPU8.byteLength; };

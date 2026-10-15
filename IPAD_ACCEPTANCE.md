@@ -4,6 +4,28 @@ Target: iPad 10th generation, iPadOS 26. The cloud's Chromium results are separa
 from acceptance on this device. Use the experimental **editor** ZIP, not the old
 `ipad-workbench` math demo. See RECOVERY.md for the source baseline and artifacts.
 
+## Startup investigation — do not retry the affected preview
+
+The physical iPad became unresponsive while the old preview was loading its
+engine. Its diagnostic could not be copied. The cause has not been established;
+there is no successful Safari startup acceptance yet. Do not keep retrying that
+build or clear saved website data to diagnose it.
+
+`ipad-startup.html` is now an engine-free preflight page. It reports browser
+information immediately; **Check graphics support** only requests an adapter,
+without creating a GPU device, allocating Blender memory or installing the
+service worker. Its selectable report and download work before any engine load.
+Available RAM is unknown on Safari and is not inferred from WebGPU limits.
+
+The updated editor waits for **Start Blender** on touch-capable Apple devices,
+including iPad desktop mode. Reloading a stalled/killed editor returns to that
+choice. A one-time isolation reload after an explicit start preserves the choice
+only for that reload. The iPad viewport is capped at CSS resolution and
+1280×800 pixels; Blender and OIIO request one thread. These changes reduce known
+costs; they do not establish that the full editor is usable on the target iPad.
+Timeouts cannot interrupt synchronous Wasm compilation or native main-thread work.
+Close the tab if the device becomes sluggish; don't try to collect a live report.
+
 ## Install
 
 1. Extract the editor ZIP in Files. In WorldWideWeb, select the folder containing
@@ -14,7 +36,7 @@ from acceptance on this device. Use the experimental **editor** ZIP, not the old
    `http://localhost:8080/` in place of `http://users-ipad.local:8080/`.
    If the localhost connection fails, try `127.0.0.1` with the same port/path.
    An ordinary HTTP `.local` or Wi-Fi IP address will not enable this editor.
-3. Wait for Blender's actual interface and the offline-ready message. Initial
+3. On an updated, device-tested build, choose **Start Blender**. Wait for Blender's actual interface and the offline-ready message. Initial
    shader compilation can be slow. A loading overlay or an error is not readiness.
 4. Choose Share → Add to Home Screen. Open that new app while WorldWideWeb is
    still serving, and wait for its interface/offline-ready state too. Safari's

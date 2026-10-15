@@ -1,6 +1,6 @@
 const CACHE_PREFIX=`blender-ipad:${self.registration.scope}:`;
 const CACHE=`${CACHE_PREFIX}__BUILD_CACHE__`;
-const FILES=['./','index.html','editor.html','blender-core.js','blender-core.wasm','blender-core.data','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js','editor_input.js'];
+const FILES=['./','index.html','editor.html','blender-core.js','blender-core.wasm','blender-core.data','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js','editor_input.js','ipad-startup.html'];
 self.addEventListener('message',event=>{
   if (event.data?.type==='BUILD_INFO') event.ports[0]?.postMessage({cache:CACHE});
 });

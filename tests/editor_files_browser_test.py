@@ -11,7 +11,7 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self,*args): pass
 with TemporaryDirectory(dir=ROOT/'.cache') as directory:
     base=Path(directory)
-    markup=(ROOT/'native/browser/blender_editor.html').read_text().split('<script src="blender-core.js">')[0]
+    markup=(ROOT/'native/browser/blender_editor.html').read_text().split('<script>')[0]
     # An explicitly limited in-memory filesystem exposes transfer failures. Real
     # IDBFS/native files are independently checked by editor browser acceptance.
     fixture='''<script>
