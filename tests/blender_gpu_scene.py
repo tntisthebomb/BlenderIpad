@@ -142,10 +142,12 @@ info.compute_source('void main(){imageStore(target,ivec2(0),textureLod(source_te
 shader=gpu.shader.create_from_info(info)
 target=gpu.types.GPUTexture((1,1),format='RGBA32F')
 shader.image('target',target)
-for format_name in ['RGBA8','RGBA32F','RGBA8','RGBA32F']:
-    values=[0.0]*12+[0.25,0.5,0.75,1.0]
+for iteration,format_name in enumerate(['RGBA8','RGBA32F','RGBA8','RGBA32F']):
+    values=[0.0]*12+[0.25+iteration*0.125,0.5,0.75,1.0]
     source=gpu.types.GPUTexture((2,2),format=format_name,
         data=gpu.types.Buffer('FLOAT',16,values))
+    source.filter_mode(False)
+    target.clear(format='FLOAT',value=(0,0,0,0))
     shader.uniform_sampler('source_texture',source)
     gpu.compute.dispatch(shader,1,1,1)
     actual=list(flattened(target.read()))
