@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Investigation only: replay the accepted engine with precise C/JS handoff logs."""
-import argparse,faulthandler,hashlib,json,os,shutil,time
+import argparse,faulthandler,hashlib,json,os,shutil,sys,time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
@@ -68,7 +68,11 @@ var browserBridgeTrace = (name, ptr) => {
  try:
   with sync_playwright() as playwright:
    if args.browser=='webkit':
-    context=playwright.webkit.launch_persistent_context(str(Path(temp)/'profile'),viewport={'width':1180,'height':760},device_scale_factor=2,has_touch=True)
+    # WKPreferences reads WebKitDebug + WebGPUEnabled from NSUserDefaults.
+    # Foundation's argument domain enables it for this process only.
+    preference_args=['-WebKitDebugWebGPUEnabled','YES'] if sys.platform=='darwin' else []
+    report['webGPUPreferenceRequested']=bool(preference_args);save()
+    context=playwright.webkit.launch_persistent_context(str(Path(temp)/'profile'),args=preference_args,viewport={'width':1180,'height':760},device_scale_factor=2,has_touch=True)
     browser=context.browser
    else:
     executable=os.environ.get('CHROMIUM_PATH','/usr/lib/chromium/chromium');env=dict(os.environ)
