@@ -1,0 +1,37 @@
+name: Investigate Blender using installed Safari and Metal
+on:
+  push:
+    branches: [codex/ipad-system-safari]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  safari-native:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Prepare installed Safari automation
+        run: |
+          sudo /usr/bin/safaridriver --enable
+          python3 -m venv .cache/browser-tests
+          .cache/browser-tests/bin/python -m pip install selenium==4.38.0
+      - name: Retrieve accepted v5 engine and proof
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: '12019222064'
+          github-token: ${{ github.token }}
+          run-id: '38835939241'
+          path: work/accepted-v5
+          merge-multiple: true
+      - name: Check real Safari GPU then replay the full engine
+        timeout-minutes: 7
+        run: .cache/browser-tests/bin/python tests/ipad_system_safari_replay.py --input-dir work/accepted-v5
+      - name: Preserve Safari and native evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: system-safari-native-evidence
+          path: work/native-system-safari/*
+          if-no-files-found: error
