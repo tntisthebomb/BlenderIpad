@@ -34,11 +34,16 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
  (base/'watchdog-failing.js').write_text("Object.defineProperty(navigator,'storage',{value:{getDirectory(){return Promise.reject(Error('quota fixture'));}}});\n"+(base/'startup_watchdog.js').read_text())
  # Fixture-only probe: mark a flushed synchronous-file write in shared memory.
  # The blocked page can see this without running any event-loop callbacks.
- (base/'startup_watchdog.js').write_text((base/'startup_watchdog.js').read_text()+'''
- const productionMessage=onmessage,productionSend=postMessage.bind(self);let testProbe=null;
+ worker=(base/'startup_watchdog.js').read_text()
+ worker=worker.replace('const written=handle.write(bytes,{at:0});',
+   'self.__commitProbe?.(1,record);const written=handle.write(bytes,{at:0});self.__commitProbe?.(2,record);')
+ worker=worker.replace('handle.truncate(bytes.byteLength);handle.flush();slot=1-slot;',
+   'handle.truncate(bytes.byteLength);handle.flush();self.__commitProbe?.(3,record);slot=1-slot;')
+ (base/'startup_watchdog.js').write_text(worker+"""
+ const productionMessage=onmessage;let testProbe=null;
  onmessage=event=>{if(event.data.kind==='test-probe')testProbe=new Int32Array(event.data.buffer);else productionMessage(event);};
- self.postMessage=message=>{if(message.kind==='sample'&&message.maxHeartbeatGapMs>=2000&&testProbe)Atomics.store(testProbe,0,1);productionSend(message);};
- ''')
+ self.__commitProbe=(stage,record)=>{if(record.maxHeartbeatGapMs>=2000&&testProbe){Atomics.store(testProbe,stage,1);if(stage===3)Atomics.store(testProbe,0,1);}};
+ """)
  server=ThreadingHTTPServer(('127.0.0.1',0),partial(Handler,directory=directory));Thread(target=server.serve_forever,daemon=True).start()
  try:
   with sync_playwright() as p:
@@ -57,7 +62,7 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    origin=f'http://127.0.0.1:{server.server_port}'
    page.goto(origin+'/');assert page.evaluate('crossOriginIsolated')
    print('Fixture page ready',flush=True)
-   page.evaluate('''()=>{window.probeBuffer=new SharedArrayBuffer(4);window.probeView=new Int32Array(probeBuffer);
+   page.evaluate('''()=>{window.probeBuffer=new SharedArrayBuffer(16);window.probeView=new Int32Array(probeBuffer);
     const NativeWorker=Worker;globalThis.Worker=class extends NativeWorker{
       constructor(url,options){super(url,options);this.postMessage({kind:'test-probe',buffer:probeBuffer});}
     };
@@ -72,7 +77,9 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    # this synchronous task blocks. The other worker must save independently.
    page.evaluate("window.probeSawCommit=false;window.probeFinished=false;setTimeout(()=>{const end=performance.now()+7000;while(performance.now()<end){if(Atomics.load(probeView,0))probeSawCommit=true;}probeFinished=true;},250)")
    page.wait_for_function('probeFinished',timeout=15000)
-   assert page.evaluate('probeSawCommit'),'Worker did not durably save while the main event loop was blocked'
+   probe=page.evaluate('({sawCommit:probeSawCommit,stages:Array.from(probeView),snapshot:blenderStartupStats.snapshot()})')
+   print('Blocked-page probe:',json.dumps(probe),flush=True)
+   assert probe['sawCommit'],'Worker did not durably save while the main event loop was blocked'
    print('PASS: synchronous write flushed while main thread was blocked',flush=True)
    # Apple WebKit can hold an exclusive file lock for the access handle.
    # Close the writer before reading, exactly as manual-tab recovery does.
