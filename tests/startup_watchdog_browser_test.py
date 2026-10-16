@@ -44,7 +44,14 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
   with sync_playwright() as p:
    launch={'args':['--no-sandbox'],'executable_path':os.environ.get('CHROMIUM_PATH','/usr/lib/chromium/chromium')} if options.browser=='chromium' else {}
    print('Launching '+options.browser,flush=True)
-   browser=getattr(p,options.browser).launch(**launch);context=browser.new_context();errors=[]
+   if options.browser=='webkit':
+    # WebKit's temporary/private contexts reject OPFS. Match the ordinary
+    # persistent Safari profile used on the physical iPad.
+    context=p.webkit.launch_persistent_context(str(base/'browser-profile'),**launch)
+    browser=context.browser
+   else:
+    browser=p.chromium.launch(**launch);context=browser.new_context()
+   errors=[]
    print('Browser context ready',flush=True)
    page=context.new_page();page.on('pageerror',lambda e:errors.append(str(e)))
    origin=f'http://127.0.0.1:{server.server_port}'
