@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Investigation only: replay the accepted engine with precise C/JS handoff logs."""
-import argparse,faulthandler,hashlib,json,os,shutil,sys,time
+import argparse,faulthandler,hashlib,json,os,shlex,shutil,sys,time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
@@ -70,9 +70,15 @@ var browserBridgeTrace = (name, ptr) => {
    if args.browser=='webkit':
     # WKPreferences reads WebKitDebug + WebGPUEnabled from NSUserDefaults.
     # Foundation's argument domain enables it for this process only.
-    preference_args=['-WebKitDebugWebGPUEnabled','YES'] if sys.platform=='darwin' else []
-    report['webGPUPreferenceRequested']=bool(preference_args);save()
-    context=playwright.webkit.launch_persistent_context(str(Path(temp)/'profile'),args=preference_args,viewport={'width':1180,'height':760},device_scale_factor=2,has_touch=True)
+    executable=playwright.webkit.executable_path
+    if sys.platform=='darwin':
+     # Playwright rejects separate non-switch argument values. A local launcher
+     # passes Foundation's preference pair directly to the browser process.
+     wrapper=Path(temp)/'webkit-preference-launcher'
+     wrapper.write_text('#!/bin/sh\nexec '+shlex.quote(executable)+' -WebKitDebugWebGPUEnabled YES \"$@\"\n')
+     wrapper.chmod(0o755);executable=str(wrapper)
+    report['webGPUPreferenceRequested']=sys.platform=='darwin';save()
+    context=playwright.webkit.launch_persistent_context(str(Path(temp)/'profile'),executable_path=executable,viewport={'width':1180,'height':760},device_scale_factor=2,has_touch=True)
     browser=context.browser
    else:
     executable=os.environ.get('CHROMIUM_PATH','/usr/lib/chromium/chromium');env=dict(os.environ)
