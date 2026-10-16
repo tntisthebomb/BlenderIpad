@@ -301,6 +301,10 @@ function waitForInstallation(registration) {
   await startupStep('Preparing recovery recorder',()=>window.blenderStartupStats?.recoveryReady()??Promise.resolve(),15000);
   const module=await startupStep('Loading engine and restoring projects',()=>createBlenderCore({canvas,
     preinitializedWebGPUDevice:device,noInitialRun:true,browserLowResource:tabletMode,
+    browserStartupTrace:true,
+    onNativeStartupTrace:(stage,status,detail)=>window.blenderStartupStats?.nativeBridge(stage,status,detail),
+    onBrowserGPUQueue:queue=>window.blenderStartupStats?.instrumentQueue(queue),
+    onBrowserGPUCanvas:context=>window.blenderStartupStats?.instrumentCanvas(context),
     monitorRunDependencies:count=>{
       window.blenderStartupStats?.dependencies(count);
       startup.remainingDependencies=count;

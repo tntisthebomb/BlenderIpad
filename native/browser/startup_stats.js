@@ -4,11 +4,11 @@
   'use strict';
   const key='blender-startup-stats-last';
   let began=performance.now();
-  const state={version:'startup-stats-v5',attemptId:null,progressSequence:0,startedAt:null,pageVisible:!document.hidden,traceUnavailable:[],watchdogStatus:'not started',watchdogMaxGapMs:0,recentOperations:[],active:false,phase:'Waiting to start',phaseSeconds:0,
+  const state={version:'startup-stats-v6',attemptId:null,progressSequence:0,startedAt:null,pageVisible:!document.hidden,traceUnavailable:[],watchdogStatus:'not started',watchdogMaxGapMs:0,recentOperations:[],active:false,phase:'Waiting to start',phaseSeconds:0,
     elapsedSeconds:0,operation:'None yet',operationStatus:'not started',label:'',wasmMemoryBytes:null,dependencies:null,
     wasmMode:'not started',wasmMimeType:null,mainInstanceReady:false,workersRequested:0,workersReady:0,
     shaderModules:0,renderPipelines:0,computePipelines:0,texturesCreated:0,buffersCreated:0,
-    commandEncoders:0,renderPasses:0,computePasses:0,drawCalls:0,queueSubmissions:0,firstSubmission:'not submitted',
+    commandEncoders:0,renderPasses:0,computePasses:0,drawCalls:0,queueSubmissions:0,nativeQueueSubmissions:0,nativeBridgeEvents:0,nativeInitStages:[],lastNativeMarker:null,firstSubmission:'not submitted',
     bufferBytesRequested:0,canvasBacking:null,canvasCss:null,lines:[],updatedAt:null};
   let previous=null,previousWatchdog=null,watchdog=null,sharedRecorder=null,sharedState=null,recorderReady=Promise.resolve(),resolveRecorder=null,lastEventSignature=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,compact=false;
   try{previous=JSON.parse(localStorage.getItem(key)||'null');}catch{}
@@ -18,7 +18,7 @@
   document.body.append(panel);
   const title=panel.querySelector('strong'),text=panel.querySelector('pre'),toggle=panel.querySelector('button');
   function snapshot(){
-    return {...state,lines:state.lines.slice(),recentOperations:state.recentOperations.slice(),error:state.error};
+    return {...state,lines:state.lines.slice(),recentOperations:state.recentOperations.slice(),nativeInitStages:state.nativeInitStages.slice(),error:state.error};
   }
   function previousSnapshot(){
     const recovery=previousWatchdog?.checkpoint&&(!previous||
@@ -42,12 +42,13 @@
     const previousView=previousSnapshot();
     const view=!state.active&&previousView ? previousView : state;
     const hasRecovery=!!previousWatchdog&&view.attemptId!=null&&previousWatchdog.attemptId===view.attemptId;
-    title.textContent=!state.active&&previousView ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v5';
+    title.textContent=!state.active&&previousView ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v6';
     const mib=value=>(value/1048576).toFixed(1)+' MiB';
     text.textContent=[
       'Step: '+view.phase,
       'Elapsed: '+view.elapsedSeconds+' s · in step: '+Math.max(0,view.elapsedSeconds-view.phaseSeconds)+' s',
       'Last operation: '+view.operation+(view.label?' · '+view.label:'')+' · '+(view.operationStatus??'completion not recorded'),
+      'Latest native marker: '+(view.lastNativeMarker?view.lastNativeMarker.seconds+' s · '+view.lastNativeMarker.text:'not recorded'),
       'WASM memory: '+(view.wasmMemoryBytes===null?'not available yet':mib(view.wasmMemoryBytes))+' · total iPad RAM use unavailable',
       'WASM loader: '+(view.wasmMode??'not recorded')+' · MIME: '+(view.wasmMimeType??'not recorded'),
       'Main WASM instance: '+(view.mainInstanceReady?'ready':'not ready')+' · native workers: '+(view.workersReady??0)+' / '+(view.workersRequested??0)+' ready',
@@ -55,7 +56,7 @@
       'Dependencies left: '+(view.dependencies??'not reported'),
       'Creation requests: '+view.shaderModules+' shaders · '+view.renderPipelines+' render pipelines · '+view.computePipelines+' compute pipelines',
       'Startup command calls: '+(view.commandEncoders??0)+' encoders · '+(view.renderPasses??0)+' render passes · '+(view.computePasses??0)+' compute passes · '+(view.drawCalls??0)+' draws',
-      'Queue: '+(view.queueSubmissions??0)+' submit calls · first completion: '+(view.firstSubmission??'not recorded'),
+      'Queue: '+(view.queueSubmissions??0)+' browser submits · '+(view.nativeQueueSubmissions??'not recorded')+' traced native entries (96-event cap) · first completion: '+(view.firstSubmission??'not recorded'),
       'Recovery recorder: '+(state.active?view.watchdogStatus:(hasRecovery?'saved':'not recorded'))+' · longest main heartbeat gap: '+Math.round((hasRecovery?previousWatchdog.maxHeartbeatGapMs:view.watchdogMaxGapMs??0)/1000)+' s'+(hasRecovery?' · observed at '+previousWatchdog.observedElapsedSeconds+' s':''),
       ...(view.traceUnavailable?.length?['Trace unavailable: '+view.traceUnavailable.join(', ')]:[]),
       'GPU resource requests: '+view.texturesCreated+' textures · '+view.buffersCreated+' buffers',
@@ -112,6 +113,7 @@
     return Reflect.apply(post,this,[message,...rest]);
   };
   const pipelines=new WeakMap(),instrumented=new WeakSet();
+  let watchedSubmission=false;
   function trace(target,method,label,counter,after,describe){
     const original=target?.[method];if(typeof original!=='function')return;
     const wrapper=function(...args){
@@ -158,24 +160,32 @@
       (pass,args)=>instrumentPass(pass,args[0]?.label??''),args=>args[0]?.label??'');
     trace(encoder,'finish','Finishing command encoder');
   }
+  function instrumentQueue(queue){
+    if(!queue||instrumented.has(queue))return;instrumented.add(queue);
+    trace(queue,'submit','Submitting GPU commands','queueSubmissions',()=>{
+      if(watchedSubmission||typeof queue.onSubmittedWorkDone!=='function')return;
+      watchedSubmission=true;state.firstSubmission='waiting for callback';
+      try {
+        queue.onSubmittedWorkDone().then(()=>{
+          state.firstSubmission='completed';update(true,true);
+        },error=>{state.firstSubmission='rejected: '+String(error).slice(0,120);update(true,true);});
+      } catch(error){state.firstSubmission='observer failed: '+String(error).slice(0,100);}
+    });
+    for(const method of ['writeBuffer','writeTexture'])trace(queue,method,'GPU queue '+method);
+  }
+  function instrumentCanvas(context){
+    if(!context||instrumented.has(context))return;instrumented.add(context);
+    for(const method of ['configure','getCurrentTexture','unconfigure']){
+      trace(context,method,'GPU canvas '+method);
+    }
+  }
   function instrumentDevice(device){
     if(instrumented.has(device))return;instrumented.add(device);
     for(const method of ['createBindGroupLayout','createPipelineLayout','createBindGroup']){
       trace(device,method,'GPU '+method,null,null,args=>args[0]?.label??'');
     }
     trace(device,'createCommandEncoder','Creating command encoder','commandEncoders',instrumentEncoder);
-    let watchedSubmission=false;
-    trace(device.queue,'submit','Submitting GPU commands','queueSubmissions',()=>{
-      if(watchedSubmission||typeof device.queue.onSubmittedWorkDone!=='function')return;
-      watchedSubmission=true;state.firstSubmission='waiting for callback';
-      // Observe one existing submission. This does not insert a GPU wait or
-      // block native rendering; its callback also requires a responsive page.
-      try {
-        device.queue.onSubmittedWorkDone().then(()=>{
-          state.firstSubmission='completed';update(true,true);
-        },error=>{state.firstSubmission='rejected: '+String(error).slice(0,120);update(true,true);});
-      } catch(error){state.firstSubmission='observer failed: '+String(error).slice(0,100);}
-    });
+    instrumentQueue(device.queue);
     for(const [method,counter,label] of [
       ['createShaderModule','shaderModules','Creating shader module'],
       ['createRenderPipeline','renderPipelines','Compiling render pipeline'],
@@ -210,7 +220,7 @@
     else if(message.kind==='visibility'){sharedState.visible=message.visible;sharedState.lastHeartbeat=Date.now();}
     else if(message.kind==='native-line'){
       sharedState.checkpoint={...sharedState.checkpoint,lines:(sharedState.checkpoint.lines??[]).concat(message.line).slice(-4),
-        progressSequence:message.progressSequence,elapsedSeconds:message.elapsedSeconds};
+        progressSequence:message.progressSequence,elapsedSeconds:message.elapsedSeconds,lastNativeMarker:message.lastNativeMarker};
     } else if(message.kind==='stop'){sharedState.checkpoint=message.checkpoint;sharedState.stopped=true;}
     try {
       const bytes=new TextEncoder().encode(JSON.stringify(sharedState));
@@ -260,7 +270,13 @@
       update();
     } catch {}
   }
-  window.blenderStartupStats={snapshot,instrumentDevice,
+  window.blenderStartupStats={snapshot,instrumentDevice,instrumentQueue,instrumentCanvas,
+    nativeBridge(stage,status,detail){
+      if(!state.active||state.phase==='Viewport presented')return;
+      state.nativeBridgeEvents++;if(stage==='queue-submit-enter')state.nativeQueueSubmissions++;
+      state.lastNativeMarker={seconds:((performance.now()-began)/1000).toFixed(2),text:(stage+' '+detail).slice(0,180)};
+      operation('Native bridge',stage+(detail?' · '+detail:''),status);
+    },
     previousRecovery(){return previousWatchdog;},
     recoveryReady(){return recorderReady;},
     previousAttempt(){return previousSnapshot();},
@@ -276,11 +292,17 @@
       const line=String(message).replace(/\s+/g,' ').trim();
       if(line){
         const bounded=line.slice(0,180);state.lines.push(bounded);state.lines=state.lines.slice(-4);
+        state.lastNativeMarker={text:bounded,seconds:((performance.now()-began)/1000).toFixed(2)};
         if(state.active&&state.phase!=='Viewport presented'){
           state.progressSequence++;
           try{sendWatchdog({kind:'native-line',line:bounded,progressSequence:state.progressSequence,
-            elapsedSeconds:Math.round((performance.now()-began)/1000)});}catch{}
+            elapsedSeconds:Math.round((performance.now()-began)/1000),lastNativeMarker:state.lastNativeMarker});}catch{}
         }
+      }
+      if(state.active&&state.phase!=='Viewport presented'&&line.startsWith('GPU initialization: ')){
+        const stage=line.slice('GPU initialization: '.length);
+        state.nativeInitStages.push(stage);state.nativeInitStages=state.nativeInitStages.slice(-16);
+        operation('Native GPU initialization',stage,stage==='complete'?'completed':'in progress');
       }
       if(performance.now()-lastOutputUpdate>=250){lastOutputUpdate=performance.now();update(true);}
     },

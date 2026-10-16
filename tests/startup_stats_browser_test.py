@@ -97,6 +97,22 @@ window.originalError=new Error('fixture failure');
     if(blenderStartupStats.snapshot().firstSubmission!=='waiting for callback')throw Error('Marked GPU complete too early');
     resolveCompletion();await completion;
     if(blenderStartupStats.snapshot().firstSubmission!=='completed')throw Error('Completion callback was not recorded');
+    const queueSubmit=queue.submit;blenderStartupStats.instrumentQueue(queue);
+    if(queue.submit!==queueSubmit)throw Error('Native queue callback wrapped the same queue twice');
+    const nativeQueue={writeBuffer(...args){if(this!==nativeQueue||args[0]!==marker||args[1]!==16)throw Error('Upload arguments changed');return marker;}};
+    blenderStartupStats.instrumentQueue(nativeQueue);
+    if(nativeQueue.writeBuffer(marker,16)!==marker)throw Error('Changed native queue upload result');
+    const surface={configure(d){if(this!==surface||d!==marker)throw Error('Canvas receiver/argument changed');return marker;},
+      getCurrentTexture(){return marker;},unconfigure(){throw originalError;}};
+    blenderStartupStats.instrumentCanvas(surface);
+    if(surface.configure(marker)!==marker||surface.getCurrentTexture()!==marker)throw Error('Changed canvas API result');
+    try{surface.unconfigure();throw Error('Swallowed canvas exception');}catch(error){if(error!==originalError)throw error;}
+    blenderStartupStats.nativeBridge('queue-submit-enter','in progress','native fixture');
+    const nativeCheckpoint=JSON.parse(localStorage.getItem('blender-startup-stats-last'));
+    if(nativeCheckpoint.nativeQueueSubmissions!==1||nativeCheckpoint.operationStatus!=='in progress')throw Error('Native entry was not durably checkpointed');
+    blenderStartupStats.nativeBridge('queue-submit-returned','call returned','native fixture');
+    blenderStartupStats.line('GPU initialization: create infos');
+    if(blenderStartupStats.snapshot().nativeInitStages[0]!=='create infos')throw Error('Native initialization stage missing');
     try{device.createComputePipeline({label:'failed-compute'});throw Error('Swallowed exception');}
     catch(error){if(error!==originalError)throw error;}
     trackedMemory.grow(1);
@@ -113,6 +129,7 @@ window.originalError=new Error('fixture failure');
     blenderStartupStats.line('Last engine message');
    }''')
    assert page.evaluate('observedBeforeCall')
+   page.wait_for_function("document.querySelector('#startup-stats-text').textContent.includes('Last engine message')")
    view=page.locator('#startup-stats-text').inner_text()
    assert 'Starting native Blender' in view and 'failed-compute' in view,view
    assert '17' in view and 'Last engine message' in view and 'cumulative (not live usage)' in view,view

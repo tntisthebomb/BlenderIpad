@@ -63,6 +63,8 @@ try:
         assert stats['phase']=='Viewport presented',stats
         assert stats['wasmMode']=='streaming' and stats['wasmMimeType']=='application/wasm',stats
         assert stats['drawCalls']>0 and stats['queueSubmissions']>0,stats
+        assert stats['nativeQueueSubmissions']>0 and stats['nativeBridgeEvents']>0,stats
+        assert 'complete' in stats['nativeInitStages'],stats
         page.wait_for_function("blenderStartupStats.snapshot().firstSubmission==='completed' && blenderStartupStats.snapshot().watchdogStatus==='finished'")
         assert len(workers)==4,workers
         assert stats['mainInstanceReady'] and stats['workersReady']==stats['workersRequested']==4,stats

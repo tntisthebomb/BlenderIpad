@@ -1,0 +1,41 @@
+Blender iPad native startup trace v6
+
+Copy ALL files in this small update into your existing Blender folder and
+choose Replace. Keep your existing blender-core.wasm and blender-core.data.
+The update replaces blender-core.js with bounded startup diagnostics. WASM
+code/data and the four native workers remain unchanged. This is a diagnostic
+update; it does not establish a fix for the iPad startup stall.
+
+Keep WorldWideWeb serving the same folder and localhost port8080.
+1. Open http://localhost:8080/ipad-update.html and install the update.
+2. Close all Blender/updater/diagnostic tabs and Home Screen windows.
+3. Reopen http://localhost:8080/ and press Start Blender once. Look for stats v6.
+
+Allow up to three minutes only while the iPad stays responsive. If the whole
+device slows down, close Blender. After an unsuccessful attempt, manually
+reopen the page and leave Start alone. Hide details, then Download device report.
+That report restores the previous attempt without loading the engine again.
+Do not clear Safari website data; retain the same address to keep projects.
+
+v6 enables GPU initialization tracing already compiled into the existing
+engine (resource initialization, shader sources/create infos, warm-up/cache,
+and completion). It records command-buffer allocation/registration and native
+queue-submit entry/return, and captures the actual queue/canvas objects used
+by the native bridge. Browser queue submission and native submission entry
+are separate counters. The native counter covers the bounded bridge journal;
+the browser counter covers observed startup submissions. Upload and canvas
+API boundaries are also recorded.
+
+The latest native marker appears separately from the last GPU/loader operation:
+native initialization can continue between graphics API calls. A returned call
+does not prove completion of GPU work or identify the precise freeze location.
+The independent recovery recorder retains the reserved-file/shared-memory fix
+verified in Apple WebKit and on the physical iPad. It cannot survive termination
+of the entire browser process or establish total/free RAM or an OS memory kill.
+
+The object registry and rendering algorithms are unchanged. A bounded number
+of bridge events is recorded during startup and stops after viewport presentation.
+The bundled proof lists the automated editor, persistence, input, modeling and
+render checks run on this candidate. Physical iPad acceptance remains pending.
+
+Combined application: GPL-3.0-or-later; see LICENSE.txt.

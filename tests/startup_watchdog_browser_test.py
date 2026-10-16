@@ -91,6 +91,7 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    assert saved and saved['attemptId']==attempt and saved['maxHeartbeatGapMs']>=2000,saved
    assert saved['checkpoint']['phase']=='Preparing viewport fixture',saved
    assert 'last useful native breadcrumb' in saved['checkpoint']['lines'],saved
+   assert saved['checkpoint']['lastNativeMarker']['text']=='last useful native breadcrumb',saved
    # Simulate losing the page's local checkpoint too: the worker's durable
    # record must be sufficient for recovery without starting the engine.
    reader.evaluate('localStorage.removeItem("blender-startup-stats-last")');reader.close()

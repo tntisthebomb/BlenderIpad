@@ -9,6 +9,7 @@ import subprocess
 from setup_browser import CACHE, ROOT, toolchain, run
 from browser_runtime_scripts import stage_runtime_scripts
 from browser_low_memory import strip_debug_names
+from browser_native_stage_trace import instrument_native_stages
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser()
@@ -68,6 +69,8 @@ if __name__ == '__main__':
         args += ['--preload-file', str(ROOT / 'tests/blender_editor_scene.py') + '@/editor_test.py']
     run(*args, cwd=core, env=env)
     if options.editor:
+        js=output/'blender-core.js'
+        js.write_text(instrument_native_stages(js.read_text()))
         wasm=output/'blender-core.wasm'
         stripped,_=strip_debug_names(wasm.read_bytes())
         wasm.write_bytes(stripped)
