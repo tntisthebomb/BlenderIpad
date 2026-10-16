@@ -47,7 +47,11 @@ onmessage=async event=>{
     const directory=await navigator.storage.getDirectory();
     for(const name of slots){
       const file=await directory.getFileHandle(name,{create:true});
-      handles.push(await file.createSyncAccessHandle());
+      const handle=await file.createSyncAccessHandle();handles.push(handle);
+      // WebKit requests new file capacity through its main thread. Reserve
+      // the maximum checkpoint size before heavy engine work can block it.
+      // Shrinking a record later keeps this handle's reserved capacity.
+      handle.truncate(524288);
     }
     if(!persist())return;
     postMessage({kind:'ready',attemptId:attempt});

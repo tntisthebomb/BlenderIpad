@@ -25,7 +25,8 @@ its callback also needs the main thread to respond.
 A tiny worker writes a bounded recovery record through its own synchronous
 local file handles about once per second. It waits on shared memory on its own thread instead of relying on
 WebKit timer delivery while the main UI is blocked. It records the latest checkpoint,
-visibility information and heartbeat gaps. Two alternating files with checksums
+visibility information and heartbeat gaps. File capacity is reserved before
+the engine starts so later records do not need the main thread to grow files. Two alternating files with checksums
 allow recovery from an interrupted write. It cannot run through termination
 of the whole browser process, expose total/free iPad RAM or prove an OS memory
 kill. Background suspension can also delay callbacks. Storage failures are

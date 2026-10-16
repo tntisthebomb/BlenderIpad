@@ -224,7 +224,7 @@
     if(!globalThis.Worker||!globalThis.SharedArrayBuffer||!navigator.storage?.getDirectory){state.watchdogStatus='unavailable';return;}
     try {
       const attemptId=state.attemptId;
-      recorderReady=new Promise(resolve=>{resolveRecorder=resolve;setTimeout(()=>{if(state.attemptId===attemptId&&state.watchdogStatus==='starting'){state.watchdogStatus='initialization timed out';update(true,true);}resolve();},2000);});
+      recorderReady=new Promise(resolve=>{resolveRecorder=resolve;setTimeout(()=>{if(state.attemptId===attemptId&&state.watchdogStatus==='starting'){state.watchdogStatus='initialization timed out';update(true,true);}resolve();},10000);});
       sharedRecorder=new SharedArrayBuffer(131088);
       sharedState={checkpoint:snapshot(),lastHeartbeat:Date.now(),visible:!document.hidden,stopped:false};
       sendWatchdog({kind:'checkpoint',checkpoint:snapshot()});
