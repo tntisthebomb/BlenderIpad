@@ -4,13 +4,13 @@
   'use strict';
   const key='blender-startup-stats-last';
   let began=performance.now();
-  const state={version:'startup-stats-v6',attemptId:null,progressSequence:0,startedAt:null,pageVisible:!document.hidden,traceUnavailable:[],watchdogStatus:'not started',watchdogMaxGapMs:0,recentOperations:[],active:false,phase:'Waiting to start',phaseSeconds:0,
+  const state={version:'startup-stats-v7',attemptId:null,progressSequence:0,startedAt:null,pageVisible:!document.hidden,traceUnavailable:[],watchdogStatus:'not started',watchdogMaxGapMs:0,recentOperations:[],active:false,phase:'Waiting to start',phaseSeconds:0,
     elapsedSeconds:0,operation:'None yet',operationStatus:'not started',label:'',wasmMemoryBytes:null,dependencies:null,
     wasmMode:'not started',wasmMimeType:null,mainInstanceReady:false,workersRequested:0,workersReady:0,
     shaderModules:0,renderPipelines:0,computePipelines:0,texturesCreated:0,buffersCreated:0,
     commandEncoders:0,renderPasses:0,computePasses:0,drawCalls:0,queueSubmissions:0,nativeQueueSubmissions:0,nativeBridgeEvents:0,nativeInitStages:[],lastNativeMarker:null,firstSubmission:'not submitted',
     bufferBytesRequested:0,canvasBacking:null,canvasCss:null,lines:[],updatedAt:null};
-  let previous=null,previousWatchdog=null,watchdog=null,sharedRecorder=null,sharedState=null,recorderReady=Promise.resolve(),resolveRecorder=null,lastEventSignature=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,compact=false;
+  let previous=null,previousWatchdog=null,watchdog=null,sharedRecorder=null,sharedState=null,recorderReady=Promise.resolve(),resolveRecorder=null,lastEventSignature=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,lastPaint=-Infinity,compact=false;
   try{previous=JSON.parse(localStorage.getItem(key)||'null');}catch{}
   const panel=document.createElement('aside');panel.id='startup-stats';
   panel.setAttribute('aria-label','Blender startup statistics');
@@ -25,11 +25,13 @@
       (previous.attemptId&&previousWatchdog.attemptId===previous.attemptId))?previousWatchdog.checkpoint:null;
     return recovery&&(!previous||(recovery.progressSequence??0)>=(previous.progressSequence??0))?recovery:previous;
   }
-  function update(save=false,force=false){
+  function update(save=false,force=false,durable=false){
+    const now=performance.now(),paint=!state.active||durable||now-lastPaint>=250;
     state.elapsedSeconds=Math.round((performance.now()-began)/1000);
     try{state.wasmMemoryBytes=memory?.buffer.byteLength ?? window.blenderEditor?.getBlenderMemoryBytes?.() ?? state.wasmMemoryBytes;}catch{}
-    const canvas=document.getElementById('canvas');
-    if(canvas){state.canvasBacking=[canvas.width,canvas.height];state.canvasCss=[canvas.clientWidth,canvas.clientHeight];}
+    // Layout reads and text replacement are presentation work, not checkpoints.
+    if(paint){const canvas=document.getElementById('canvas');
+      if(canvas){state.canvasBacking=[canvas.width,canvas.height];state.canvasCss=[canvas.clientWidth,canvas.clientHeight];}}
     if(force&&state.active){
       state.progressSequence++;
       const signature=[state.operation,state.label,state.operationStatus].join('|');
@@ -39,10 +41,23 @@
         state.recentOperations=state.recentOperations.slice(-32);lastEventSignature=signature;
       }
     }
+    if(save&&state.active){
+      // The reserved-file recorder receives every API boundary, even inside a
+      // long synchronous native call. localStorage is only the fallback: forcing
+      // it for every draw/upload can repeatedly block the browser storage path.
+      state.updatedAt=new Date().toISOString();
+      if(durable||now-lastSaved>=1000||(force&&state.watchdogStatus!=='recording')){
+        lastSaved=now;
+        try{localStorage.setItem(key,JSON.stringify(snapshot()));}catch{}
+      }
+      try{sendWatchdog({kind:'checkpoint',checkpoint:snapshot()});}catch{}
+    }
+    if(!paint)return;
+    lastPaint=now;
     const previousView=previousSnapshot();
     const view=!state.active&&previousView ? previousView : state;
     const hasRecovery=!!previousWatchdog&&view.attemptId!=null&&previousWatchdog.attemptId===view.attemptId;
-    title.textContent=!state.active&&previousView ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v6';
+    title.textContent=!state.active&&previousView ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v7';
     const mib=value=>(value/1048576).toFixed(1)+' MiB';
     text.textContent=[
       'Step: '+view.phase,
@@ -65,11 +80,6 @@
       ...view.lines.map(line=>'> '+line)
     ].join('\n');
     if(window.blenderDeviceReport){window.blenderDeviceReport.startupStats=snapshot();if(!state.active&&previousView)window.blenderDeviceReport.previousStartupStats=previousView;}
-    if(save&&state.active&&(force||performance.now()-lastSaved>=1000)){
-      state.updatedAt=new Date().toISOString();lastSaved=performance.now();
-      try{localStorage.setItem(key,JSON.stringify(snapshot()));}catch{}
-      try{sendWatchdog({kind:'checkpoint',checkpoint:snapshot()});}catch{}
-    }
   }
   function operation(name,label='',status='in progress'){
     state.operationStatus=status;state.operation=name;state.label=String(label||'').slice(0,160);update(true,true);
@@ -281,13 +291,13 @@
     recoveryReady(){return recorderReady;},
     previousAttempt(){return previousSnapshot();},
     phase(phase){
-      state.phase=phase;state.phaseSeconds=Math.round((performance.now()-began)/1000);update(true,true);
+      state.phase=phase;state.phaseSeconds=Math.round((performance.now()-began)/1000);update(true,true,true);
       if(phase==='Viewport presented')sendWatchdog({kind:'stop',checkpoint:snapshot()});
     },
     start(){began=performance.now();state.phaseSeconds=0;state.active=true;previous=null;state.startedAt=Date.now();state.attemptId=state.startedAt+'-'+Math.random().toString(36).slice(2,8);startWatchdog();operation('Starting Blender');},
     // Thousands of files can change the dependency count synchronously. Keep
     // only the count; the heartbeat paints it, with a final immediate update.
-    dependencies(count){state.dependencies=count;if(count===0)update(true,true);},
+    dependencies(count){state.dependencies=count;if(count===0)update(true,true,true);},
     line(message){
       const line=String(message).replace(/\s+/g,' ').trim();
       if(line){
@@ -309,14 +319,14 @@
     failure(message){
       const value=String(message),at=value.lastIndexOf(' - error ');
       const useful=at>=0?value.slice(at+9):value;
-      state.error=useful.slice(0,600);operation('Stopped after error',state.label);
+      state.error=useful.slice(0,600);operation('Stopped after error',state.label);update(true,true,true);
     }
   };
   toggle.onclick=()=>{
     compact=!compact;text.hidden=compact;toggle.textContent=compact?'Show details':'Hide details';
   };
-  addEventListener('pagehide',()=>update(true,true));
-  document.addEventListener('visibilitychange',()=>{state.pageVisible=!document.hidden;try{sendWatchdog({kind:'visibility',visible:state.pageVisible});}catch{}update(true,true);});
+  addEventListener('pagehide',()=>update(true,true,true));
+  document.addEventListener('visibilitychange',()=>{state.pageVisible=!document.hidden;try{sendWatchdog({kind:'visibility',visible:state.pageVisible});}catch{}update(true,true,true);});
   setInterval(()=>{if(!document.hidden){update(true);if(state.active)try{sendWatchdog({kind:'heartbeat'});}catch{}}},1000);
   update();readPreviousWatchdog();
 })();

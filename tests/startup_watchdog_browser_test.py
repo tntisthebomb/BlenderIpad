@@ -65,6 +65,7 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    page.evaluate('''()=>{window.probeBuffer=new SharedArrayBuffer(16);window.probeView=new Int32Array(probeBuffer);
     const NativeWorker=Worker;globalThis.Worker=class extends NativeWorker{
       constructor(url,options){super(url,options);this.postMessage({kind:'test-probe',buffer:probeBuffer});}
+      postMessage(message,...rest){if(message.kind==='start')window.recorderShared=message.shared;return super.postMessage(message,...rest);}
     };
    }''')
    page.evaluate("blenderStartupStats.start();blenderStartupStats.phase('Preparing viewport fixture');blenderStartupStats.line('last useful native breadcrumb')")
@@ -73,6 +74,29 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
     print('Recorder initialization failure:',page.evaluate('({state:blenderStartupStats.snapshot(),storage:typeof navigator.storage,directory:typeof navigator.storage?.getDirectory,secure:isSecureContext})'),errors,flush=True);raise
    print('Recorder ready',flush=True)
    attempt=page.evaluate('blenderStartupStats.snapshot().attemptId')
+   # A burst must retain the exact pre-call shared breadcrumb without forcing
+   # thousands of storage IPC calls, layout reads or text replacements.
+   burst=page.evaluate('''()=>{
+    const read=()=>{const h=new Int32Array(recorderShared,0,4);
+      return JSON.parse(new TextDecoder().decode(new Uint8Array(recorderShared,16,Atomics.load(h,1)).slice())).checkpoint;};
+    const marker={},queue={writeBuffer(){const saved=read();
+      if(saved.operation!=='GPU queue writeBuffer'||saved.operationStatus!=='in progress')throw Error('Missing pre-call shared checkpoint');return marker;}};
+    blenderStartupStats.instrumentQueue(queue);
+    const observer=new MutationObserver(()=>{});observer.observe(document.querySelector('#startup-stats'),{childList:true,subtree:true});
+    const original=Storage.prototype.setItem;let writes=0;
+    Storage.prototype.setItem=function(...args){writes++;return Reflect.apply(original,this,args);};
+    const before=performance.now();
+    try{for(let i=0;i<1000;i++)if(queue.writeBuffer(marker,0)!==marker)throw Error('Upload return changed');}
+    finally{Storage.prototype.setItem=original;}
+    const elapsed=performance.now()-before,mutations=observer.takeRecords().length;observer.disconnect();
+    const saved=read();
+    if(saved.operationStatus!=='call returned')throw Error('Missing returned shared checkpoint');
+    if(writes>Math.ceil(elapsed/1000)+1)throw Error('Upload burst forced localStorage writes: '+writes);
+    if(mutations>2*(Math.ceil(elapsed/250)+1))throw Error('Upload burst forced DOM mutations: '+mutations);
+    return {calls:1000,writes,mutations,elapsedMs:elapsed,preCallAndReturnPreserved:true};
+   }''')
+   print('Diagnostic burst:',json.dumps(burst),flush=True)
+
    # This browser page cannot run its timer or save recovery records while
    # this synchronous task blocks. The other worker must save independently.
    page.evaluate("window.probeSawCommit=false;window.probeFinished=false;setTimeout(()=>{const end=performance.now()+7000;while(performance.now()<end){if(Atomics.load(probeView,0))probeSawCommit=true;}window.probeSeenStages=Array.from(probeView);probeFinished=true;},250)")

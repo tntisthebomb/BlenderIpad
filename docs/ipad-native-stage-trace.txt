@@ -1,15 +1,15 @@
-Blender iPad native startup trace v6
+Blender iPad native startup trace v7
 
 Copy ALL files in this small update into your existing Blender folder and
 choose Replace. Keep your existing blender-core.wasm and blender-core.data.
-The update replaces blender-core.js with bounded startup diagnostics. WASM
+The update retains native tracing and reduces synchronous diagnostic overhead. WASM
 code/data and the four native workers remain unchanged. This is a diagnostic
 update; it does not establish a fix for the iPad startup stall.
 
 Keep WorldWideWeb serving the same folder and localhost port8080.
 1. Open http://localhost:8080/ipad-update.html and install the update.
 2. Close all Blender/updater/diagnostic tabs and Home Screen windows.
-3. Reopen http://localhost:8080/ and press Start Blender once. Look for stats v6.
+3. Reopen http://localhost:8080/ and press Start Blender once. Look for stats v7.
 
 Allow up to three minutes only while the iPad stays responsive. If the whole
 device slows down, close Blender. After an unsuccessful attempt, manually
@@ -17,7 +17,7 @@ reopen the page and leave Start alone. Hide details, then Download device report
 That report restores the previous attempt without loading the engine again.
 Do not clear Safari website data; retain the same address to keep projects.
 
-v6 enables GPU initialization tracing already compiled into the existing
+v7 enables GPU initialization tracing already compiled into the existing
 engine (resource initialization, shader sources/create infos, warm-up/cache,
 and completion). It records command-buffer allocation/registration and native
 queue-submit entry/return, and captures the actual queue/canvas objects used
@@ -39,3 +39,11 @@ The bundled proof lists the automated editor, persistence, input, modeling and
 render checks run on this candidate. Physical iPad acceptance remains pending.
 
 Combined application: GPL-3.0-or-later; see LICENSE.txt.
+
+The v7 statistics panel paints at most four times per second during startup.
+While the independent recorder is ready, localStorage checkpoints are limited
+to once per second plus phase/failure/visibility boundaries. Every graphics API
+boundary still updates shared recovery memory before the call, with its return
+recorded afterward. If the recorder is unavailable, immediate localStorage
+checkpoints remain as a fallback. This removes measured write amplification;
+it does not establish that the iPad slowdown is fixed.
