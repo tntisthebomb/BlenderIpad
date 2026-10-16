@@ -75,9 +75,9 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    attempt=page.evaluate('blenderStartupStats.snapshot().attemptId')
    # This browser page cannot run its timer or save recovery records while
    # this synchronous task blocks. The other worker must save independently.
-   page.evaluate("window.probeSawCommit=false;window.probeFinished=false;setTimeout(()=>{const end=performance.now()+7000;while(performance.now()<end){if(Atomics.load(probeView,0))probeSawCommit=true;}probeFinished=true;},250)")
+   page.evaluate("window.probeSawCommit=false;window.probeFinished=false;setTimeout(()=>{const end=performance.now()+7000;while(performance.now()<end){if(Atomics.load(probeView,0))probeSawCommit=true;}window.probeSeenStages=Array.from(probeView);probeFinished=true;},250)")
    page.wait_for_function('probeFinished',timeout=15000)
-   probe=page.evaluate('({sawCommit:probeSawCommit,stages:Array.from(probeView),snapshot:blenderStartupStats.snapshot()})')
+   probe=page.evaluate('({sawCommit:probeSawCommit,seenDuringBlock:probeSeenStages,stages:Array.from(probeView),snapshot:blenderStartupStats.snapshot()})')
    print('Blocked-page probe:',json.dumps(probe),flush=True)
    assert probe['sawCommit'],'Worker did not durably save while the main event loop was blocked'
    print('PASS: synchronous write flushed while main thread was blocked',flush=True)

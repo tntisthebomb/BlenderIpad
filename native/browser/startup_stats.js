@@ -10,7 +10,7 @@
     shaderModules:0,renderPipelines:0,computePipelines:0,texturesCreated:0,buffersCreated:0,
     commandEncoders:0,renderPasses:0,computePasses:0,drawCalls:0,queueSubmissions:0,firstSubmission:'not submitted',
     bufferBytesRequested:0,canvasBacking:null,canvasCss:null,lines:[],updatedAt:null};
-  let previous=null,previousWatchdog=null,watchdog=null,recorderReady=Promise.resolve(),resolveRecorder=null,lastEventSignature=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,compact=false;
+  let previous=null,previousWatchdog=null,watchdog=null,sharedRecorder=null,sharedState=null,recorderReady=Promise.resolve(),resolveRecorder=null,lastEventSignature=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,compact=false;
   try{previous=JSON.parse(localStorage.getItem(key)||'null');}catch{}
   const panel=document.createElement('aside');panel.id='startup-stats';
   panel.setAttribute('aria-label','Blender startup statistics');
@@ -67,7 +67,7 @@
     if(save&&state.active&&(force||performance.now()-lastSaved>=1000)){
       state.updatedAt=new Date().toISOString();lastSaved=performance.now();
       try{localStorage.setItem(key,JSON.stringify(snapshot()));}catch{}
-      try{watchdog?.postMessage({kind:'checkpoint',checkpoint:snapshot()});}catch{}
+      try{sendWatchdog({kind:'checkpoint',checkpoint:snapshot()});}catch{}
     }
   }
   function operation(name,label='',status='in progress'){
@@ -203,11 +203,31 @@
       };
     }
   }
+  function sendWatchdog(message){
+    if(!sharedRecorder||!sharedState)return;
+    if(message.kind==='checkpoint')sharedState.checkpoint=message.checkpoint;
+    else if(message.kind==='heartbeat')sharedState.lastHeartbeat=Date.now();
+    else if(message.kind==='visibility'){sharedState.visible=message.visible;sharedState.lastHeartbeat=Date.now();}
+    else if(message.kind==='native-line'){
+      sharedState.checkpoint={...sharedState.checkpoint,lines:(sharedState.checkpoint.lines??[]).concat(message.line).slice(-4),
+        progressSequence:message.progressSequence,elapsedSeconds:message.elapsedSeconds};
+    } else if(message.kind==='stop'){sharedState.checkpoint=message.checkpoint;sharedState.stopped=true;}
+    try {
+      const bytes=new TextEncoder().encode(JSON.stringify(sharedState));
+      const header=new Int32Array(sharedRecorder,0,4),payload=new Uint8Array(sharedRecorder,16);
+      if(bytes.length>payload.length)throw Error('Recovery checkpoint exceeds shared capacity');
+      Atomics.add(header,0,1);payload.set(bytes);Atomics.store(header,1,bytes.length);Atomics.add(header,0,1);
+      if(sharedState.stopped){Atomics.store(header,2,1);Atomics.notify(header,2);}
+    } catch(error){state.watchdogStatus='shared recorder unavailable: '+String(error).slice(0,100);}
+  }
   function startWatchdog(){
-    if(!globalThis.Worker||!navigator.storage?.getDirectory){state.watchdogStatus='unavailable';return;}
+    if(!globalThis.Worker||!globalThis.SharedArrayBuffer||!navigator.storage?.getDirectory){state.watchdogStatus='unavailable';return;}
     try {
       const attemptId=state.attemptId;
       recorderReady=new Promise(resolve=>{resolveRecorder=resolve;setTimeout(()=>{if(state.attemptId===attemptId&&state.watchdogStatus==='starting'){state.watchdogStatus='initialization timed out';update(true,true);}resolve();},2000);});
+      sharedRecorder=new SharedArrayBuffer(131088);
+      sharedState={checkpoint:snapshot(),lastHeartbeat:Date.now(),visible:!document.hidden,stopped:false};
+      sendWatchdog({kind:'checkpoint',checkpoint:snapshot()});
       watchdog=new Worker(new URL('startup_watchdog.js',document.baseURI),{name:'blender-startup-watchdog'});
       state.watchdogStatus='starting';
       watchdog.onmessage=event=>{
@@ -215,12 +235,12 @@
         if(message.kind==='storage-error'){state.watchdogStatus='storage unavailable: '+message.message.slice(0,100);resolveRecorder?.();}
         else if(message.kind==='ready'){state.watchdogStatus='recording';resolveRecorder?.();}
         else if(message.kind==='sample')state.watchdogMaxGapMs=message.maxHeartbeatGapMs;
-        else if(message.kind==='stopped'){watchdog=null;if(!state.watchdogStatus.startsWith('storage unavailable'))state.watchdogStatus='finished';}
+        else if(message.kind==='stopped'){watchdog=null;sharedRecorder=null;sharedState=null;if(!state.watchdogStatus.startsWith('storage unavailable'))state.watchdogStatus='finished';}
         update();
       };
-      watchdog.onerror=event=>{event.preventDefault();state.traceUnavailable.push('Recovery worker: '+String(event.message||'worker failed').slice(0,160));resolveRecorder?.();state.watchdogStatus='unavailable';watchdog?.terminate();watchdog=null;update();};
-      watchdog.postMessage({kind:'start',attemptId:state.attemptId,checkpoint:snapshot()});
-    } catch {state.watchdogStatus='unavailable';watchdog=null;resolveRecorder?.();}
+      watchdog.onerror=event=>{event.preventDefault();state.traceUnavailable.push('Recovery worker: '+String(event.message||'worker failed').slice(0,160));resolveRecorder?.();state.watchdogStatus='unavailable';watchdog?.terminate();watchdog=null;sharedRecorder=null;sharedState=null;update();};
+      watchdog.postMessage({kind:'start',attemptId:state.attemptId,shared:sharedRecorder});
+    } catch {state.watchdogStatus='unavailable';watchdog=null;sharedRecorder=null;sharedState=null;resolveRecorder?.();}
   }
   function checksum(text){let value=2166136261;for(let i=0;i<text.length;i++)value=Math.imul(value^text.charCodeAt(i),16777619)>>>0;return value.toString(16);}
   async function readPreviousWatchdog(){
@@ -246,7 +266,7 @@
     previousAttempt(){return previousSnapshot();},
     phase(phase){
       state.phase=phase;state.phaseSeconds=Math.round((performance.now()-began)/1000);update(true,true);
-      if(phase==='Viewport presented')watchdog?.postMessage({kind:'stop',checkpoint:snapshot()});
+      if(phase==='Viewport presented')sendWatchdog({kind:'stop',checkpoint:snapshot()});
     },
     start(){began=performance.now();state.phaseSeconds=0;state.active=true;previous=null;state.startedAt=Date.now();state.attemptId=state.startedAt+'-'+Math.random().toString(36).slice(2,8);startWatchdog();operation('Starting Blender');},
     // Thousands of files can change the dependency count synchronously. Keep
@@ -258,7 +278,7 @@
         const bounded=line.slice(0,180);state.lines.push(bounded);state.lines=state.lines.slice(-4);
         if(state.active&&state.phase!=='Viewport presented'){
           state.progressSequence++;
-          try{watchdog?.postMessage({kind:'native-line',line:bounded,progressSequence:state.progressSequence,
+          try{sendWatchdog({kind:'native-line',line:bounded,progressSequence:state.progressSequence,
             elapsedSeconds:Math.round((performance.now()-began)/1000)});}catch{}
         }
       }
@@ -274,7 +294,7 @@
     compact=!compact;text.hidden=compact;toggle.textContent=compact?'Show details':'Hide details';
   };
   addEventListener('pagehide',()=>update(true,true));
-  document.addEventListener('visibilitychange',()=>{state.pageVisible=!document.hidden;try{watchdog?.postMessage({kind:'visibility',visible:state.pageVisible});}catch{}update(true,true);});
-  setInterval(()=>{if(!document.hidden){update(true);if(state.active)try{watchdog?.postMessage({kind:'heartbeat'});}catch{}}},1000);
+  document.addEventListener('visibilitychange',()=>{state.pageVisible=!document.hidden;try{sendWatchdog({kind:'visibility',visible:state.pageVisible});}catch{}update(true,true);});
+  setInterval(()=>{if(!document.hidden){update(true);if(state.active)try{sendWatchdog({kind:'heartbeat'});}catch{}}},1000);
   update();readPreviousWatchdog();
 })();

@@ -23,7 +23,8 @@ submission; no completion callback alone cannot establish a GPU hang because
 its callback also needs the main thread to respond.
 
 A tiny worker writes a bounded recovery record through its own synchronous
-local file handles about once per second, independently of the main UI timer. It records the latest checkpoint,
+local file handles about once per second. It waits on shared memory on its own thread instead of relying on
+WebKit timer delivery while the main UI is blocked. It records the latest checkpoint,
 visibility information and heartbeat gaps. Two alternating files with checksums
 allow recovery from an interrupted write. It cannot run through termination
 of the whole browser process, expose total/free iPad RAM or prove an OS memory
