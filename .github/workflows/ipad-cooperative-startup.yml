@@ -39,6 +39,8 @@ jobs:
     needs: cancel-obsolete
     runs-on: ubuntu-24.04
     timeout-minutes: 240
+    env:
+      CHROMIUM_PATH: /usr/bin/google-chrome
     strategy:
       fail-fast: false
       matrix:
@@ -53,8 +55,10 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .cache
-          key: browser-v2-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-${{ github.sha }}
+          key: cooperative-v1-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-${{ github.sha }}
           restore-keys: |
+            cooperative-v1-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
+            browser-v2-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-3cf9192acda8b91070843921073c72c6a1151d60
             browser-v2-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
             browser-v2-${{ runner.os }}-${{ matrix.profile }}-
             browser-v2-${{ runner.os }}-webgpu-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
@@ -62,26 +66,38 @@ jobs:
         run: |
           python3 -m venv .cache/browser-tests
           .cache/browser-tests/bin/python -m pip install playwright==1.62.0 Pillow==12.0.0
-      - name: Prepare pinned browser runtime and graphics compilers
-        env:
-          CHROMIUM_PATH: /usr/bin/google-chrome
+      - name: Build and verify actual native suspension
         run: |
           python3 scripts/build_startup_yield_probe.py
           .cache/browser-tests/bin/python tests/startup_yield_browser_test.py
+      - name: Build and verify WebGPU canvas lifecycle
+        run: |
           python3 scripts/build_browser_ghost_webgpu.py
           .cache/browser-tests/bin/python tests/ghost_webgpu_browser_test.py
+      - name: Build and verify native event routing and startup guard
+        run: |
           python3 scripts/build_browser_platform.py
           .cache/browser-tests/bin/python tests/ghost_platform_test.py
-          python3 scripts/build_browser_core_deps.py
+      - name: Prepare pinned native dependencies
+        run: python3 scripts/build_browser_core_deps.py
+      - name: Build and verify embedded Python
+        run: |
           python3 scripts/build_browser_python.py
           python3 scripts/build_browser_python_probe.py
+      - name: Build and verify GLSL compiler
+        run: |
           python3 scripts/build_browser_shaderc.py
           python3 scripts/test_browser_shaderc.py
+      - name: Build and verify WGSL compiler
+        run: |
           python3 scripts/build_browser_tint.py
           python3 scripts/test_browser_tint.py
+      - name: Verify shader semantics and native lifecycle
+        run: |
           .cache/browser-tests/bin/python tests/shader_semantics_browser_test.py
           .cache/browser-tests/bin/python scripts/test_browser_lifecycle.py
-          python3 scripts/build_browser_opensubdiv.py
+      - name: Build and verify subdivision library
+        run: python3 scripts/build_browser_opensubdiv.py
       - name: Validate the real CPU scheduler
         if: matrix.profile == 'cpu-cycles'
         env:
