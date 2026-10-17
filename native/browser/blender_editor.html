@@ -100,6 +100,7 @@ function log(message) {
   editorOutput.push(String(message));
   if (editorOutput.length>1000) editorOutput.shift();
   if (String(message).includes('WGPU_FIRST_CONTENT') && !document.body.dataset.error) {
+    if(window.blenderEditor)window.blenderEditor.browserStartupComplete=true;
     startupPhase('Viewport presented');
     document.body.dataset.rendered='true';
     document.getElementById('status').hidden=true;
@@ -140,9 +141,19 @@ document.getElementById('recover-files').addEventListener('click',()=>{
   status.hidden=true;
   document.getElementById('export-files').click();
 });
+// Native startup may suspend with its own stack/resources alive. Do not enter
+// GHOST again through input/resize until the first content frame has finished.
+for(const type of ['pointerdown','pointerup','pointermove','touchstart','touchend','touchmove','wheel','keydown','keyup','resize','blur','focus']){
+  window.addEventListener(type,event=>{
+    const module=window.blenderEditor;
+    if(module?.browserCooperativeStartup&&!module.browserStartupComplete&&
+       (event.target===canvas||event.target===window))event.stopImmediatePropagation();
+  },true);
+}
 canvas.addEventListener('pointerdown',()=>canvas.focus({preventScroll:true}));
 canvas.addEventListener('contextmenu',event=>event.preventDefault());
 document.addEventListener('visibilitychange',()=>{
+  if(window.blenderEditor?.browserCooperativeStartup&&!window.blenderEditor.browserStartupComplete)return;
   if (document.hidden) {
     // Release native key/button state before iPadOS suspends the application.
     canvas.dispatchEvent(new FocusEvent('blur'));
@@ -301,7 +312,7 @@ function waitForInstallation(registration) {
   await startupStep('Preparing recovery recorder',()=>window.blenderStartupStats?.recoveryReady()??Promise.resolve(),15000);
   const module=await startupStep('Loading engine and restoring projects',()=>createBlenderCore({canvas,
     preinitializedWebGPUDevice:device,noInitialRun:true,browserLowResource:tabletMode,
-    browserStartupTrace:true,
+    browserStartupTrace:true,browserCooperativeStartup:tabletMode,
     onNativeStartupTrace:(stage,status,detail)=>window.blenderStartupStats?.nativeBridge(stage,status,detail),
     onBrowserGPUQueue:queue=>window.blenderStartupStats?.instrumentQueue(queue),
     onBrowserGPUCanvas:context=>window.blenderStartupStats?.instrumentCanvas(context),

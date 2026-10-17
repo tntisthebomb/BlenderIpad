@@ -47,6 +47,8 @@
  * the render, so JS can map+read it AFTER Blender quits (the wasm runtime stays
  * alive; synchronous readback is impossible mid-render with no JSPI). The C
  * exports below are driven by the harness after "Blender quit". */
+#include "startup_yield.hh"
+
 namespace blender::gpu {
 /* DEBUG BISECT: when true, capture the last world draw's color attachment
  * (render_pass_end path) instead of the film output (read_color_sync path), to
@@ -188,6 +190,15 @@ WebGPUContext::WebGPUContext(GHOST_IWindow *ghost_window,
   }
   imm = new WebGPUImmediate();
   g_all_contexts.push_back(this);
+}
+
+void WebGPUContext::yield_startup()
+{
+#ifdef __EMSCRIPTEN__
+  if (emscripten_is_main_browser_thread() && emscripten_has_asyncify()) {
+    blender_browser_startup_yield();
+  }
+#endif
 }
 
 void WebGPUContext::activate()
@@ -1010,7 +1021,12 @@ void WebGPUContext::present_backbuffer(int w, int h)
     return;
   }
 #ifdef WITH_GHOST_WEBGPU_CONTEXT
-  if (!ghost_canvas_ || !ghost_canvas_->view()) throw std::runtime_error("WebGPU presentation has no acquired GHOST frame");
+  /* Startup shader translation may have yielded through a browser paint. The
+   * canvas surface texture can expire at that boundary. All work so far targets
+   * our offscreen backbuffer; acquire a fresh surface immediately before blit. */
+  if (!ghost_canvas_ || ghost_canvas_->refreshFrame() != GHOST_kSuccess) {
+    throw std::runtime_error("WebGPU presentation cannot refresh its GHOST frame");
+  }
   const auto canvas_format=ghost_canvas_->format();
 #else
   throw std::runtime_error("Headless WebGPU profile cannot present a canvas");

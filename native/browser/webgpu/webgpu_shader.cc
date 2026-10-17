@@ -1523,6 +1523,7 @@ void WebGPUShader::ensure_translated()
     return;
   }
   translate_attempted_ = true;
+  WebGPUContext::yield_startup();
 
   const bool is_compute = !compute_src_.empty();
   bool vert_ok = true, frag_ok = true, comp_ok = true;

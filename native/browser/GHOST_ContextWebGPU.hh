@@ -27,6 +27,7 @@ class GHOST_ContextWebGPU : public GHOST_Context {
   WGPUTexture texture() const { return texture_; }
   WGPUTextureView view() const { return view_; }
   WGPUTextureFormat format() const { return format_; }
+  GHOST_TSuccess refreshFrame();
   GHOST_TSuccess submit(WGPUCommandBuffer command);
   GHOST_TSuccess initializeDrawingContext() override;
   GHOST_TSuccess updateDrawingContext() override;

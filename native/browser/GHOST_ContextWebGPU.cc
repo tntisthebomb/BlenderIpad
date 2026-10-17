@@ -78,6 +78,12 @@ GHOST_TSuccess GHOST_ContextWebGPU::swapBufferAcquire()
   if (!view_) { discardFrame(); return GHOST_kFailure; }
   return GHOST_kSuccess;
 }
+GHOST_TSuccess GHOST_ContextWebGPU::refreshFrame()
+{
+  if (active_context_ != this || !texture_ || submitted_) return GHOST_kFailure;
+  discardFrame();
+  return swapBufferAcquire();
+}
 GHOST_TSuccess GHOST_ContextWebGPU::submit(WGPUCommandBuffer command)
 {
   if (active_context_ != this || !view_ || !command) return GHOST_kFailure;

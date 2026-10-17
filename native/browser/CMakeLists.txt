@@ -60,6 +60,6 @@ if(WITH_GHOST_WEBGPU_CONTEXT)
   target_link_libraries(ghost-webgpu-probe PRIVATE blender_browser_ghost)
   target_link_options(ghost-webgpu-probe PRIVATE -sMODULARIZE=1 -sEXPORT_NAME=GhostWebGPU
     -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=2 -sDISABLE_EXCEPTION_CATCHING=0
-    "-sEXPORTED_FUNCTIONS=['_main','_ghost_gpu_frame','_ghost_gpu_close','_ghost_gpu_reopen','_ghost_gpu_shutdown','_ghost_gpu_pending']")
+    "-sEXPORTED_FUNCTIONS=['_main','_ghost_gpu_hold_frame','_ghost_gpu_frame','_ghost_gpu_close','_ghost_gpu_reopen','_ghost_gpu_shutdown','_ghost_gpu_pending']")
   configure_file(webgpu_probe.html ghost-webgpu.html COPYONLY)
 endif()

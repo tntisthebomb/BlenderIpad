@@ -40,7 +40,9 @@ try:
             canvas.style.width='96px'; canvas.style.height='72px';
             window.dispatchEvent(new Event('resize'));
         }''')
-        frame(3,0)
+        assert page.evaluate('ghostGPU._ghost_gpu_hold_frame()')==1
+        page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+        frame(3,2)
         assert page.evaluate('ghostGPU._ghost_gpu_close()')==1
         assert page.evaluate('ghostGPU._ghost_gpu_frame(0)')==0
         assert page.evaluate('ghostGPU._ghost_gpu_reopen()')==1

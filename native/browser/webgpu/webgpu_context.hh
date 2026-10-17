@@ -117,6 +117,7 @@ class WebGPUContext : public Context {
 
   static WebGPUContext *get() { return static_cast<WebGPUContext *>(Context::get()); }
 
+  static void yield_startup();
   void activate() override;
   void deactivate() override
   {

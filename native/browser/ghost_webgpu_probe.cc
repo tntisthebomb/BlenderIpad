@@ -51,11 +51,19 @@ static void mapped(WGPUMapAsyncStatus status, WGPUStringView message, void *user
   }
   wgpuBufferRelease(read->buffer); delete read; --pending;
 }
+extern "C" int ghost_gpu_hold_frame()
+{
+  return window_instance && window_instance->activateDrawingContext()==GHOST_kSuccess &&
+    window_instance->swapBufferAcquire()==GHOST_kSuccess;
+}
 extern "C" int ghost_gpu_frame(int alternate)
 {
   if (!window_instance || window_instance->activateDrawingContext()!=GHOST_kSuccess) return 0;
   auto *context=static_cast<GHOST_ContextWebGPU *>(window_instance->getDrawingContext());
-  if (window_instance->swapBufferRelease()!=GHOST_kFailure ||
+  if (alternate==2) {
+    if(context->refreshFrame()!=GHOST_kSuccess)return 0;
+    alternate=0;
+  } else if (window_instance->swapBufferRelease()!=GHOST_kFailure ||
       window_instance->swapBufferAcquire()!=GHOST_kSuccess ||
       window_instance->swapBufferAcquire()!=GHOST_kFailure ||
       window_instance->swapBufferRelease()!=GHOST_kFailure) return 0;

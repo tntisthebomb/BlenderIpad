@@ -7,10 +7,13 @@ from pathlib import Path
 import subprocess
 from setup_browser import CACHE, ROOT
 
-ASSETS = ('index.html', 'editor.html', 'ipad-startup.html', 'editor_files.js', 'editor_input.js','startup_stats.js', 'blender-core.js',
+ASSETS = ('index.html', 'editor.html', 'ipad-startup.html', 'ipad-update.html', 'editor_files.js', 'editor_input.js','startup_stats.js', 'startup_watchdog.js', 'blender-core.js',
           'blender-core.wasm', 'blender-core.data', 'manifest.webmanifest',
           'icon.svg', 'icon-192.png', 'icon-512.png', 'service-worker.js')
-TESTS = ('tests/blender_gpu_browser_test.py', 'tests/blender_gpu_scene.py',
+TESTS = ('tests/startup_yield_browser_test.py', 'native/browser/startup_yield_probe.cc',
+         'native/browser/webgpu/startup_yield.hh', 'tests/startup_watchdog_browser_test.py',
+         'tests/ghost_webgpu_browser_test.py', 'native/browser/ghost_webgpu_probe.cc',
+         'tests/blender_gpu_browser_test.py', 'tests/blender_gpu_scene.py',
          'tests/blender_editor_browser_test.py', 'tests/blender_editor_scene.py',
          'tests/blender_tablet_startup_browser_test.py',
          'tests/blender_render_browser_test.py', 'tests/blender_render_scene.py',
@@ -59,6 +62,9 @@ if __name__ == '__main__':
         result = subprocess.run([str(interpreter), str(ROOT / script), *arguments], cwd=ROOT)
         if result.returncode:
             failures.append({'check': label, 'exit_code': result.returncode})
+    check('native_startup_yield', 'tests/startup_yield_browser_test.py')
+    check('startup_watchdog', 'tests/startup_watchdog_browser_test.py')
+    check('surface_refresh', 'tests/ghost_webgpu_browser_test.py')
     check('gpu_resources', 'tests/blender_gpu_browser_test.py')
     for engine in engines:
         check(engine, 'tests/blender_render_browser_test.py', '--engine', engine)
@@ -74,7 +80,8 @@ if __name__ == '__main__':
         raise SystemExit('Editor acceptance failed: ' + ', '.join(item['check'] for item in failures))
     stamp.write_text(json.dumps({'version': [5, 2, 2], 'profile': 'experimental-editor',
         'render_engines': engines,
-        'checks': ['gpu_resources', 'font_pixels', 'native_viewport', 'keyboard_transform',
+        'physicalSafariAccepted': False,
+        'checks': ['native_cooperative_startup', 'canvas_surface_refresh_after_paint', 'independent_recovery', 'gpu_resources', 'font_pixels', 'native_viewport', 'keyboard_transform',
                    'touch_selection', 'touch_viewport_navigation', 'tablet_keyboard_unicode',
                    'native_save_load', 'durable_projects', 'offline_reload',
                    'workbench_render_png', 'suspension_orientation', 'device_loss_backup',
