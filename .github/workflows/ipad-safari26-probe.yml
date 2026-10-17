@@ -1,0 +1,26 @@
+name: Check actual Safari WebGPU on macOS 26
+on:
+  push:
+    branches: [codex/ipad-safari26-probe]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  safari26:
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install system Safari automation
+        run: |
+          python3 -m venv .cache/safari-probe
+          .cache/safari-probe/bin/python -m pip install selenium==4.38.0
+      - name: Check secure isolated WebGPU adapter and real command submission
+        run: .cache/safari-probe/bin/python tests/ipad_safari26_gpu_probe.py
+      - name: Preserve explicit GPU availability result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Safari26-GPU-availability
+          path: work/memory/safari26-webgpu-probe.json
+          if-no-files-found: error
