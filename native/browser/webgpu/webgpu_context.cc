@@ -196,7 +196,7 @@ void WebGPUContext::yield_startup()
 {
 #ifdef __EMSCRIPTEN__
   if (emscripten_is_main_browser_thread() && emscripten_has_asyncify()) {
-    blender_browser_startup_yield();
+    blender_browser_startup_cooperate();
   }
 #endif
 }
