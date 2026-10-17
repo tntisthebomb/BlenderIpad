@@ -7,9 +7,36 @@ on:
 
 permissions:
   contents: read
+concurrency:
+  group: ipad-cooperative-startup
+  cancel-in-progress: true
 
 jobs:
+  cancel-obsolete:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Stop the superseded first candidate build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.error
+          url='https://api.github.com/repos/tntisthebomb/BlenderIpad/actions/runs/38989434384'
+          headers={'Authorization':'Bearer '+os.environ['GITHUB_TOKEN'],'Accept':'application/vnd.github+json'}
+          with urllib.request.urlopen(urllib.request.Request(url,headers=headers)) as response:
+              status=json.load(response)['status']
+          if status in ('queued','in_progress','waiting'):
+              try:
+                  urllib.request.urlopen(urllib.request.Request(url+'/cancel',headers=headers,method='POST')).close()
+                  print('Stopped superseded candidate build.')
+              except urllib.error.HTTPError as error:
+                  if error.code!=409:raise
+          PY
   editor:
+    needs: cancel-obsolete
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     strategy:

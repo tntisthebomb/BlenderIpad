@@ -755,6 +755,7 @@ void WebGPUBatch::record_draw(int vertex_first,
     rpd.fragment = &frag;
     rpd.depthStencil = has_depth ? &ds : nullptr;
 
+    WebGPUContext::yield_startup();
     pipeline = wgpuDeviceCreateRenderPipeline(ctx->device(), &rpd);
     if (pipe_layout) {
       wgpuPipelineLayoutRelease(pipe_layout);
@@ -1378,6 +1379,7 @@ void webgpu_immediate_draw(GPUPrimType prim_type,
     rpd.fragment = &frag;
     rpd.depthStencil = has_depth ? &ds : nullptr;
 
+    WebGPUContext::yield_startup();
     pipeline = wgpuDeviceCreateRenderPipeline(ctx->device(), &rpd);
     if (pipe_layout) {
       wgpuPipelineLayoutRelease(pipe_layout);

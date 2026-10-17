@@ -1021,12 +1021,7 @@ void WebGPUContext::present_backbuffer(int w, int h)
     return;
   }
 #ifdef WITH_GHOST_WEBGPU_CONTEXT
-  /* Startup shader translation may have yielded through a browser paint. The
-   * canvas surface texture can expire at that boundary. All work so far targets
-   * our offscreen backbuffer; acquire a fresh surface immediately before blit. */
-  if (!ghost_canvas_ || ghost_canvas_->refreshFrame() != GHOST_kSuccess) {
-    throw std::runtime_error("WebGPU presentation cannot refresh its GHOST frame");
-  }
+  if (!ghost_canvas_) throw std::runtime_error("WebGPU presentation has no GHOST frame");
   const auto canvas_format=ghost_canvas_->format();
 #else
   throw std::runtime_error("Headless WebGPU profile cannot present a canvas");
@@ -1074,12 +1069,18 @@ void WebGPUContext::present_backbuffer(int w, int h)
     rpd.multisample.count = 1;
     rpd.multisample.mask = 0xFFFFFFFFu;
     rpd.fragment = &frag;
+    yield_startup();
     flip_pipe = wgpuDeviceCreateRenderPipeline(device_, &rpd);
   }
   render_pass_end();
   WGPUCommandEncoder enc = ensure_encoder();
   if (enc && flip_pipe) {
     #ifdef WITH_GHOST_WEBGPU_CONTEXT
+    /* No canvas attachments have been encoded yet. Reacquire after all native
+     * startup yields, immediately before encoding the presentation blit. */
+    if (ghost_canvas_->refreshFrame() != GHOST_kSuccess) {
+      throw std::runtime_error("WebGPU presentation cannot refresh its GHOST frame");
+    }
     WGPUTextureView dst_view = ghost_canvas_->view();
 #else
     WGPUTextureView dst_view = nullptr;
@@ -1272,6 +1273,7 @@ void WebGPUContext::generate_mipmaps(WebGPUTexture *t)
     rpd.multisample.count = 1;
     rpd.multisample.mask = 0xFFFFFFFFu;
     rpd.fragment = &frag;
+    yield_startup();
     pipe = wgpuDeviceCreateRenderPipeline(device_, &rpd);
     pipelines[fmt] = pipe;
   }

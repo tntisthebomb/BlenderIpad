@@ -19,6 +19,9 @@ try:
         browser = playwright.chromium.launch(
             executable_path=os.environ.get("CHROMIUM_PATH", "/usr/lib/chromium/chromium"), args=["--no-sandbox"])
         context = browser.new_context(has_touch=True, viewport={"width": 1100, "height": 850})
+        gate=(ROOT/'native/browser/blender_editor.html').read_text().split('// Native startup may suspend',1)[1].split("canvas.addEventListener('pointerdown'",1)[0]
+        # Production installs capture listeners before the native callbacks.
+        context.add_init_script('// Native startup may suspend'+gate)
         page = context.new_page()
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
@@ -133,6 +136,33 @@ try:
             canvas.click()  # No dangling native callbacks after disposal.
             assert page.evaluate("nativeGhost._ghost_probe_init()") == 1
             assert snapshot()["backend"] == "WEB"
+        # Use the actual production gate with real native GHOST callbacks.
+        # A mouse-up/key-up can target an element outside the canvas and still
+        # reach a window listener; all of these must stay out of paused WASM.
+        page.evaluate("window.blenderEditor={browserCooperativeStartup:true,browserStartupComplete:false}")
+        page.evaluate("window.fixtureResizeCallbacks=0;window.addEventListener('resize',()=>fixtureResizeCallbacks++)")
+        before=snapshot()
+        blocked_events='''()=>{
+          const canvas=document.getElementById('canvas');
+          canvas.dispatchEvent(new MouseEvent('mousedown',{button:0,bubbles:true}));
+          document.body.dispatchEvent(new MouseEvent('mouseup',{button:0,bubbles:true}));
+          canvas.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyG',key:'g',bubbles:true}));
+          document.body.dispatchEvent(new KeyboardEvent('keyup',{code:'KeyG',key:'g',bubbles:true}));
+          canvas.dispatchEvent(new WheelEvent('wheel',{deltaY:120,bubbles:true}));
+          dispatchEvent(new Event('resize'));
+        }'''
+        page.evaluate(blocked_events)
+        after=snapshot()
+        for key in ('keydown','keyup','mousedown','mouseup','wheel','resizes'):
+            assert after[key]==before[key],('Reentered native startup through '+key,before,after)
+        assert page.evaluate("fixtureResizeCallbacks")==0
+        page.evaluate("blenderEditor.browserStartupComplete=true")
+        page.evaluate(blocked_events)
+        after=snapshot()
+        for key in ('keydown','keyup','mousedown','mouseup','wheel'):
+            assert after[key]==before[key]+1,('Input did not resume after startup: '+key,before,after)
+        assert page.evaluate('fixtureResizeCallbacks')==1
+        print('PASS: production startup gate blocks real native mouse/key/wheel/resize callbacks and restores input after completion.')
         assert not errors, errors
         browser.close()
     print("PASS: actual GHOST factory/window/event queue; keyboard, repeat, UTF-8, modifiers, blur, mouse, touch, wheel, resize, redraw and lifecycle.")

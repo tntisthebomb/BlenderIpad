@@ -73,6 +73,7 @@ if __name__ == '__main__':
                    'tests/editor_files_browser_test.py', 'tests/editor_install_failure_test.py',
                    'tests/startup_preflight_browser_test.py', 'tests/startup_stats_browser_test.py', 'tests/wasm_mime_browser_test.py', 'tests/blender_tablet_startup_browser_test.py'):
         check(script, script)
+    check('tablet_cooperative_input', 'tests/blender_editor_browser_test.py', '--tablet')
     if snapshot() != before:
         raise SystemExit('Assets or acceptance fixtures changed during validation.')
     if failures:
@@ -81,7 +82,7 @@ if __name__ == '__main__':
     stamp.write_text(json.dumps({'version': [5, 2, 2], 'profile': 'experimental-editor',
         'render_engines': engines,
         'physicalSafariAccepted': False,
-        'checks': ['native_cooperative_startup', 'canvas_surface_refresh_after_paint', 'independent_recovery', 'gpu_resources', 'font_pixels', 'native_viewport', 'keyboard_transform',
+        'checks': ['tablet_cooperative_input', 'native_cooperative_startup', 'canvas_surface_refresh_after_paint', 'independent_recovery', 'gpu_resources', 'font_pixels', 'native_viewport', 'keyboard_transform',
                    'touch_selection', 'touch_viewport_navigation', 'tablet_keyboard_unicode',
                    'native_save_load', 'durable_projects', 'offline_reload',
                    'workbench_render_png', 'suspension_orientation', 'device_loss_backup',

@@ -253,6 +253,7 @@ class WebGPUBackend : public GPUBackend {
       sh->spec_entries(sh->compute_wgsl(), spec_consts);
       d.compute.constantCount = spec_consts.size();
       d.compute.constants = spec_consts.empty() ? nullptr : spec_consts.data();
+      WebGPUContext::yield_startup();
       pipe = wgpuDeviceCreateComputePipeline(ctx->device(), &d);
       if (pipe_layout) {
         wgpuPipelineLayoutRelease(pipe_layout);
@@ -621,6 +622,7 @@ class WebGPUBackend : public GPUBackend {
       sh->spec_entries(sh->compute_wgsl(), spec_consts);
       d.compute.constantCount = spec_consts.size();
       d.compute.constants = spec_consts.empty() ? nullptr : spec_consts.data();
+      WebGPUContext::yield_startup();
       pipe = wgpuDeviceCreateComputePipeline(ctx->device(), &d);
       if (pipe_layout) {
         wgpuPipelineLayoutRelease(pipe_layout);

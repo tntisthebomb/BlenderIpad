@@ -143,11 +143,10 @@ document.getElementById('recover-files').addEventListener('click',()=>{
 });
 // Native startup may suspend with its own stack/resources alive. Do not enter
 // GHOST again through input/resize until the first content frame has finished.
-for(const type of ['pointerdown','pointerup','pointermove','touchstart','touchend','touchmove','wheel','keydown','keyup','resize','blur','focus']){
+for(const type of ['pointerdown','pointerup','pointermove','mousedown','mouseup','mousemove','touchstart','touchend','touchmove','touchcancel','wheel','keydown','keyup','resize','blur','focus']){
   window.addEventListener(type,event=>{
     const module=window.blenderEditor;
-    if(module?.browserCooperativeStartup&&!module.browserStartupComplete&&
-       (event.target===canvas||event.target===window))event.stopImmediatePropagation();
+    if(module?.browserCooperativeStartup&&!module.browserStartupComplete)event.stopImmediatePropagation();
   },true);
 }
 canvas.addEventListener('pointerdown',()=>canvas.focus({preventScroll:true}));
