@@ -1,0 +1,237 @@
+--- a/source/blender/windowmanager/intern/wm_init_exit.cc
++++ b/source/blender/windowmanager/intern/wm_init_exit.cc
+@@ -198,8 +198,19 @@
+   }
+ }
+ 
++#ifdef WITH_BROWSER_STARTUP_COOPERATE
++extern "C" void blender_browser_startup_checkpoint(const char *stage);
++static void wm_browser_startup_checkpoint(const char *stage)
++{
++  blender_browser_startup_checkpoint(stage);
++}
++#else
++static void wm_browser_startup_checkpoint(const char *) {}
++#endif
++
+ void WM_init(bContext *C, int argc, const char **argv)
+ {
++  wm_browser_startup_checkpoint("Creating the window");
+ 
+   if (!G.background) {
+     wm_ghost_init(C); /* NOTE: it assigns C to ghost! */
+@@ -231,6 +242,7 @@
+ 
+   ED_node_init_butfuncs();
+ 
++  wm_browser_startup_checkpoint("Initializing fonts and editors");
+   BLF_init();
+ 
+   BLT_lang_init();
+@@ -280,6 +292,7 @@
+   read_homefile_params.app_template_override = WM_init_state_app_template_get();
+   read_homefile_params.is_first_time = true;
+ 
++  wm_browser_startup_checkpoint("Reading the startup file");
+   wm_homefile_read_ex(C, &read_homefile_params, nullptr, &params_file_read_post);
+ 
+   /* NOTE: leave `G_MAIN->filepath` set to an empty string since this
+@@ -311,6 +324,7 @@
+     /* Sets 3D mouse dead-zone. */
+     WM_ndof_deadzone_set(U.ndof_deadzone);
+ #endif
++    wm_browser_startup_checkpoint("Initializing graphics");
+     WM_init_gpu();
+ 
+     if (!WM_platform_support_perform_checks()) {
+@@ -328,7 +342,9 @@
+   ED_spacemacros_init();
+ 
+ #ifdef WITH_PYTHON
++  wm_browser_startup_checkpoint("Initializing Python");
+   BPY_python_start(C, argc, argv);
++  wm_browser_startup_checkpoint("Loading Python state");
+   BPY_python_reset(C);
+ #else
+   UNUSED_VARS(argc, argv);
+@@ -360,16 +376,20 @@
+    * needed to properly load user-configured add-on key-maps, see: #113603. */
+   WM_keyconfig_update_postpone_begin();
+ 
++  wm_browser_startup_checkpoint("Loading key maps");
+   WM_keyconfig_init(C);
+ 
+   /* Load add-ons after key-maps have been initialized (but before the blend file has been read),
+    * important to guarantee default key-maps have been declared & before post-read handlers run. */
++  wm_browser_startup_checkpoint("Loading extensions");
+   wm_init_scripts_extensions_once(C);
+ 
+   WM_keyconfig_update_postpone_end();
+   WM_keyconfig_update_on_startup(static_cast<wmWindowManager *>(G_MAIN->wm.first));
+ 
++  wm_browser_startup_checkpoint("Preparing the startup scene");
+   wm_homefile_read_post(C, params_file_read_post);
++  wm_browser_startup_checkpoint("Native setup complete");
+ }
+ 
+ static bool wm_init_splash_show_on_startup_check()
+--- a/source/blender/python/intern/bpy.cc
++++ b/source/blender/python/intern/bpy.cc
+@@ -676,7 +676,23 @@
+ #  endif
+ #endif
+ 
++#ifdef WITH_BROWSER_STARTUP_COOPERATE
++extern "C" void blender_browser_startup_checkpoint(const char *stage);
++static PyObject *bpy_browser_startup_cooperate(PyObject *, PyObject *args)
++{
++  const char *stage = nullptr;
++  if (!PyArg_ParseTuple(args, "|z:_browser_startup_cooperate", &stage)) {
++    return nullptr;
++  }
++  blender_browser_startup_checkpoint(stage);
++  Py_RETURN_NONE;
++}
++#endif
++
+ static PyMethodDef bpy_methods[] = {
++#ifdef WITH_BROWSER_STARTUP_COOPERATE
++    {"_browser_startup_cooperate", bpy_browser_startup_cooperate, METH_VARARGS, nullptr},
++#endif
+     {"script_paths",
+      reinterpret_cast<PyCFunction>(bpy_script_paths),
+      METH_NOARGS,
+--- a/source/blender/python/intern/CMakeLists.txt
++++ b/source/blender/python/intern/CMakeLists.txt
+@@ -355,6 +355,10 @@
+   add_definitions(-DWITH_EXPERIMENTAL_FEATURES)
+ endif()
+ 
++if(EMSCRIPTEN AND WITH_WEBGPU_BACKEND)
++  set_property(SOURCE bpy.cc APPEND PROPERTY COMPILE_DEFINITIONS WITH_BROWSER_STARTUP_COOPERATE)
++endif()
++
+ blender_add_lib(bf_python "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
+ 
+ # RNA_prototypes.hh
+--- a/source/blender/windowmanager/CMakeLists.txt
++++ b/source/blender/windowmanager/CMakeLists.txt
+@@ -206,6 +206,10 @@
+   )
+ endif()
+ 
++if(EMSCRIPTEN AND WITH_WEBGPU_BACKEND)
++  set_property(SOURCE intern/wm_init_exit.cc APPEND PROPERTY COMPILE_DEFINITIONS WITH_BROWSER_STARTUP_COOPERATE)
++endif()
++
+ blender_add_lib_nolist(bf_windowmanager "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
+ add_library(bf::windowmanager ALIAS bf_windowmanager)
+ 
+--- a/scripts/startup/bl_operators/__init__.py
++++ b/scripts/startup/bl_operators/__init__.py
+@@ -48,11 +48,20 @@
+ ]
+ 
+ import bpy
++import _bpy as _browser_runtime
++_browser_startup_cooperate = getattr(_browser_runtime, "_browser_startup_cooperate", None)
++del _browser_runtime
+ 
+ if bpy.app.build_options.freestyle:
+     _modules.append("freestyle")
+ 
+-__import__(name=__name__, fromlist=_modules)
++if _browser_startup_cooperate is None:
++    __import__(name=__name__, fromlist=_modules)
++else:
++    for _module in _modules:
++        _browser_startup_cooperate("Importing " + __name__ + "." + _module)
++        __import__(name=__name__, fromlist=[_module])
++    del _module
+ _namespace = globals()
+ _modules_loaded = [_namespace[name] for name in _modules]
+ del _namespace
+@@ -66,6 +75,8 @@
+     )
+ 
+     for mod in _modules_loaded:
++        if _browser_startup_cooperate is not None:
++            _browser_startup_cooperate("Registering " + mod.__name__)
+         for cls in mod.classes:
+             register_class(cls)
+ 
+--- a/scripts/startup/bl_ui/__init__.py
++++ b/scripts/startup/bl_ui/__init__.py
+@@ -97,11 +97,20 @@
+ ]
+ 
+ import bpy
++import _bpy as _browser_runtime
++_browser_startup_cooperate = getattr(_browser_runtime, "_browser_startup_cooperate", None)
++del _browser_runtime
+ 
+ if bpy.app.build_options.freestyle:
+     _modules.append("properties_freestyle")
+ 
+-__import__(name=__name__, fromlist=_modules)
++if _browser_startup_cooperate is None:
++    __import__(name=__name__, fromlist=_modules)
++else:
++    for _module in _modules:
++        _browser_startup_cooperate("Importing " + __name__ + "." + _module)
++        __import__(name=__name__, fromlist=[_module])
++    del _module
+ _namespace = globals()
+ _modules_loaded = [_namespace[name] for name in _modules]
+ del _namespace
+@@ -119,6 +128,8 @@
+     for cls in classes:
+         register_class(cls)
+     for mod in _modules_loaded:
++        if _browser_startup_cooperate is not None:
++            _browser_startup_cooperate("Registering " + mod.__name__)
+         for cls in mod.classes:
+             register_class(cls)
+ 
+--- a/scripts/modules/bpy/utils/__init__.py
++++ b/scripts/modules/bpy/utils/__init__.py
+@@ -66,6 +66,9 @@
+ )
+ 
+ import bpy as _bpy
++import _bpy as _browser_runtime
++_browser_startup_cooperate = getattr(_browser_runtime, "_browser_startup_cooperate", None)
++del _browser_runtime
+ import os as _os
+ import sys as _sys
+ 
+@@ -126,6 +129,8 @@
+ 
+ 
+ def _test_import(module_name, loaded_modules):
++    if _browser_startup_cooperate is not None:
++        _browser_startup_cooperate('Importing ' + module_name)
+     use_time = _bpy.app.debug_python
+ 
+     if module_name in loaded_modules:
+--- a/scripts/modules/addon_utils.py
++++ b/scripts/modules/addon_utils.py
+@@ -18,6 +18,9 @@
+ )
+ 
+ import bpy as _bpy
++import _bpy as _browser_runtime
++_browser_startup_cooperate = getattr(_browser_runtime, "_browser_startup_cooperate", None)
++del _browser_runtime
+ _preferences = _bpy.context.preferences
+ 
+ error_encoding = False
+@@ -354,6 +357,8 @@
+     :return: the loaded module or None on failure.
+     :rtype: ModuleType
+     """
++    if _browser_startup_cooperate is not None:
++        _browser_startup_cooperate('Loading extension ' + module_name)
+ 
+     import os
+     import sys

@@ -4,11 +4,11 @@
   'use strict';
   const key='blender-startup-stats-last';
   let began=performance.now();
-  const state={version:'startup-stats-v8',attemptId:null,progressSequence:0,startedAt:null,pageVisible:!document.hidden,traceUnavailable:[],watchdogStatus:'not started',watchdogMaxGapMs:0,recentOperations:[],active:false,phase:'Waiting to start',phaseSeconds:0,
+  const state={version:'startup-stats-v9',attemptId:null,progressSequence:0,startedAt:null,pageVisible:!document.hidden,traceUnavailable:[],watchdogStatus:'not started',watchdogMaxGapMs:0,recentOperations:[],active:false,phase:'Waiting to start',phaseSeconds:0,
     elapsedSeconds:0,operation:'None yet',operationStatus:'not started',label:'',wasmMemoryBytes:null,dependencies:null,
     wasmMode:'not started',wasmMimeType:null,mainInstanceReady:false,workersRequested:0,workersReady:0,
     shaderModules:0,renderPipelines:0,computePipelines:0,texturesCreated:0,buffersCreated:0,
-    commandEncoders:0,renderPasses:0,computePasses:0,drawCalls:0,queueSubmissions:0,nativeQueueSubmissions:0,nativeBridgeEvents:0,nativeInitStages:[],startupYields:0,lastNativeMarker:null,firstSubmission:'not submitted',
+    commandEncoders:0,renderPasses:0,computePasses:0,drawCalls:0,queueSubmissions:0,nativeQueueSubmissions:0,nativeBridgeEvents:0,nativeInitStages:[],startupYields:0,pythonStartupCheckpoints:0,lastNativeMarker:null,firstSubmission:'not submitted',
     bufferBytesRequested:0,canvasBacking:null,canvasCss:null,lines:[],updatedAt:null};
   let previous=null,previousWatchdog=null,watchdog=null,sharedRecorder=null,sharedState=null,recorderReady=Promise.resolve(),resolveRecorder=null,lastEventSignature=null,memory=null,lastSaved=0,lastOutputUpdate=-Infinity,lastPaint=-Infinity,compact=false;
   try{previous=JSON.parse(localStorage.getItem(key)||'null');}catch{}
@@ -58,7 +58,7 @@
     const previousView=previousSnapshot();
     const view=!state.active&&previousView ? previousView : state;
     const hasRecovery=!!previousWatchdog&&view.attemptId!=null&&previousWatchdog.attemptId===view.attemptId;
-    title.textContent=!state.active&&previousView ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v8';
+    title.textContent=!state.active&&previousView ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v9';
     const mib=value=>(value/1048576).toFixed(1)+' MiB';
     text.textContent=[
       'Step: '+view.phase,
@@ -73,7 +73,7 @@
       'Creation requests: '+view.shaderModules+' shaders · '+view.renderPipelines+' render pipelines · '+view.computePipelines+' compute pipelines',
       'Startup command calls: '+(view.commandEncoders??0)+' encoders · '+(view.renderPasses??0)+' render passes · '+(view.computePasses??0)+' compute passes · '+(view.drawCalls??0)+' draws',
       'Queue: '+(view.queueSubmissions??0)+' browser submits · '+(view.nativeQueueSubmissions??'not recorded')+' traced native entries (96-event cap) · first completion: '+(view.firstSubmission??'not recorded'),
-      'Native startup yields: '+(view.startupYields??'not recorded'),
+      'Native startup yields: '+(view.startupYields??'not recorded')+' · Python checkpoints: '+(view.pythonStartupCheckpoints??'not recorded'),
       'Recovery recorder: '+(state.active?view.watchdogStatus:(hasRecovery?'saved':'not recorded'))+' · longest main heartbeat gap: '+Math.round((hasRecovery?previousWatchdog.maxHeartbeatGapMs:view.watchdogMaxGapMs??0)/1000)+' s'+(hasRecovery?' · observed at '+previousWatchdog.observedElapsedSeconds+' s':''),
       ...(view.traceUnavailable?.length?['Trace unavailable: '+view.traceUnavailable.join(', ')]:[]),
       'GPU resource requests: '+view.texturesCreated+' textures · '+view.buffersCreated+' buffers',
@@ -310,6 +310,11 @@
           try{sendWatchdog({kind:'native-line',line:bounded,progressSequence:state.progressSequence,
             elapsedSeconds:Math.round((performance.now()-began)/1000),lastNativeMarker:state.lastNativeMarker});}catch{}
         }
+      }
+      if(state.active&&state.phase!=='Viewport presented'&&line.startsWith('Browser startup: ')){
+        const stage=line.slice('Browser startup: '.length);
+        if(/^(Importing |Registering |Loading extension )/.test(stage))state.pythonStartupCheckpoints++;
+        operation('Native startup setup',stage,'in progress');
       }
       if(state.active&&state.phase!=='Viewport presented'&&line.startsWith('GPU initialization: ')){
         const stage=line.slice('GPU initialization: '.length);

@@ -4,18 +4,24 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
+import argparse
 import json
 import os
 from playwright.sync_api import sync_playwright
 from PIL import Image
 
 ROOT=Path(__file__).resolve().parents[1]
+parser=argparse.ArgumentParser()
+parser.add_argument('--runtime',type=Path,default=ROOT/'.cache/blender-webgpu-browser')
+parser.add_argument('--stress-startup',action='store_true')
+options=parser.parse_args()
+suffix='-stress' if options.stress_startup else ''
 class Handler(SimpleHTTPRequestHandler):
     # Model the incorrect WASM MIME header seen on the physical iPad. The
     # exact original type was not reported. Exercise real engine streaming.
     extensions_map={**SimpleHTTPRequestHandler.extensions_map,'.wasm':'application/octet-stream'}
     def log_message(self,*args):pass
-server=ThreadingHTTPServer(('127.0.0.1',0),partial(Handler,directory=str(ROOT/'.cache/blender-webgpu-browser')))
+server=ThreadingHTTPServer(('127.0.0.1',0),partial(Handler,directory=str(options.runtime.resolve())))
 Thread(target=server.serve_forever,daemon=True).start()
 try:
     with sync_playwright() as p:
@@ -42,9 +48,11 @@ try:
               [...(options.requiredFeatures || [])].filter(f=>f!=='float32-filterable')});
           };
         ''')
+        if options.stress_startup:
+            context.add_init_script(path=ROOT/'tests/fixtures/tablet_startup_stress.js')
         page=context.new_page();page.set_default_timeout(180000)
         errors=[];workers=[]
-        diagnostics=(ROOT/'.cache/blender-tablet-startup-console.log').open('w')
+        diagnostics=(ROOT/('.cache/blender-tablet-startup'+suffix+'-console.log')).open('w')
         page.on('console',lambda message:(diagnostics.write(message.type+': '+message.text+'\n'),diagnostics.flush()))
         page.on('pageerror',lambda error:errors.append(str(error)))
         page.on('worker',lambda worker:workers.append(worker.url) if 'blender-core.js' in worker.url else None)
@@ -68,6 +76,7 @@ try:
         assert page.evaluate('blenderEditor.browserStartupYieldCount>=2 && blenderEditor.browserStartupComplete===true'),'Native cooperative startup did not execute'
         page.wait_for_function("blenderStartupStats.snapshot().firstSubmission==='completed' && blenderStartupStats.snapshot().watchdogStatus==='finished'")
         assert len(workers)==4,workers
+        assert stats['pythonStartupCheckpoints']>=100,stats
         assert stats['mainInstanceReady'] and stats['workersReady']==stats['workersRequested']==4,stats
         state=page.evaluate('''({report:blenderDeviceReport,ready:blenderEditor.projectStorageReady,
           wasmMemoryBytes:blenderEditor.getBlenderMemoryBytes(),width:canvas.width,height:canvas.height})''')
@@ -78,13 +87,24 @@ try:
         assert targets,'Real viewport targets were not observed'
         assert all(t['size']['width']<=state['width'] and t['size']['height']<=state['height'] for t in targets),targets
         state['viewportTargets']=targets
-        screenshot=ROOT/'.cache/blender-tablet-startup-frame.png'
+        if options.stress_startup:
+            page.wait_for_function('firstFrameProfile.finishedAt>0')
+            profile=page.evaluate('firstFrameProfile')
+            profile['nativeYields']=page.evaluate('blenderEditor.browserStartupYieldCount??0')
+            profile['pythonStartupCheckpoints']=stats['pythonStartupCheckpoints']
+            (ROOT/'.cache/blender-tablet-startup-stress-profile.json').write_text(json.dumps(profile,indent=2)+'\n')
+            print('STARTUP_STRESS '+json.dumps(profile),flush=True)
+            assert profile.get('launchStartedAbsoluteTime',0)>0,'Launch timing did not survive isolation reload'
+            assert profile['rafTicks']>=3 and profile['timerTicks']>=3,profile
+            assert 0<profile['maxHeartbeatGapMs']<5000,profile
+            assert 0<profile['maxLaunchHeartbeatGapMs']<5000,profile
+        screenshot=ROOT/('.cache/blender-tablet-startup'+suffix+'-frame.png')
         page.locator('#canvas').screenshot(path=str(screenshot))
         picture=Image.open(screenshot).convert('RGB')
         assert len(picture.getcolors(picture.width*picture.height))>64,'Blank tablet editor'
         assert not errors,errors
         assert not page.evaluate('editorOutput.some(line=>line.includes("wasm streaming compile failed") || line.includes("falling back to ArrayBuffer instantiation"))'), 'Real engine fell back to buffering its WASM'
-        (ROOT/'.cache/blender-tablet-startup-report.json').write_text(json.dumps(state,indent=2)+'\n')
+        (ROOT/('.cache/blender-tablet-startup'+suffix+'-report.json')).write_text(json.dumps(state,indent=2)+'\n')
         page.reload()
         page.wait_for_selector('#start-editor',state='visible')
         assert not page.evaluate('window.blenderEditor'),'Reload automatically restarted the native engine'

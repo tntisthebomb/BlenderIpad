@@ -1,0 +1,33 @@
+<!doctype html><meta charset="utf-8"><title>Embedded Python suspension test</title>
+<body><pre id="output"></pre><script src="probe.js"></script><script>
+window.errors=[];window.result={};
+(async()=>{
+ const module=await createProbe({browserCooperativeStartup:true,printErr:message=>errors.push(String(message))});
+ window.module=module;
+ if(!module._probe_initialize())throw Error('Python initialization failed');
+ let ticks=0,paints=0;
+ const timer=setInterval(()=>ticks++,5);
+ let counting=true;function paint(){if(counting){paints++;requestAnimationFrame(paint);}}requestAnimationFrame(paint);
+ const status=await module.ccall('probe_execute','number',['number'],[25],{async:true});
+ counting=false;clearInterval(timer);
+ if(status!==0||!module.pythonProbeCompleted)throw Error('Cooperative Python call failed');
+ const yields=module.browserStartupYieldCount;
+ if(!(yields>=20&&ticks>=10&&paints>=10))throw Error('Browser did not advance: '+JSON.stringify({yields,ticks,paints}));
+ const synchronous=(name)=>{
+   let observedComplete=false;
+   queueMicrotask(()=>{observedComplete=module.pythonProbeCompleted;});
+   const value=module._probe_execute(1);
+   if(value!==0||!module.pythonProbeCompleted)throw Error(name+' did not finish synchronously');
+   return Promise.resolve().then(()=>{if(!observedComplete)throw Error(name+' suspended unexpectedly');});
+ };
+ module.browserStartupComplete=true;
+ await synchronous('completed startup');
+ module.browserStartupComplete=false;module.browserCooperativeStartup=false;
+ await synchronous('disabled startup');
+ if(module.browserStartupYieldCount!==yields)throw Error('Yielding continued outside startup');
+ if(errors.length)throw Error(errors.join('\n'));
+ result={yields,ticks,paints,nestedPythonAndNativeCallbacks:3,iterations:48,workers:4,
+         completedAndDisabledRemainSynchronous:true};
+ output.textContent=JSON.stringify(result,null,2);document.body.dataset.done='true';
+})().catch(error=>{output.textContent=error.stack;document.body.dataset.error=error.stack;});
+</script>

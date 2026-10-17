@@ -7,6 +7,14 @@ latest successful editor workflow, recovered artifacts and remaining work.
 
 **Current status: the real Blender 5.2.2 editor passes Chromium acceptance.** Its solid viewport, grid, fonts and native UI render; physical-keyboard transforms and touch selection work; native projects save, persist and reload after an offline application restart. This is an experimental port: render-engine validation, disabled optional features and acceptance on the target iPad remain outstanding. The older `ipad-workbench` download is still a separate math demo. See [BROWSER_PORT.md](BROWSER_PORT.md) for scope and reproducible commands.
 
+The cooperative startup branch is rebuilding the native engine to keep browser
+painting and timers running during Python setup and shader warmup. Its additional
+acceptance gate deliberately slows every render pipeline creation by 60 ms and
+requires the complete stock tablet launch to avoid any main-thread gap of five
+seconds or more. The package identifies itself as startup statistics v9. Passing
+these checks is required before the next device candidate; physical iPad launch
+acceptance is still pending. See [the candidate instructions](docs/ipad-cooperative-startup.txt).
+
 ## Run the existing preview on iPad
 
 1. While signed into GitHub, download
@@ -46,6 +54,7 @@ python3 scripts/build_browser_platform.py
 python3 scripts/build_browser_core_deps.py
 python3 scripts/build_browser_python.py
 python3 scripts/build_browser_python_probe.py
+python3 scripts/build_python_startup_yield_probe.py
 python3 scripts/build_browser_shaderc.py
 python3 scripts/test_browser_shaderc.py
 python3 scripts/build_browser_tint.py

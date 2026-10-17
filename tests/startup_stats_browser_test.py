@@ -111,6 +111,11 @@ window.originalError=new Error('fixture failure');
     const nativeCheckpoint=JSON.parse(localStorage.getItem('blender-startup-stats-last'));
     if(nativeCheckpoint.nativeQueueSubmissions!==1||nativeCheckpoint.operationStatus!=='in progress')throw Error('Native entry was not durably checkpointed');
     blenderStartupStats.nativeBridge('queue-submit-returned','call returned','native fixture');
+    blenderStartupStats.line('Browser startup: Importing bl_ui.properties_scene');
+    if(blenderStartupStats.snapshot().pythonStartupCheckpoints!==1)throw Error('Python checkpoint missing');
+    if(blenderStartupStats.snapshot().label!=='Importing bl_ui.properties_scene')throw Error('Python stage missing');
+    blenderStartupStats.line('Browser startup: Loading key maps');
+    if(blenderStartupStats.snapshot().pythonStartupCheckpoints!==1)throw Error('Coarse stage counted as Python checkpoint');
     blenderStartupStats.line('GPU initialization: create infos');
     if(blenderStartupStats.snapshot().nativeInitStages[0]!=='create infos')throw Error('Native initialization stage missing');
     try{device.createComputePipeline({label:'failed-compute'});throw Error('Swallowed exception');}

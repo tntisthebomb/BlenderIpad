@@ -201,6 +201,26 @@ void WebGPUContext::yield_startup()
 #endif
 }
 
+#ifdef __EMSCRIPTEN__
+EM_JS(int, blender_browser_startup_enabled, (), {
+  return Module['browserCooperativeStartup'] && !Module['browserStartupComplete'] ? 1 : 0;
+});
+
+/* Shared by native initialization and the private Python startup checkpoint. */
+extern "C" void blender_browser_startup_checkpoint(const char *stage)
+{
+  if (!emscripten_is_main_browser_thread() || !emscripten_has_asyncify() ||
+      !blender_browser_startup_enabled()) {
+    return;
+  }
+  const char *trace = std::getenv("BLENDER_GPU_INIT_TRACE");
+  if (stage && trace && trace[0] == '1') {
+    std::fprintf(stderr, "Browser startup: %.160s\n", stage);
+  }
+  WebGPUContext::yield_startup();
+}
+#endif
+
 void WebGPUContext::activate()
 {
   immActivate();
