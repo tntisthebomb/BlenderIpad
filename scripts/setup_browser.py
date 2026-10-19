@@ -50,6 +50,9 @@ def toolchain():
     env.update({"EMSDK": str(sdk), "EM_CONFIG": str(sdk / ".emscripten"),
                 "EMCC_CORES": "4", "PATH": str(tools / "bin") + os.pathsep +
                 str(sdk / "upstream/emscripten") + os.pathsep + env["PATH"]})
+    if env.get('BLENDER_LOW_MEMORY_LINK') == '1':
+        from low_memory_wasm_opt import configure
+        configure(env, ROOT, CACHE, sdk)
     version_output = subprocess.check_output([str(sdk / "upstream/emscripten/emcc"), "--version"],
                                              env=env, text=True)
     if not re.search(r"\b" + re.escape(LOCK["emsdk"]["version"]) + r"\b", version_output):

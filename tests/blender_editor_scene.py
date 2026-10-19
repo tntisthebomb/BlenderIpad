@@ -1,6 +1,7 @@
 """Observe and exercise actual editor state; called only by browser acceptance."""
 import bpy
-bpy.context.preferences.view.show_splash=False
+if not globals().get('BROWSER_TEST_SPLASH',False):
+    bpy.context.preferences.view.show_splash=False
 import json
 from pathlib import Path
 

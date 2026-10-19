@@ -37,8 +37,10 @@ if __name__=='__main__':
 (async()=>{
   const adapter=await navigator.gpu.requestAdapter();
   const device=await adapter.requestDevice({requiredFeatures:['depth32float-stencil8']});
-  await createGPUProbe({preinitializedWebGPUDevice:device,
+  device.addEventListener('uncapturederror',event=>document.body.dataset.error=event.error.message);
+  const module=await createGPUProbe({preinitializedWebGPUDevice:device,noInitialRun:true,
     onAbort:message=>document.body.dataset.error=String(message)});
+  await module.runBlenderMain([]);
 })().catch(error=>document.body.dataset.error=String(error));
 </script></body></html>''')
     else:

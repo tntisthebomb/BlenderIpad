@@ -11,12 +11,13 @@ import zipfile
 from setup_browser import CACHE, ROOT
 from validate_blender_editor import ASSETS, snapshot
 
-NAME = 'BlenderIpad-5.2.2-editor-preview'
+NAME = 'BlenderIpad-5.2.2-editor-picking-fix'
 EXCLUDED = {'.git', '__pycache__', 'node_modules', '.pytest_cache'}
 NOTICE = '''Experimental Blender 5.2.2 browser editor
 
 This is an incomplete browser port. The native editor, viewport, keyboard,
-touch selection, project save/load and offline reload passed Chromium tests.
+touch selection, box selection, FLOAT/UINT depth picking, Retina startup,
+project save/load and offline reload passed Chromium tests.
 Cycles and several optional features are disabled. Safari/iPad acceptance and
 render engine validation remain outstanding. Initial shader compilation is slow.
 
@@ -28,6 +29,8 @@ Cross-Origin-Resource-Policy: same-origin
 WebGPU and cross-origin isolation are required. Plain HTTP .local hosting is
 insufficient. An installed offline application computes locally on your device.
 Keep backups of exported projects; browsers can evict site storage.
+Extract this build into a new folder when replacing an older build, so an old
+offline application cache cannot serve a mixture of old and new runtime files.
 
 The combined application is distributed under GPL-3.0-or-later. See LICENSE.txt
 and THIRD_PARTY.md. Corresponding source accompanies this build separately.
@@ -85,7 +88,8 @@ def main():
         tracked = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode().split('\0')
         # Include these new packaging instructions even before their first commit.
         tracked = sorted(set(filter(None, tracked)) | {
-            'scripts/package_blender_editor.py', 'scripts/validate_blender_editor.py'})
+            'scripts/package_blender_editor.py', 'scripts/validate_blender_editor.py',
+            'scripts/low_memory_wasm_opt.py', 'tests/binaryen_staging_test.py'})
         for relative in tracked:
             archive.add(ROOT / relative, arcname='port/' + relative, recursive=False,
                         filter=source_filter)

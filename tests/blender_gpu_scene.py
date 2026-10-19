@@ -64,6 +64,33 @@ with offscreen.bind():
     assert all(math.isclose(a,b,rel_tol=0,abs_tol=1/255) for a,b in zip(corner,[0,0,0,1])),corner
     checks['builtin_shader_triangle']=True
 offscreen.free()
+
+# Viewport picking reads offset rectangles from a depth/stencil texture.
+# Render different depths so comparing a crop to the complete image also
+# checks its row stride/origin, rather than accepting a constant clear value.
+offscreen=gpu.types.GPUOffScreen(32,32,format='RGBA8')
+with offscreen.bind():
+    framebuffer=gpu.state.active_framebuffer_get()
+    framebuffer.clear(color=(0,0,0,1),depth=1.0)
+    gpu.matrix.load_matrix(Matrix.Identity(4))
+    gpu.matrix.load_projection_matrix(Matrix.Identity(4))
+    gpu.state.depth_test_set('ALWAYS')
+    gpu.state.depth_mask_set(True)
+    shader=gpu.shader.from_builtin('UNIFORM_COLOR')
+    batch=batch_for_shader(shader,'TRIS',{'pos':[(-1,-1,0.25),(1,-1,0.25),(0,1,0.25)]})
+    shader.bind()
+    shader.uniform_float('color',(1,0,0,1))
+    batch.draw(shader)
+    whole=list(flattened(framebuffer.read_depth(0,0,32,32)))
+    assert len(whole)==1024 and min(whole)<0.99 and max(whole)==1.0,(min(whole),max(whole))
+    crop=list(flattened(framebuffer.read_depth(5,13,12,7)))
+    assert min(crop)<max(crop),'The crop must cross the rendered triangle edge'
+    assert crop==[whole[row*32+column] for row in range(13,20) for column in range(5,17)],crop
+    assert list(flattened(framebuffer.read_depth(31,31,1,1)))==[whole[-1]]
+    gpu.state.depth_mask_set(False)
+    gpu.state.depth_test_set('NONE')
+    checks['depth_pick_subrectangles']=True
+offscreen.free()
 # Font glyphs use the storage-buffer shader whose translated block variable
 # can become `S`. Verify the real font renderer produces pixels, rather than
 # checking only the create-info mapping in isolation.

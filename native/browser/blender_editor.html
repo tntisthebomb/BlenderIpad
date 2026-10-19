@@ -13,7 +13,7 @@ button,.file-button {background:#454545;color:#eee;border:1px solid #666;border-
 #file-message {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 dialog {background:#303030;color:#eee;border:1px solid #666;border-radius:8px}
 #saved-files {display:block;min-width:260px;margin:12px 0}
-#status {position:fixed;inset:0;display:grid;place-items:center;padding:2rem;background:#252525}
+#status {position:fixed;inset:0;display:grid;place-items:center;padding:2rem;background:#252525;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
 #status[hidden] {display:none}
 </style>
 <body>
@@ -38,8 +38,13 @@ function fail(error) {
   editorErrors.push(message);
   document.body.dataset.error=message;
   status.hidden=false;
-  status.textContent=message;
+  const recent=editorOutput.slice(-20).join('\n');
+  status.textContent=message+(recent ? '\n\nRecent Blender output:\n'+recent : '');
 }
+// Errors from animation frames and resumed GPU waits occur after startup's
+// promise has completed. Keep these visible instead of leaving a frozen canvas.
+window.addEventListener('error',event=>fail(event.error?.stack || event.message));
+window.addEventListener('unhandledrejection',event=>fail(event.reason?.stack || event.reason));
 canvas.addEventListener('pointerdown',()=>canvas.focus({preventScroll:true}));
 canvas.addEventListener('contextmenu',event=>event.preventDefault());
 function resizeCanvas() {

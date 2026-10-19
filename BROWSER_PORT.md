@@ -269,3 +269,37 @@ and exposes WebGPU in the native preference enum. The user-preference enum
 retains its existing short storage type with a new matching WebGPU value.
 The affected native source compiles; full startup and dialog behavior remain
 under validation in the application rebuild.
+
+## Viewport picking depth readback
+
+Blender's legacy gizmo picking calls `GPU_framebuffer_read_depth` with
+`GPU_DATA_UINT`; viewport depth sampling also requests small offset rectangles.
+The previous backend accepted only floating-point depth and copied just the
+requested rectangle. WebGPU requires depth/stencil copies to cover the entire
+mip subresource, so those rectangle copies are invalid even though color/ID
+texture rectangle copies are supported.
+
+The readback path now copies the complete depth plane, crops the requested
+rectangle from the mapped rows, and converts normalized depth to unsigned
+integers when requested. Near depth is zero and cleared/far depth remains
+`UINT32_MAX`, including at the endpoint where float32 multiplication can overflow
+an unsigned conversion. Temporary GPU buffers are destroyed after mapping.
+
+Editor validation now requires native framebuffer FLOAT/UINT depth reads on
+both depth-only and depth/stencil textures, offset and edge rectangles, and
+crops of a rendered nonuniform depth image. Interaction checks include a native
+search popup and touch box selection, then repeat at pixel ratio two with the
+normal startup splash enabled. Uncaught frame/resumed-wait errors are displayed
+with recent runtime output. A new acceptance stamp is required before packaging.
+Physical iPad/Safari acceptance remains a separate requirement.
+
+The full WebAssembly optimizer can exceed an 8 GB build host's memory limit.
+Set `BINARYEN_CORES=1 MALLOC_ARENA_MAX=2 BLENDER_LOW_MEMORY_LINK=1` for the build,
+browser relink and validation commands. The optional wrapper serializes the
+pinned optimizer's passes through intermediate modules, releasing optimizer
+memory between passes. It derives the O2 pass sequence from the actual tool,
+retains its feature/control flags and validates every intermediate module.
+These are build-host settings; they do not reduce the application's runtime
+thread count or bypass any acceptance checks.
+Validated optimizer prefixes are cached by input/tool/flag hashes; only
+Asyncify-specific arguments are omitted from the pre-Asyncify cache key.

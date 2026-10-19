@@ -9,6 +9,9 @@ Goal: run the latest stable Blender locally on an iPad as an installable, offlin
 The actual editor is built separately from the legacy math workbench:
 
 ```sh
+# Limit build-optimizer memory use on an 8 GB host. This does not change
+# Blender's runtime thread settings.
+export BINARYEN_CORES=1 MALLOC_ARENA_MAX=2 BLENDER_LOW_MEMORY_LINK=1
 python3 scripts/build_browser_platform.py
 python3 scripts/build_browser_core_deps.py
 python3 scripts/build_browser_python.py
@@ -26,7 +29,7 @@ python3 scripts/validate_blender_editor.py
 python3 scripts/package_blender_editor.py
 ```
 
-Acceptance requires Chromium with a working WebGPU adapter; set `CHROMIUM_PATH` when necessary. Packaging rejects changed assets or fixtures after acceptance. It writes `dist/BlenderIpad-5.2.2-editor-preview.zip` and its corresponding `-source.tar.gz`, containing prepared Blender, dependency sources, runtime sources, overlays, licenses and rebuild instructions. These names describe local outputs, not an already published release.
+Acceptance requires Chromium with a working WebGPU adapter; set `CHROMIUM_PATH` when necessary. Packaging rejects changed assets or fixtures after acceptance. It writes `dist/BlenderIpad-5.2.2-editor-picking-fix.zip` and its corresponding `-source.tar.gz`, containing prepared Blender, dependency sources, runtime sources, overlays, licenses and rebuild instructions. These names describe local outputs, not an already published release.
 
 Serve the extracted editor assets over HTTPS with COOP/COEP headers as described below. WebGPU, shared memory and cross-origin isolation are required. Plain HTTP `users-ipad.local` in WorldWideWeb cannot provide those requirements. GitHub Pages cannot set the required headers directly; the existing Pages workflow continues to build the legacy math demo. No remote Blender process is needed: computation is local once the assets load. Initial shader compilation can take several minutes. Export backups because browser storage can be evicted.
 

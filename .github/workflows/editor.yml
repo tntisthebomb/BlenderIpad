@@ -10,6 +10,10 @@ jobs:
   editor:
     runs-on: ubuntu-24.04
     timeout-minutes: 240
+    env:
+      BINARYEN_CORES: '1'
+      MALLOC_ARENA_MAX: '2'
+      BLENDER_LOW_MEMORY_LINK: '1'
     steps:
       - name: Check out project
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
