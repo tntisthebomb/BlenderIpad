@@ -1,12 +1,15 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "GPU_context.hh"
 #include "GPU_init_exit.hh"
+#include "GPU_framebuffer.hh"
+#include "GPU_texture.hh"
 #include "CLG_log.h"
 #include "gpu_shader_create_info.hh"
 #include "webgpu/webgpu_shader_interface.hh"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 #include <emscripten.h>
 int main()
 {
@@ -18,6 +21,38 @@ int main()
   std::puts("Real Blender GPU context created; entering GPU_init.");
   GPU_init();
   std::puts("Actual Blender GPU registration and builtin warm-up completed.");
+  /* These are the real framebuffer APIs used by viewport and gizmo picking.
+   * The previous backend rejected UINT depth and emitted an invalid WebGPU
+   * texture copy for every offset/subrectangle FLOAT depth request. */
+  for (const auto format : {gpu::TextureFormat::SFLOAT_32_DEPTH,
+                            gpu::TextureFormat::SFLOAT_32_DEPTH_UINT_8}) {
+    gpu::Texture *depth = GPU_texture_create_2d("pick_depth", 13, 9, 1, format,
+                                               GPU_TEXTURE_USAGE_GENERAL, nullptr);
+    assert(depth);
+    gpu::FrameBuffer *fb = nullptr;
+    GPU_framebuffer_ensure_config(&fb, {GPU_ATTACHMENT_TEXTURE(depth)});
+    GPU_framebuffer_bind(fb);
+    for (const float clear_depth : {0.0f, 0.375f, 1.0f}) {
+      GPU_framebuffer_clear_depth(fb, clear_depth);
+      float floats[6] = {-1, -1, -1, -1, -1, -1};
+      GPU_framebuffer_read_depth(fb, 4, 3, 3, 2, GPU_DATA_FLOAT, floats);
+      for (const float value : floats) assert(std::fabs(value - clear_depth) < 1e-6f);
+      uint32_t integers[6] = {};
+      GPU_framebuffer_read_depth(fb, 4, 3, 3, 2, GPU_DATA_UINT, integers);
+      for (const uint32_t value : integers) {
+        const uint32_t expected = uint32_t(double(clear_depth) * double(UINT32_MAX));
+        assert(value == expected);
+      }
+      /* The last pixel exercises row padding and the far edge of the crop. */
+      float edge = -1.0f;
+      GPU_framebuffer_read_depth(fb, 12, 8, 1, 1, GPU_DATA_FLOAT, &edge);
+      assert(std::fabs(edge - clear_depth) < 1e-6f);
+    }
+    GPU_framebuffer_restore();
+    GPU_framebuffer_free(fb);
+    GPU_texture_free(depth);
+  }
+  std::puts("Actual viewport picking depth reads pass for FLOAT and UINT subrectangles.");
   {
     using namespace gpu;
     using namespace gpu::shader;

@@ -35,6 +35,15 @@ try:
         context=browser.new_context(viewport={'width':1180,'height':820},device_scale_factor=2,has_touch=True)
         context.add_init_script('''
           window.tabletTextureRequests=[];
+          window.tabletDepthCopies=[];
+          const copy=GPUCommandEncoder.prototype.copyTextureToBuffer;
+          GPUCommandEncoder.prototype.copyTextureToBuffer=function(source,destination,size){
+            if(source.texture.format.startsWith('depth'))tabletDepthCopies.push({
+              width:source.texture.width,height:source.texture.height,
+              origin:JSON.parse(JSON.stringify(source.origin||{})),
+              size:JSON.parse(JSON.stringify(size))});
+            return copy.call(this,source,destination,size);
+          };
           const texture=GPUDevice.prototype.createTexture;
           GPUDevice.prototype.createTexture=function(d){
             tabletTextureRequests.push({format:d.format,size:JSON.parse(JSON.stringify(d.size))});
@@ -102,6 +111,30 @@ try:
         page.locator('#canvas').screenshot(path=str(screenshot))
         picture=Image.open(screenshot).convert('RGB')
         assert len(picture.getcolors(picture.width*picture.height))>64,'Blank tablet editor'
+        # The first real frame is insufficient: the shipped startup candidate
+        # crashed when the native 3D Cursor tool sampled one depth pixel.
+        # Keep the normal first-run splash and activate the actual toolbar.
+        page.locator('#toggle-startup-stats').click()
+        box=page.locator('#canvas').bounding_box()
+        page.touchscreen.tap(box['x']+box['width']*0.08,box['y']+box['height']*0.45)
+        page.keyboard.press('Escape')
+        scale=page.evaluate('canvas.width/canvas.clientWidth')
+        page.touchscreen.tap(box['x']+28/scale,box['y']+138/scale)
+        page.touchscreen.tap(box['x']+450/scale,box['y']+280/scale)
+        page.wait_for_function('tabletDepthCopies.length>0 || document.body.dataset.error')
+        page.wait_for_timeout(1000)
+        assert not page.evaluate('document.body.dataset.error'),page.evaluate('window.editorErrors')
+        depth_copies=page.evaluate('tabletDepthCopies')
+        assert depth_copies,'The actual native cursor did not perform depth sampling'
+        for transfer in depth_copies:
+            origin=transfer['origin'];size=transfer['size']
+            assert origin.get('x',0)==origin.get('y',0)==0,transfer
+            assert size['width']==transfer['width'] and size['height']==transfer['height'],transfer
+        # Native popup rendering must also survive after the resumed depth wait.
+        page.keyboard.press('F3')
+        page.keyboard.press('Escape')
+        assert not page.evaluate('document.body.dataset.error'),page.evaluate('window.editorErrors')
+        state['depthCopies']=depth_copies
         assert not errors,errors
         assert not page.evaluate('editorOutput.some(line=>line.includes("wasm streaming compile failed") || line.includes("falling back to ArrayBuffer instantiation"))'), 'Real engine fell back to buffering its WASM'
         (ROOT/('.cache/blender-tablet-startup'+suffix+'-report.json')).write_text(json.dumps(state,indent=2)+'\n')
@@ -112,4 +145,4 @@ try:
         assert 'Viewport presented' in page.locator('#startup-stats-text').inner_text()
         context.close();browser.close();diagnostics.close()
 finally:server.shutdown();server.server_close()
-print('PASS: real stock tablet editor startup, four prewarmed workers, bounded viewport, no float32 filtering feature and reload gating. Physical Safari acceptance remains separate.')
+print('PASS: stock tablet startup, native cursor depth sampling and popup interaction, bounded viewport and reload gating. Physical Safari acceptance remains separate.')

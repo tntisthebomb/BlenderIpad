@@ -17,6 +17,7 @@ dialog {background:#303030;color:#eee;border:1px solid #666;border-radius:8px}
 #saved-files {display:block;min-width:260px;margin:12px 0}
 #status {position:fixed;inset:0;display:grid;place-items:center;padding:2rem;background:#252525;text-align:center}
 #status[hidden] {display:none}
+body[data-error] #status {z-index:30;overflow:auto;overflow-wrap:anywhere}
 #startup-details {max-height:35vh;overflow:auto;text-align:left;white-space:pre-wrap;user-select:text;-webkit-user-select:text;font:12px monospace}
 #local-addresses a {display:inline-block;color:#a9d4ff;padding:12px}
 #startup-stats {position:fixed;z-index:20;left:8px;bottom:8px;box-sizing:border-box;width:min(730px,calc(100vw - 16px));max-height:45vh;overflow:auto;background:#151515f5;color:#f4f4f4;border:1px solid #777;border-radius:6px;padding:10px;text-align:left;font:13px/1.4 ui-monospace,monospace;pointer-events:none}
@@ -136,6 +137,12 @@ function fail(error,kind) {
   const failedDevice=graphicsDevice;graphicsDevice=null;
   try {failedDevice?.destroy();} catch {}
 }
+// Frame callbacks and resumed GPU waits outlive the startup promise. Keep
+// their first failure visible and retain project export after the loop stops.
+window.addEventListener('error',event=>{
+  if (event.error || event.message) fail(event.error?.stack || event.message);
+});
+window.addEventListener('unhandledrejection',event=>fail(event.reason?.stack || event.reason));
 document.getElementById('retry-startup').addEventListener('click',()=>location.reload());
 document.getElementById('recover-files').addEventListener('click',()=>{
   status.hidden=true;
