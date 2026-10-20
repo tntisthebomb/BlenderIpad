@@ -4,7 +4,8 @@
   'use strict';
   const key='blender-startup-stats-last';
   let began=performance.now();
-  const state={version:'startup-stats-v9',attemptId:null,progressSequence:0,startedAt:null,pageVisible:!document.hidden,traceUnavailable:[],watchdogStatus:'not started',watchdogMaxGapMs:0,recentOperations:[],active:false,phase:'Waiting to start',phaseSeconds:0,
+  let monitorEditing=false,lastInteractionAt=-Infinity;
+  const state={version:'startup-stats-v10',attemptId:null,progressSequence:0,startedAt:null,pageVisible:!document.hidden,traceUnavailable:[],watchdogStatus:'not started',watchdogMaxGapMs:0,recentOperations:[],active:false,editorActive:false,lastInteraction:null,nativeFrame:null,nativeTextureBytes:null,nativeTextureCount:null,phase:'Waiting to start',phaseSeconds:0,
     elapsedSeconds:0,operation:'None yet',operationStatus:'not started',label:'',wasmMemoryBytes:null,dependencies:null,
     wasmMode:'not started',wasmMimeType:null,mainInstanceReady:false,workersRequested:0,workersReady:0,
     shaderModules:0,renderPipelines:0,computePipelines:0,texturesCreated:0,buffersCreated:0,
@@ -47,18 +48,18 @@
       // long synchronous native call. localStorage is only the fallback: forcing
       // it for every draw/upload can repeatedly block the browser storage path.
       state.updatedAt=new Date().toISOString();
-      if(durable||now-lastSaved>=1000||(force&&state.watchdogStatus!=='recording')){
+      if(durable||now-lastSaved>=1000||(force&&!['recording','monitoring editor'].includes(state.watchdogStatus))){
         lastSaved=now;
         try{localStorage.setItem(key,JSON.stringify(snapshot()));}catch{}
       }
-      try{sendWatchdog({kind:'checkpoint',checkpoint:snapshot()});}catch{}
+      try{sendWatchdog({kind:'checkpoint',checkpoint:snapshot(),urgent:force&&state.editorActive});}catch{}
     }
     if(!paint)return;
     lastPaint=now;
     const previousView=previousSnapshot();
     const view=!state.active&&previousView ? previousView : state;
     const hasRecovery=!!previousWatchdog&&view.attemptId!=null&&previousWatchdog.attemptId===view.attemptId;
-    title.textContent=!state.active&&previousView ? 'Previous startup — Blender is stopped' : 'Blender startup · diagnostic stats v9';
+    title.textContent=!state.active&&previousView ? (previousView.editorActive?'Previous editing session — Blender is stopped':'Previous startup — Blender is stopped') : (state.editorActive?'Blender editor · diagnostic stats v10':'Blender startup · diagnostic stats v10');
     const mib=value=>(value/1048576).toFixed(1)+' MiB';
     text.textContent=[
       'Step: '+view.phase,
@@ -74,6 +75,8 @@
       'Startup command calls: '+(view.commandEncoders??0)+' encoders · '+(view.renderPasses??0)+' render passes · '+(view.computePasses??0)+' compute passes · '+(view.drawCalls??0)+' draws',
       'Queue: '+(view.queueSubmissions??0)+' browser submits · '+(view.nativeQueueSubmissions??'not recorded')+' traced native entries (96-event cap) · first completion: '+(view.firstSubmission??'not recorded'),
       'Native startup yields: '+(view.startupYields??'not recorded')+' · Python checkpoints: '+(view.pythonStartupCheckpoints??'not recorded'),
+      ...(view.editorActive?['Last input: '+(view.lastInteraction?view.lastInteraction.type+' · '+view.lastInteraction.seconds+' s':'none recorded'),
+        'Native frame: '+(view.nativeFrame??'not recorded')+' · native GPU textures: '+(view.nativeTextureCount??'unknown')+' / '+(view.nativeTextureBytes==null?'unknown':mib(view.nativeTextureBytes))+' (excludes other GPU/browser memory)']:[]),
       'Recovery recorder: '+(state.active?view.watchdogStatus:(hasRecovery?'saved':'not recorded'))+' · longest main heartbeat gap: '+Math.round((hasRecovery?previousWatchdog.maxHeartbeatGapMs:view.watchdogMaxGapMs??0)/1000)+' s'+(hasRecovery?' · observed at '+previousWatchdog.observedElapsedSeconds+' s':''),
       ...(view.traceUnavailable?.length?['Trace unavailable: '+view.traceUnavailable.join(', ')]:[]),
       'GPU resource requests: '+view.texturesCreated+' textures · '+view.buffersCreated+' buffers',
@@ -240,6 +243,7 @@
       if(bytes.length>payload.length)throw Error('Recovery checkpoint exceeds shared capacity');
       Atomics.add(header,0,1);payload.set(bytes);Atomics.store(header,1,bytes.length);Atomics.add(header,0,1);
       if(sharedState.stopped){Atomics.store(header,2,1);Atomics.notify(header,2);}
+      else if(message.urgent)Atomics.notify(header,2);
     } catch(error){state.watchdogStatus='shared recorder unavailable: '+String(error).slice(0,100);}
   }
   function startWatchdog(){
@@ -283,6 +287,7 @@
     } catch {}
   }
   window.blenderStartupStats={snapshot,instrumentDevice,instrumentQueue,instrumentCanvas,
+    monitorEditing(enabled){if(!state.active)monitorEditing=!!enabled;},
     nativeBridge(stage,status,detail){
       if(!state.active||state.phase==='Viewport presented')return;
       state.nativeBridgeEvents++;if(stage==='queue-submit-enter')state.nativeQueueSubmissions++;
@@ -293,8 +298,9 @@
     recoveryReady(){return recorderReady;},
     previousAttempt(){return previousSnapshot();},
     phase(phase){
+      if(phase==='Viewport presented'&&monitorEditing){state.editorActive=true;state.watchdogStatus=watchdog?'monitoring editor':state.watchdogStatus;}
       state.phase=phase;state.phaseSeconds=Math.round((performance.now()-began)/1000);update(true,true,true);
-      if(phase==='Viewport presented')sendWatchdog({kind:'stop',checkpoint:snapshot()});
+      if(phase==='Viewport presented'&&!monitorEditing)sendWatchdog({kind:'stop',checkpoint:snapshot()});
     },
     start(){began=performance.now();state.phaseSeconds=0;state.active=true;previous=null;state.startedAt=Date.now();state.attemptId=state.startedAt+'-'+Math.random().toString(36).slice(2,8);startWatchdog();operation('Starting Blender');},
     // Thousands of files can change the dependency count synchronously. Keep
@@ -302,6 +308,11 @@
     dependencies(count){state.dependencies=count;if(count===0)update(true,true,true);},
     line(message){
       const line=String(message).replace(/\s+/g,' ').trim();
+      if(state.editorActive&&line.startsWith('WGPU_STATS ')){
+        const frame=/frame=(\d+)/.exec(line),textures=/tex=(\d+)\/(\d+)MB/.exec(line);
+        if(frame)state.nativeFrame=Number(frame[1]);
+        if(textures){state.nativeTextureCount=Number(textures[1]);state.nativeTextureBytes=Number(textures[2])*1048576;}
+      }
       if(line){
         const bounded=line.slice(0,180);state.lines.push(bounded);state.lines=state.lines.slice(-4);
         state.lastNativeMarker={text:bounded,seconds:((performance.now()-began)/1000).toFixed(2)};
@@ -327,12 +338,24 @@
       const value=String(message),at=value.lastIndexOf(' - error ');
       const useful=at>=0?value.slice(at+9):value;
       state.error=useful.slice(0,600);operation('Stopped after error',state.label);update(true,true,true);
+      if(state.editorActive)sendWatchdog({kind:'stop',checkpoint:snapshot()});
     }
   };
   toggle.onclick=()=>{
     compact=!compact;text.hidden=compact;toggle.textContent=compact?'Show details':'Hide details';
   };
-  addEventListener('pagehide',()=>update(true,true,true));
+  for(const type of ['pointerdown','pointermove','touchstart','touchmove','keydown','wheel']){
+    addEventListener(type,event=>{
+      if(!state.active||!state.editorActive||event.target?.id!=='canvas')return;
+      const moving=type.endsWith('move');
+      if(moving&&!(event.buttons||event.touches?.length))return;
+      const now=performance.now();if(moving&&now-lastInteractionAt<500)return;
+      lastInteractionAt=now;
+      state.lastInteraction={type:type==='keydown'?type+' '+String(event.key).slice(0,24):type,seconds:((now-began)/1000).toFixed(2)};
+      operation('Editor input',state.lastInteraction.type,'received by browser');
+    },{capture:true,passive:true});
+  }
+  addEventListener('pagehide',()=>{update(true,true,true);if(state.editorActive)sendWatchdog({kind:'stop',checkpoint:snapshot()});});
   document.addEventListener('visibilitychange',()=>{state.pageVisible=!document.hidden;try{sendWatchdog({kind:'visibility',visible:state.pageVisible});}catch{}update(true,true,true);});
   setInterval(()=>{if(!document.hidden){update(true);if(state.active)try{sendWatchdog({kind:'heartbeat'});}catch{}}},1000);
   update();readPreviousWatchdog();

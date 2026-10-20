@@ -333,6 +333,7 @@ class WebGPUContext : public Context {
 #endif
   gpu::Texture *backbuffer_color_ = nullptr;
   gpu::Texture *backbuffer_depth_ = nullptr;
+  gpu::Texture *frontbuffer_color_ = nullptr;
   int backbuffer_w_ = 0, backbuffer_h_ = 0;
   WGPUBuffer null_attr_buffer_ = nullptr;
   /* Transient uniform arena (see uniform_arena_alloc). The cursor RESETS every

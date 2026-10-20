@@ -14,7 +14,14 @@ ROOT=Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser()
 parser.add_argument('--runtime',type=Path,default=ROOT/'.cache/blender-webgpu-browser')
 parser.add_argument('--stress-startup',action='store_true')
+parser.add_argument('--interact',action='store_true')
+parser.add_argument('--slow-readback',action='store_true')
+parser.add_argument('--cpu-throttle',type=float,default=1)
+parser.add_argument('--no-shader-seed',action='store_true')
+parser.add_argument('--capture-shaders',type=Path)
+parser.add_argument('--check-runtime-error',action='store_true')
 options=parser.parse_args()
+if options.cpu_throttle<1:parser.error('--cpu-throttle must be >= 1')
 suffix='-stress' if options.stress_startup else ''
 class Handler(SimpleHTTPRequestHandler):
     # Model the incorrect WASM MIME header seen on the physical iPad. The
@@ -50,7 +57,19 @@ try:
         ''')
         if options.stress_startup:
             context.add_init_script(path=ROOT/'tests/fixtures/tablet_startup_stress.js')
+        if options.no_shader_seed:context.add_init_script('window.blenderDisableStartupShaderCache=true')
+        if options.slow_readback:
+            context.add_init_script('''
+              window.delayedReadbacks=0;
+              const map=GPUBuffer.prototype.mapAsync;
+              GPUBuffer.prototype.mapAsync=function(...args){
+                delayedReadbacks++;
+                return Promise.all([Reflect.apply(map,this,args),new Promise(resolve=>setTimeout(resolve,350))]).then(([result])=>result);
+              };
+            ''')
         page=context.new_page();page.set_default_timeout(180000)
+        if options.cpu_throttle>1:
+            context.new_cdp_session(page).send('Emulation.setCPUThrottlingRate',{'rate':options.cpu_throttle})
         errors=[];workers=[]
         diagnostics=(ROOT/('.cache/blender-tablet-startup'+suffix+'-console.log')).open('w')
         page.on('console',lambda message:(diagnostics.write(message.type+': '+message.text+'\n'),diagnostics.flush()))
@@ -74,7 +93,7 @@ try:
         assert stats['nativeQueueSubmissions']>0 and stats['nativeBridgeEvents']>0,stats
         assert 'complete' in stats['nativeInitStages'],stats
         assert page.evaluate('blenderEditor.browserStartupYieldCount>=2 && blenderEditor.browserStartupComplete===true'),'Native cooperative startup did not execute'
-        page.wait_for_function("blenderStartupStats.snapshot().firstSubmission==='completed' && blenderStartupStats.snapshot().watchdogStatus==='finished'")
+        page.wait_for_function("blenderStartupStats.snapshot().firstSubmission==='completed' && blenderStartupStats.snapshot().watchdogStatus==='monitoring editor'")
         assert len(workers)==4,workers
         assert stats['pythonStartupCheckpoints']>=100,stats
         assert stats['mainInstanceReady'] and stats['workersReady']==stats['workersRequested']==4,stats
@@ -87,6 +106,11 @@ try:
         assert targets,'Real viewport targets were not observed'
         assert all(t['size']['width']<=state['width'] and t['size']['height']<=state['height'] for t in targets),targets
         state['viewportTargets']=targets
+        state['shaderCache']=page.evaluate('window.blenderStartupShaderCacheReport')
+        if options.no_shader_seed:
+            assert state['shaderCache']['status']=='disabled for validation',state['shaderCache']
+        elif state['shaderCache']['status']=='native translations loaded':
+            assert state['shaderCache']['hits']>0,'The native engine did not consume its bundled translations'
         if options.stress_startup:
             page.wait_for_function('firstFrameProfile.finishedAt>0')
             profile=page.evaluate('firstFrameProfile')
@@ -105,10 +129,30 @@ try:
         assert not errors,errors
         assert not page.evaluate('editorOutput.some(line=>line.includes("wasm streaming compile failed") || line.includes("falling back to ArrayBuffer instantiation"))'), 'Real engine fell back to buffering its WASM'
         (ROOT/('.cache/blender-tablet-startup'+suffix+'-report.json')).write_text(json.dumps(state,indent=2)+'\n')
+        if options.interact:
+            from tablet_stock_interactions import exercise_stock_editor
+            interactions=exercise_stock_editor(page,context,ROOT/'.cache')
+            (ROOT/'.cache/tablet-stock-interaction-result.json').write_text(json.dumps(interactions,indent=2)+'\n')
+            if options.slow_readback:assert page.evaluate('delayedReadbacks>0'),'Real GPU readback was not exercised'
+            assert not errors,errors
+            print('PASS: stock tablet UI cube selection, touch orbit, transform and Edit Mode; delayed readbacks='+str(page.evaluate('window.delayedReadbacks??0')),flush=True)
+        if options.capture_shaders:
+            options.capture_shaders.write_text(json.dumps(page.evaluate('Array.from(globalThis.__WGSL_CACHE__??[])'),indent=2)+'\n')
+        if options.check_runtime_error:
+            assert options.interact,'Runtime-error recovery needs the native project saved by the interaction test'
+            saved=page.evaluate("({size:blenderEditor.FS.stat('/projects/tablet-stock-interaction.blend').size,magic:Array.from(blenderEditor.FS.readFile('/projects/tablet-stock-interaction.blend').slice(0,7))})")
+            assert saved['size']>1000 and (bytes(saved['magic'])==b'BLENDER' or bytes(saved['magic'][:4])==b'\x28\xb5\x2f\xfd'),saved
+            page.evaluate("setTimeout(()=>{throw new WebAssembly.RuntimeError('post-viewport error fixture');},0)")
+            page.wait_for_function("document.body.dataset.error?.includes('post-viewport error fixture')")
+            page.wait_for_function("blenderStartupStats.snapshot().watchdogStatus==='finished'")
+            assert page.locator('#status').is_visible() and page.locator('#recover-files').is_visible()
+            assert page.evaluate("blenderEditor.FS.stat('/projects/tablet-stock-interaction.blend').size")==saved['size']
+            assert len(errors)==1 and 'post-viewport error fixture' in errors[0],errors
+            print('PASS: uncaught post-viewport WebAssembly error shows recovery controls and preserves the actual native saved project.',flush=True)
         page.reload()
         page.wait_for_selector('#start-editor',state='visible')
         assert not page.evaluate('window.blenderEditor'),'Reload automatically restarted the native engine'
-        assert page.locator('#startup-stats-title').inner_text()=='Previous startup — Blender is stopped'
+        assert page.locator('#startup-stats-title').inner_text()=='Previous editing session — Blender is stopped'
         assert 'Viewport presented' in page.locator('#startup-stats-text').inner_text()
         context.close();browser.close();diagnostics.close()
 finally:server.shutdown();server.server_close()

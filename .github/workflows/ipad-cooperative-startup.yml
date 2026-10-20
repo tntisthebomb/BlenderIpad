@@ -3,6 +3,18 @@ name: Validate cooperative Blender startup
 on:
   push:
     branches: [codex/ipad-cooperative-startup]
+    paths:
+      - 'patches/**'
+      - 'cmake/**'
+      - 'native/browser/webgpu/**'
+      - 'native/browser/GHOST*'
+      - 'native/browser/*.cc'
+      - 'native/browser/core_browser_env.js'
+      - 'native/browser/editor_browser_env.js'
+      - 'browser-port.lock.json'
+      - 'port.lock.json'
+      - 'scripts/build_blender_core.py'
+      - 'scripts/setup_browser.py'
   workflow_dispatch:
 
 permissions:
@@ -57,51 +69,61 @@ jobs:
           path: .cache
           key: cooperative-v1-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-${{ github.sha }}
           restore-keys: |
+            cooperative-v1-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-7f940bc0fa86c69216122b6407c57acee0477d9b
+            cooperative-v1-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-2de544a4dafed1502827f04aca876c95a0a71f59
             cooperative-v1-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
-            browser-v2-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-3cf9192acda8b91070843921073c72c6a1151d60
             browser-v2-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
             browser-v2-${{ runner.os }}-${{ matrix.profile }}-
             browser-v2-${{ runner.os }}-webgpu-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
+      - name: Verify accepted dependency content for an incremental native build
+        id: native-dependencies
+        env:
+          RESTORED_NATIVE_CACHE: ${{ steps.build-cache.outputs.cache-matched-key }}
+        run: python3 scripts/verify_cached_native_dependencies.py
       - name: Install browser acceptance runner
         run: |
           python3 -m venv .cache/browser-tests
           .cache/browser-tests/bin/python -m pip install playwright==1.62.0 Pillow==12.0.0
       - name: Build and verify actual native suspension
         run: |
-          python3 scripts/build_startup_yield_probe.py
+          if [ '${{ steps.native-dependencies.outputs.reuse }}' != 'true' ]; then python3 scripts/build_startup_yield_probe.py; fi
           .cache/browser-tests/bin/python tests/startup_yield_browser_test.py
       - name: Build and verify WebGPU canvas lifecycle
         run: |
-          python3 scripts/build_browser_ghost_webgpu.py
+          if [ '${{ steps.native-dependencies.outputs.reuse }}' != 'true' ]; then python3 scripts/build_browser_ghost_webgpu.py; fi
           .cache/browser-tests/bin/python tests/ghost_webgpu_browser_test.py
       - name: Build and verify native event routing and startup guard
         run: |
-          python3 scripts/build_browser_platform.py
+          if [ '${{ steps.native-dependencies.outputs.reuse }}' != 'true' ]; then python3 scripts/build_browser_platform.py; fi
           .cache/browser-tests/bin/python tests/ghost_platform_test.py
       - name: Prepare pinned native dependencies
+        if: steps.native-dependencies.outputs.reuse != 'true'
         run: python3 scripts/build_browser_core_deps.py
       - name: Build and verify embedded Python
         run: |
-          python3 scripts/build_browser_python.py
-          python3 scripts/build_browser_python_probe.py
-          python3 scripts/build_python_startup_yield_probe.py
+          if [ '${{ steps.native-dependencies.outputs.reuse }}' != 'true' ]; then
+            python3 scripts/build_browser_python.py
+            python3 scripts/build_browser_python_probe.py
+            python3 scripts/build_python_startup_yield_probe.py
+          fi
           .cache/browser-tests/bin/python tests/python_startup_yield_browser_test.py
       - name: Build and verify GLSL compiler
         run: |
-          python3 scripts/build_browser_shaderc.py
+          if [ '${{ steps.native-dependencies.outputs.reuse }}' != 'true' ]; then python3 scripts/build_browser_shaderc.py; fi
           python3 scripts/test_browser_shaderc.py
       - name: Build and verify WGSL compiler
         run: |
-          python3 scripts/build_browser_tint.py
+          if [ '${{ steps.native-dependencies.outputs.reuse }}' != 'true' ]; then python3 scripts/build_browser_tint.py; fi
           python3 scripts/test_browser_tint.py
       - name: Verify shader semantics and native lifecycle
         run: |
           .cache/browser-tests/bin/python tests/shader_semantics_browser_test.py
           .cache/browser-tests/bin/python scripts/test_browser_lifecycle.py
       - name: Build and verify subdivision library
+        if: steps.native-dependencies.outputs.reuse != 'true'
         run: python3 scripts/build_browser_opensubdiv.py
       - name: Validate the real CPU scheduler
-        if: matrix.profile == 'cpu-cycles'
+        if: matrix.profile == 'cpu-cycles' && steps.native-dependencies.outputs.reuse != 'true'
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
         run: |
@@ -116,6 +138,11 @@ jobs:
           fi
           python3 scripts/test_blender_core.py --webgpu
           python3 scripts/build_blender_core_browser.py --editor
+      - name: Capture shader translations from the new native engine
+        run: |
+          mkdir -p work
+          .cache/browser-tests/bin/python tests/blender_tablet_startup_browser_test.py --no-shader-seed --capture-shaders work/native-startup-shaders.json
+          python3 scripts/generate_startup_shader_seed.py --capture work/native-startup-shaders.json
       - name: Validate and record the exact editor assets
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
@@ -231,3 +258,5 @@ jobs:
           .cache/browser-tests/bin/python tests/startup_yield_browser_test.py --browser webkit
           .cache/browser-tests/bin/python tests/python_startup_yield_browser_test.py --browser webkit
           .cache/browser-tests/bin/python tests/startup_watchdog_browser_test.py --browser webkit
+          .cache/browser-tests/bin/python tests/startup_shader_cache_browser_test.py --browser webkit
+          .cache/browser-tests/bin/python tests/tablet_touch_browser_test.py --browser webkit

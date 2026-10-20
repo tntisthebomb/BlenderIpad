@@ -44,11 +44,14 @@ dialog {background:#303030;color:#eee;border:1px solid #666;border-radius:8px}
 <button id="retry-startup" type="button" hidden>Reload Blender</button></div></div>
 
 <script src="startup_stats.js"></script>
+<script src="startup_shaders.js"></script>
+<script src="tablet_touch.js"></script>
 <script>
 // Touch-capable Apple devices use the bounded viewport and explicit launch.
 // iPad desktop mode reports Macintosh, so its platform string alone is insufficient.
 const tabletMode=/iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (/Mac/.test(navigator.platform) && navigator.maxTouchPoints>1);
+window.blenderStartupStats?.monitorEditing(tabletMode);
 const launchKey='blender-explicit-launch:'+location.pathname;
 const startup={phase:'Checking browser',stages:[],remainingDependencies:null};
 const startupTime=performance.now();
@@ -136,6 +139,18 @@ function fail(error,kind) {
   const failedDevice=graphicsDevice;graphicsDevice=null;
   try {failedDevice?.destroy();} catch {}
 }
+// Animation-loop traps and rejected native callbacks may happen after startup.
+// Keep their explanation and project-recovery controls visible instead of
+// leaving an unhandled exception with a blank, stopped canvas.
+addEventListener('error',event=>{
+  if(!launchAttemptActive||(!event.error&&!event.message))return;
+  fail(event.error?.stack||event.message||String(event.error));
+});
+addEventListener('unhandledrejection',event=>{
+  if(!launchAttemptActive)return;
+  const reason=event.reason;
+  fail(reason?.stack||reason?.message||String(reason));
+});
 document.getElementById('retry-startup').addEventListener('click',()=>location.reload());
 document.getElementById('recover-files').addEventListener('click',()=>{
   status.hidden=true;
@@ -151,6 +166,7 @@ for(const type of ['pointerdown','pointerup','pointermove','mousedown','mouseup'
 }
 canvas.addEventListener('pointerdown',()=>canvas.focus({preventScroll:true}));
 canvas.addEventListener('contextmenu',event=>event.preventDefault());
+window.installBlenderTabletTouch?.(canvas,tabletMode);
 document.addEventListener('visibilitychange',()=>{
   if(window.blenderEditor?.browserCooperativeStartup&&!window.blenderEditor.browserStartupComplete)return;
   if (document.hidden) {
@@ -309,6 +325,11 @@ function waitForInstallation(registration) {
     document.head.append(script);
   }),30000);
   await startupStep('Preparing recovery recorder',()=>window.blenderStartupStats?.recoveryReady()??Promise.resolve(),15000);
+  await startupStep('Preparing startup shaders',async()=>{
+    if(window.prepareBlenderStartupShaders)await window.prepareBlenderStartupShaders();
+    window.blenderDeviceReport.shaderCache=window.blenderStartupShaderCacheReport;
+    window.blenderDeviceReport.touchInput=window.blenderTabletTouchReport;
+  },15000);
   const module=await startupStep('Loading engine and restoring projects',()=>createBlenderCore({canvas,
     preinitializedWebGPUDevice:device,noInitialRun:true,browserLowResource:tabletMode,
     browserStartupTrace:true,browserCooperativeStartup:tabletMode,
@@ -339,7 +360,8 @@ function waitForInstallation(registration) {
   };
   document.body.dataset.ready='true';
   await startupStep('Starting native Blender',()=>module.runBlenderMain(window.editorArguments ||
-    ['--offline-mode','--disable-autoexec','--threads',tabletMode ? '1' : '2','--python','/browser_startup.py']));
+    ['--offline-mode','--disable-autoexec','--threads',tabletMode ? '1' : '2','--python','/browser_startup.py',
+      ...(tabletMode?['--python-expr',"import bpy, _bpy; _bpy._browser_startup_cooperate('Configuring tablet interface'); bpy.context.preferences.view.show_splash=False; _bpy._browser_startup_cooperate('Tablet interface configured')"]:[])]));
   if (document.body.dataset.error) return;
   canvas.focus({preventScroll:true});
   status.hidden=document.body.dataset.rendered==='true';

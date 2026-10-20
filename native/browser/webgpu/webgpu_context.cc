@@ -187,6 +187,9 @@ WebGPUContext::WebGPUContext(GHOST_IWindow *ghost_window,
     WebGPUFrameBuffer *bb = new WebGPUFrameBuffer("WebGPUBackbuffer");
     bb->set_is_backbuffer(true);
     back_left = active_fb = bb;
+    /* Window screenshots and color sampling read the last presented frame.
+     * Keep a distinct wrapper: Context::free_resources owns both independently. */
+    front_left = new WebGPUFrameBuffer("WebGPUFrontbuffer");
   }
   imm = new WebGPUImmediate();
   g_all_contexts.push_back(this);
@@ -281,6 +284,7 @@ WebGPUContext::~WebGPUContext()
   if (uni_arena_buf_) wgpuBufferRelease(uni_arena_buf_);
   if (backbuffer_color_) GPU_texture_free(backbuffer_color_);
   if (backbuffer_depth_) GPU_texture_free(backbuffer_depth_);
+  if (frontbuffer_color_) GPU_texture_free(frontbuffer_color_);
   free_resources();
   delete state_manager;
   state_manager = nullptr;
@@ -995,9 +999,15 @@ void WebGPUContext::backbuffer_ensure(int w, int h)
     GPU_texture_free(backbuffer_depth_);
     backbuffer_depth_ = nullptr;
   }
+  if (frontbuffer_color_) {
+    GPU_texture_free(frontbuffer_color_);
+    frontbuffer_color_ = nullptr;
+  }
   const eGPUTextureUsage usage = GPU_TEXTURE_USAGE_ATTACHMENT | GPU_TEXTURE_USAGE_SHADER_READ;
   backbuffer_color_ = GPU_texture_create_2d(
       "window_backbuffer_color", w, h, 1, TextureFormat::UNORM_8_8_8_8, usage, nullptr);
+  frontbuffer_color_ = GPU_texture_create_2d(
+      "window_frontbuffer_color", w, h, 1, TextureFormat::UNORM_8_8_8_8, usage, nullptr);
   if (!wgpuDeviceHasFeature(device_, WGPUFeatureName_Depth32FloatStencil8)) {
     throw std::runtime_error("Blender canvas requires WebGPU depth32float-stencil8");
   }
@@ -1012,6 +1022,9 @@ void WebGPUContext::backbuffer_ensure(int w, int h)
   back_left->attachment_set(GPU_FB_COLOR_ATTACHMENT0, color_att);
   back_left->attachment_set(GPU_FB_DEPTH_STENCIL_ATTACHMENT, depth_att);
   back_left->size_set(w, h);
+  GPUAttachment front_att = {frontbuffer_color_, -1, 0};
+  front_left->attachment_set(GPU_FB_COLOR_ATTACHMENT0, front_att);
+  front_left->size_set(w, h);
   fprintf(stderr, "WGPU_PRESENT backbuffer %dx%d\n", w, h);
   fflush(stderr);
 }
@@ -1095,6 +1108,14 @@ void WebGPUContext::present_backbuffer(int w, int h)
   render_pass_end();
   WGPUCommandEncoder enc = ensure_encoder();
   if (enc && flip_pipe) {
+    /* Preserve the exact displayed image for UI screenshot thumbnails and
+     * eyedropper reads. Reading must not alias a backbuffer being redrawn. */
+    WGPUTexelCopyTextureInfo source = {}, destination = {};
+    source.texture = static_cast<WebGPUTexture *>(backbuffer_color_)->wgpu_texture();
+    destination.texture = static_cast<WebGPUTexture *>(frontbuffer_color_)->wgpu_texture();
+    source.aspect = destination.aspect = WGPUTextureAspect_All;
+    const WGPUExtent3D extent = {uint32_t(w), uint32_t(h), 1};
+    wgpuCommandEncoderCopyTextureToTexture(enc, &source, &destination, &extent);
     #ifdef WITH_GHOST_WEBGPU_CONTEXT
     /* No canvas attachments have been encoded yet. Reacquire after all native
      * startup yields, immediately before encoding the presentation blit. */

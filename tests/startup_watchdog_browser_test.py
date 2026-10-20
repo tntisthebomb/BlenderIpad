@@ -137,6 +137,33 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='watchdog-') as directory:
    restored.wait_for_function("blenderStartupStats.snapshot().watchdogStatus==='finished'")
    restored.close()
    print('Recorder shutdown and restart verified',flush=True)
+   # Opt-in tablet editing retains independent recovery after the first frame.
+   # The last input and subsequent native/graphics failure must survive closure.
+   editing=context.new_page();editing.goto(origin+'/')
+   editing.evaluate("blenderStartupStats.monitorEditing(true);blenderStartupStats.start()")
+   editing.wait_for_function("blenderStartupStats.snapshot().watchdogStatus==='recording'")
+   editing.evaluate("""()=>{
+    const canvas=document.createElement('canvas');canvas.id='canvas';document.body.append(canvas);
+    blenderStartupStats.phase('Viewport presented');
+    canvas.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerType:'touch'}));
+    blenderStartupStats.line('WGPU_STATS frame=17 dt=23.0ms tex=9/12MB');
+   }""")
+   editing.wait_for_function("blenderStartupStats.snapshot().watchdogStatus==='monitoring editor'")
+   editing.evaluate("setTimeout(()=>{const until=performance.now()+3500;while(performance.now()<until){}window.editingProbeFinished=true;},250)")
+   editing.wait_for_function('window.editingProbeFinished',timeout=10000)
+   editing.wait_for_function('blenderStartupStats.snapshot().watchdogMaxGapMs>=2000')
+   editing.evaluate("blenderStartupStats.failure('post-viewport runtime fixture')")
+   editing.wait_for_function("blenderStartupStats.snapshot().watchdogStatus==='finished'")
+   editing.close()
+   reader=context.new_page();reader.goto(origin+'/reader.html')
+   editing_saved=reader.evaluate('readRecovery()')
+   assert editing_saved['ended'] and editing_saved['checkpoint']['editorActive'],editing_saved
+   assert editing_saved['checkpoint']['lastInteraction']['type']=='pointerdown',editing_saved
+   assert editing_saved['checkpoint']['nativeFrame']==17,editing_saved
+   assert editing_saved['checkpoint']['nativeTextureBytes']==12*1048576,editing_saved
+   assert editing_saved['checkpoint']['error']=='post-viewport runtime fixture',editing_saved
+   reader.close()
+   print('Post-viewport input, independent stalled-editor recording and durable runtime failure verified',flush=True)
    context.add_init_script('''const OriginalWorker=Worker;globalThis.Worker=class extends OriginalWorker{
     constructor(url,options){super(String(url).endsWith('startup_watchdog.js')?new URL('watchdog-failing.js',location.href):url,options);}
    };''')

@@ -78,11 +78,16 @@ if __name__ == '__main__':
     if options.editor:
         shutil.copyfile(ROOT / 'native/browser/blender_editor.html', output / 'editor.html')
         shutil.copyfile(output / 'editor.html', output / 'index.html')
-        for name in ('manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js','editor_input.js','startup_stats.js','startup_watchdog.js','ipad-startup.html','ipad-update.html'):
+        for name in ('manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js','editor_input.js','startup_stats.js','startup_watchdog.js','startup_shaders.js','startup_shader_seed.json','tablet_touch.js','ipad-startup.html','ipad-update.html'):
             shutil.copyfile(ROOT / 'native/browser' / name, output / name)
+        wasm_hash=hashlib.sha256()
+        with (output/'blender-core.wasm').open('rb') as stream:
+            while chunk:=stream.read(1024*1024):wasm_hash.update(chunk)
+        (output/'engine_identity.json').write_text(json.dumps({'sha256':wasm_hash.hexdigest(),
+            'nativeSourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()})+'\n')
         content=hashlib.sha256()
         for name in ('index.html','editor.html','blender-core.js','blender-core.wasm',
-                     'blender-core.data','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js','editor_input.js','startup_stats.js','startup_watchdog.js','ipad-startup.html','ipad-update.html'):
+                     'blender-core.data','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js','editor_input.js','startup_stats.js','startup_watchdog.js','startup_shaders.js','startup_shader_seed.json','engine_identity.json','tablet_touch.js','ipad-startup.html','ipad-update.html'):
             content.update(name.encode())
             with (output / name).open('rb') as stream:
                 while chunk := stream.read(1024*1024):

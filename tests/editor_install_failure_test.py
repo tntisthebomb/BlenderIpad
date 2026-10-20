@@ -16,9 +16,11 @@ with TemporaryDirectory(dir=ROOT/'.cache') as directory:
     (base/'editor_files.js').write_bytes((ROOT/'native/browser/editor_files.js').read_bytes())
     (base/'editor_input.js').write_bytes((ROOT/'native/browser/editor_input.js').read_bytes())
     (base/'startup_stats.js').write_bytes((ROOT/'native/browser/startup_stats.js').read_bytes())
+    (base/'startup_shaders.js').write_bytes((ROOT/'native/browser/startup_shaders.js').read_bytes())
+    (base/'tablet_touch.js').write_bytes((ROOT/'native/browser/tablet_touch.js').read_bytes())
     (base/'service-worker.js').write_text((ROOT/'native/browser/service-worker.js').read_text().replace('__BUILD_CACHE__','failed-first-install'))
     (base/'blender-core.js').write_text('window.createBlenderCore=()=>{throw new Error("This fixture has no engine")};')
-    for name in ('startup_watchdog.js','ipad-startup.html','blender-core.data','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png'):
+    for name in ('startup_watchdog.js','startup_shader_seed.json','engine_identity.json','ipad-startup.html','blender-core.data','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png'):
         (base/name).write_text('Installation infrastructure fixture')
     # Deliberately omit the WASM file. No fixture claims to run Blender.
     server=ThreadingHTTPServer(('127.0.0.1',0),partial(Handler,directory=directory))

@@ -3,7 +3,7 @@
 'use strict';
 const slots=['blender-startup-recovery-a.json','blender-startup-recovery-b.json'];
 let handles=[],slot=0,attempt=null,checkpoint=null,lastHeartbeat=0,maxGap=0,stopped=false,visible=true;
-let control=null,payload=null,lastSequence=-1;
+let control=null,payload=null,lastSequence=-1,lastPersistedAt=0,lastPersistedProgress=-1;
 function checksum(text){let value=2166136261;for(let i=0;i<text.length;i++)value=Math.imul(value^text.charCodeAt(i),16777619)>>>0;return value.toString(16);}
 function readShared(){
   const before=Atomics.load(control,0);
@@ -33,6 +33,7 @@ function persist(){
     const written=handle.write(bytes,{at:0});
     if(written!==bytes.byteLength)throw Error('Incomplete recovery write');
     handle.truncate(bytes.byteLength);handle.flush();slot=1-slot;
+    lastPersistedAt=Date.now();lastPersistedProgress=checkpoint?.progressSequence??-1;
     postMessage({kind:'sample',attemptId:attempt,maxHeartbeatGapMs:record.maxHeartbeatGapMs,
       lastHeartbeatAgeMs:record.lastHeartbeatAgeMs,observedAt:record.observedAt});
     return true;
@@ -61,6 +62,13 @@ onmessage=async event=>{
     while(!stopped){
       Atomics.wait(control,2,0,1000);
       readShared();
+      if(checkpoint?.editorActive&&!stopped&&Date.now()-lastPersistedAt<1000)continue;
+      // Editing records retain pre-input/pre-compilation checkpoints, but an
+      // idle editor needs only one durable sample per five seconds. Startup
+      // behavior and reserved-file capacity remain unchanged.
+      if(checkpoint?.editorActive&&!stopped&&Date.now()-lastPersistedAt<5000&&
+          (checkpoint.progressSequence??-1)===lastPersistedProgress&&
+          (!visible||Date.now()-lastHeartbeat<2000))continue;
       if(!persist())return;
     }
     postMessage({kind:'stopped',attemptId:attempt});

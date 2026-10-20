@@ -94,6 +94,8 @@ def main():
                         filter=source_filter)
         for relative, path in source_trees.items():
             archive.add(path, arcname=relative, filter=source_filter)
+        for name in ('engine_identity.json','startup_shader_seed.json'):
+            archive.add(directory/name,arcname='generated/'+name,filter=source_filter)
         archive.add(CACHE / 'emsdk/upstream/emscripten/LICENSE',
                     arcname='emscripten/LICENSE', filter=source_filter)
         add_text(archive, 'REBUILD.txt', '''Corresponding source for the experimental editor\n\nThe port/ tree contains all build scripts, patches, toolchain/dependency pins,\nlicenses and tests. blender-prepared/ is the materialized Blender source used\nfor this build; dependencies/ and graphics/ contain the dependency sources.\nThe overlays/ directory contains the exact patched dependency files.\nemscripten/ includes the embedded system libraries and JavaScript runtime.\n\nBuild on Linux x86-64 following port/BROWSER_PORT.md and port/README.md.\nRun the pinned build scripts from port/. They download verified toolchains and\nrecreate the guarded source overlays; Internet is needed for a fresh build.\nThe application itself runs locally and supports offline operation.\nRun scripts/validate_blender_editor.py before scripts/package_blender_editor.py.\n''')

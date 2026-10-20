@@ -407,7 +407,10 @@ void WebGPUFrameBuffer::read(GPUFrameBufferBits planes,
   /* Flush any pending clear by opening+closing a render pass on this framebuffer
    * (clears are recorded as loadOps and only take effect when a pass begins);
    * read_color_sync then submits and copies the final texture content. */
-  ctx->render_pass_ensure(*this);
+  if (this != ctx->front_left) {
+    ctx->render_pass_ensure(*this);
+  }
+  /* The front framebuffer is a read-only snapshot, never a new render pass. */
   ctx->render_pass_end();
   if (!ctx->read_color_sync(wt->wgpu_texture(),wt->wgpu_format(),area[0],area[1],area[2],area[3],
                             format,(planes & GPU_DEPTH_BIT) ? 1 : channel_len,r_data))

@@ -7,10 +7,11 @@ from pathlib import Path
 import subprocess
 from setup_browser import CACHE, ROOT
 
-ASSETS = ('index.html', 'editor.html', 'ipad-startup.html', 'ipad-update.html', 'editor_files.js', 'editor_input.js','startup_stats.js', 'startup_watchdog.js', 'blender-core.js',
+ASSETS = ('index.html', 'editor.html', 'ipad-startup.html', 'ipad-update.html', 'editor_files.js', 'editor_input.js','startup_stats.js', 'startup_watchdog.js', 'startup_shaders.js', 'startup_shader_seed.json', 'engine_identity.json', 'tablet_touch.js', 'blender-core.js',
           'blender-core.wasm', 'blender-core.data', 'manifest.webmanifest',
           'icon.svg', 'icon-192.png', 'icon-512.png', 'service-worker.js')
-TESTS = ('tests/python_startup_yield_browser_test.py', 'native/browser/python_startup_yield_probe.cc',
+TESTS = ('tests/startup_shader_cache_browser_test.py','tests/tablet_stock_interactions.py','tests/tablet_touch_browser_test.py','scripts/generate_startup_shader_seed.py',
+         'tests/python_startup_yield_browser_test.py', 'native/browser/python_startup_yield_probe.cc',
          'native/browser/python_startup_yield_probe.html', 'scripts/build_python_startup_yield_probe.py',
          'tests/fixtures/tablet_startup_stress.js', 'patches/blender-5.2.2-browser-zz-startup-cooperate.patch',
          'tests/startup_yield_browser_test.py', 'native/browser/startup_yield_probe.cc',
@@ -59,6 +60,9 @@ if __name__ == '__main__':
     stamp.unlink(missing_ok=True)
     failure_stamp.unlink(missing_ok=True)
     before = snapshot()
+    identity=json.loads((CACHE/'blender-webgpu-browser/engine_identity.json').read_text())
+    if identity['sha256']!=before['assets']['blender-core.wasm']:
+        raise SystemExit('Engine identity does not match the actual native binary.')
     interpreter = CACHE / 'browser-tests/bin/python'
     failures = []
     def check(label, script, *arguments):
@@ -66,6 +70,8 @@ if __name__ == '__main__':
         if result.returncode:
             failures.append({'check': label, 'exit_code': result.returncode})
     check('python_startup_cooperation', 'tests/python_startup_yield_browser_test.py')
+    check('startup_shader_seed', 'tests/startup_shader_cache_browser_test.py')
+    check('tablet_touch_intent', 'tests/tablet_touch_browser_test.py')
     check('native_startup_yield', 'tests/startup_yield_browser_test.py')
     check('startup_watchdog', 'tests/startup_watchdog_browser_test.py')
     check('surface_refresh', 'tests/ghost_webgpu_browser_test.py')
@@ -78,6 +84,9 @@ if __name__ == '__main__':
                    'tests/startup_preflight_browser_test.py', 'tests/startup_stats_browser_test.py', 'tests/wasm_mime_browser_test.py', 'tests/blender_tablet_startup_browser_test.py'):
         check(script, script)
     check('tablet_startup_responsiveness', 'tests/blender_tablet_startup_browser_test.py', '--stress-startup')
+    check('tablet_slow_cpu_startup', 'tests/blender_tablet_startup_browser_test.py', '--stress-startup','--cpu-throttle','3')
+    check('tablet_native_compiler_fallback', 'tests/blender_tablet_startup_browser_test.py', '--no-shader-seed')
+    check('tablet_stock_interaction_and_runtime_recovery', 'tests/blender_tablet_startup_browser_test.py', '--interact','--slow-readback','--check-runtime-error')
     check('tablet_cooperative_input', 'tests/blender_editor_browser_test.py', '--tablet')
     if snapshot() != before:
         raise SystemExit('Assets or acceptance fixtures changed during validation.')
@@ -87,7 +96,8 @@ if __name__ == '__main__':
     stamp.write_text(json.dumps({'version': [5, 2, 2], 'profile': 'experimental-editor',
         'render_engines': engines,
         'physicalSafariAccepted': False,
-        'checks': ['python_startup_cooperation', 'tablet_startup_responsiveness', 'tablet_cooperative_input', 'native_cooperative_startup', 'canvas_surface_refresh_after_paint', 'independent_recovery', 'gpu_resources', 'font_pixels', 'native_viewport', 'keyboard_transform',
+        'checks': ['startup_shader_seed','tablet_touch_intent','tablet_slow_cpu_startup','tablet_native_compiler_fallback','tablet_stock_interaction_and_runtime_recovery',
+                   'python_startup_cooperation', 'tablet_startup_responsiveness', 'tablet_cooperative_input', 'native_cooperative_startup', 'canvas_surface_refresh_after_paint', 'independent_recovery', 'gpu_resources', 'font_pixels', 'native_viewport', 'keyboard_transform',
                    'touch_selection', 'touch_viewport_navigation', 'tablet_keyboard_unicode',
                    'native_save_load', 'durable_projects', 'offline_reload',
                    'workbench_render_png', 'suspension_orientation', 'device_loss_backup',

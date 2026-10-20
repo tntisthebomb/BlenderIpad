@@ -16,5 +16,8 @@ if __name__=='__main__':
  manifest={'profile':'experimental-cooperative-startup','sourceCommit':sha,'nativeUpstreamCommit':BLENDER['commit'],
  'physicalSafariAccepted':False,'validation':'automated-native-editor-checks-passed','newNativeEngine':True,
  'assets':{p.name:digest(p) for p in out.iterdir() if p.is_file()}}
+ if (runtime/'engine_identity.json').exists():
+  manifest['nativeEngine']=json.loads((runtime/'engine_identity.json').read_text())
+  manifest['newNativeEngine']=manifest['nativeEngine']['nativeSourceCommit']==sha
  (out/'delivery-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
  print('Prepared exact accepted cooperative runtime; physical iPad startup remains unverified.')
