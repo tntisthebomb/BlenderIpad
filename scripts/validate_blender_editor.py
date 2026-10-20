@@ -11,6 +11,7 @@ ASSETS = ('index.html', 'editor.html', 'ipad-startup.html', 'ipad-update.html', 
           'blender-core.wasm', 'blender-core.data', 'manifest.webmanifest',
           'icon.svg', 'icon-192.png', 'icon-512.png', 'service-worker.js')
 TESTS = ('tests/python_startup_yield_browser_test.py', 'native/browser/python_startup_yield_probe.cc',
+         'tests/gpu_runtime_browser_test.py', 'tests/gpu_runtime_probe.cc',
          'native/browser/python_startup_yield_probe.html', 'scripts/build_python_startup_yield_probe.py',
          'tests/fixtures/tablet_startup_stress.js', 'patches/blender-5.2.2-browser-zz-startup-cooperate.patch',
          'tests/startup_yield_browser_test.py', 'native/browser/startup_yield_probe.cc',
@@ -21,6 +22,7 @@ TESTS = ('tests/python_startup_yield_browser_test.py', 'native/browser/python_st
          'tests/blender_tablet_startup_browser_test.py',
          'tests/blender_render_browser_test.py', 'tests/blender_render_scene.py',
          'tests/offline_shell_browser_test.py', 'tests/editor_files_browser_test.py',
+         'tests/editor_runtime_failure_browser_test.py',
          'tests/blender_modeling_browser_test.py', 'tests/blender_modeling_scene.py',
          'tests/editor_install_failure_test.py', 'tests/startup_preflight_browser_test.py', 'tests/startup_stats_browser_test.py', 'tests/wasm_mime_browser_test.py',
          'tests/shader_semantics_browser_test.py', 'tests/shader_switch_fallthrough.comp',
@@ -69,12 +71,14 @@ if __name__ == '__main__':
     check('native_startup_yield', 'tests/startup_yield_browser_test.py')
     check('startup_watchdog', 'tests/startup_watchdog_browser_test.py')
     check('surface_refresh', 'tests/ghost_webgpu_browser_test.py')
+    check('picking_depth_float_uint', 'tests/gpu_runtime_browser_test.py')
     check('gpu_resources', 'tests/blender_gpu_browser_test.py')
     for engine in engines:
         check(engine, 'tests/blender_render_browser_test.py', '--engine', engine)
     for script in (
                    'tests/blender_modeling_browser_test.py', 'tests/blender_editor_browser_test.py', 'tests/offline_shell_browser_test.py',
                    'tests/editor_files_browser_test.py', 'tests/editor_install_failure_test.py',
+                   'tests/editor_runtime_failure_browser_test.py',
                    'tests/startup_preflight_browser_test.py', 'tests/startup_stats_browser_test.py', 'tests/wasm_mime_browser_test.py', 'tests/blender_tablet_startup_browser_test.py'):
         check(script, script)
     check('tablet_startup_responsiveness', 'tests/blender_tablet_startup_browser_test.py', '--stress-startup')
@@ -88,6 +92,7 @@ if __name__ == '__main__':
         'render_engines': engines,
         'physicalSafariAccepted': False,
         'checks': ['python_startup_cooperation', 'tablet_startup_responsiveness', 'tablet_cooperative_input', 'native_cooperative_startup', 'canvas_surface_refresh_after_paint', 'independent_recovery', 'gpu_resources', 'font_pixels', 'native_viewport', 'keyboard_transform',
+                   'tablet_stock_cursor_depth', 'picking_depth_float_uint', 'late_runtime_failure_recovery',
                    'touch_selection', 'touch_viewport_navigation', 'tablet_keyboard_unicode',
                    'native_save_load', 'durable_projects', 'offline_reload',
                    'workbench_render_png', 'suspension_orientation', 'device_loss_backup',

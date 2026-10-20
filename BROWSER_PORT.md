@@ -1,5 +1,27 @@
 # Native Blender browser port
 
+## Interaction repair on the cooperative-startup branch
+
+The exact cooperative-startup artifact at `7f940bc` reproduces an invalid WebGPU
+copy after choosing the native 3D Cursor tool and tapping the viewport. The copy
+requests one offset pixel of a `Depth32FloatStencil8` texture, while WebGPU
+requires the complete depth subresource. Ordinary menu taps passed the same
+Chromium reproduction; this does not yet establish the cause of every reported
+physical iPad crash.
+
+This branch integrates the depth-readback correction from `643307a` into the
+cooperative-startup runtime. It copies the whole depth plane, crops mapped rows,
+and supports normalized unsigned depth for gizmo picking. Acceptance now covers
+FLOAT/UINT reads, nonuniform crops, and actual stock tablet cursor/popup input.
+Frame and resumed-wait errors also stop drawing and retain report/export access;
+reports include bounded recent output. The recovery screen stays above the
+diagnostic statistics panel.
+
+The interaction-repair workflow builds against the cooperative-startup cache
+and packages only after the expanded native acceptance passes. A source change
+or passing shell fixture is not a tested replacement engine. Physical iPad
+acceptance remains outstanding until the rebuilt package is tested there.
+
 Target: pinned Blender 5.2.2 LTS on iPad 10th generation, iPadOS 26. The actual editor now passes Chromium acceptance: solid Cube/grid/native UI pixels, keyboard transforms, touch selection, native project save/load, durable files and an offline application reload. GPU resource and native font-pixel tests also pass. The background application passes modeling, Solidify, animation, PNG and startup loading. Render engines and disabled optional features remain incomplete; Safari and the physical iPad remain untested. The existing `ipad-workbench` download is the separate math test.
 
 The latest local acceptance is recorded by `scripts/validate_blender_editor.py` in `.cache/blender-webgpu-browser/editor-validation.json`, tied to exact asset and fixture hashes. `scripts/package_blender_editor.py` requires that proof and packages the editor together with a separate corresponding-source archive. See README.md for the complete editor build sequence. Older diagnostic entries below describe intermediate milestones, not the current editor result.

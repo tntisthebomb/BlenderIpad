@@ -1981,7 +1981,7 @@ bool WebGPUContext::read_small_sync(WGPUTexture tex,
                                     int layer,
                                     int mip)
 {
-  if (r_data == nullptr || device_ == nullptr) {
+  if (r_data == nullptr || device_ == nullptr || tex == nullptr || mip < 0 || mip >= 32) {
     return false;
   }
   /* Supported conversions (texel -> caller format). */
@@ -2004,7 +2004,7 @@ bool WebGPUContext::read_small_sync(WGPUTexture tex,
     case WGPUTextureFormat_Depth32Float:
     case WGPUTextureFormat_Depth32FloatStencil8:
       /* DepthOnly aspect copies out tightly-packed float32. */
-      if (channels != 1 || dst_format != GPU_DATA_FLOAT) {
+      if (channels != 1 || (dst_format != GPU_DATA_FLOAT && dst_format != GPU_DATA_UINT)) {
         return false;
       }
       is_depth = true;
@@ -2020,11 +2020,25 @@ bool WebGPUContext::read_small_sync(WGPUTexture tex,
       return false;
   }
 
+  /* WebGPU requires a depth/stencil copy to cover the entire mip subresource.
+   * Blender's cursor and gizmo picking request small, offset rectangles. Copy
+   * the full depth plane and crop the requested rectangle after mapping. Color
+   * and integer ID textures can still use their inexpensive rectangle copies. */
+  const uint32_t texture_width = std::max(1u, wgpuTextureGetWidth(tex) >> mip);
+  const uint32_t texture_height = std::max(1u, wgpuTextureGetHeight(tex) >> mip);
+  if (x < 0 || y < 0 || w <= 0 || h <= 0 ||
+      uint64_t(x) + uint64_t(w) > texture_width ||
+      uint64_t(y) + uint64_t(h) > texture_height) {
+    return false;
+  }
+  const uint32_t copy_width = is_depth ? texture_width : uint32_t(w);
+  const uint32_t copy_height = is_depth ? texture_height : uint32_t(h);
+
   /* All recorded work must land before the copy (and the copy needs top-level
    * encoder access). */
   submit();
-  const uint32_t bpr = align256(uint32_t(w) * bpp);
-  const size_t need = size_t(bpr) * size_t(h);
+  const uint32_t bpr = align256(copy_width * bpp);
+  const size_t need = size_t(bpr) * copy_height;
   WGPUBufferDescriptor bd = {};
   bd.label = {"read_small_sync", WGPU_STRLEN};
   bd.size = need;
@@ -2035,6 +2049,7 @@ bool WebGPUContext::read_small_sync(WGPUTexture tex,
   }
   WGPUCommandEncoder enc = ensure_encoder();
   if (enc == nullptr) {
+    wgpuBufferDestroy(scratch);
     wgpuBufferRelease(scratch);
     return false;
   }
@@ -2042,17 +2057,21 @@ bool WebGPUContext::read_small_sync(WGPUTexture tex,
   src.texture = tex;
   src.aspect = is_depth ? WGPUTextureAspect_DepthOnly : WGPUTextureAspect_All;
   src.mipLevel = uint32_t(std::max(mip, 0));
-  src.origin = {uint32_t(x), uint32_t(y), uint32_t(std::max(layer, 0))};
+  src.origin = {is_depth ? 0u : uint32_t(x),
+                is_depth ? 0u : uint32_t(y), uint32_t(std::max(layer, 0))};
   WGPUTexelCopyBufferInfo dst = {};
   dst.buffer = scratch;
   dst.layout.bytesPerRow = bpr;
-  dst.layout.rowsPerImage = uint32_t(h);
-  WGPUExtent3D ext = {uint32_t(w), uint32_t(h), 1};
+  dst.layout.rowsPerImage = copy_height;
+  WGPUExtent3D ext = {copy_width, copy_height, 1};
   wgpuCommandEncoderCopyTextureToBuffer(enc, &src, &dst, &ext);
   flush_encoder();
 
   std::vector<uint8_t> raw(need);
   const bool ok = map_read_sync(scratch, need, raw.data());
+  /* A depth transfer can cover a Retina viewport. Reclaim its GPU allocation
+   * immediately after mapping instead of waiting for JavaScript GC. */
+  wgpuBufferDestroy(scratch);
   wgpuBufferRelease(scratch);
   if (!ok) {
     return false;
@@ -2061,7 +2080,23 @@ bool WebGPUContext::read_small_sync(WGPUTexture tex,
    * GL bottom-up row convention (the y passed in is already a storage row). */
   uint8_t *out = static_cast<uint8_t *>(r_data);
   for (int row = 0; row < h; row++) {
-    std::memcpy(out + size_t(row) * w * bpp, raw.data() + size_t(row) * bpr, size_t(w) * bpp);
+    const uint8_t *source = raw.data() + size_t(row + (is_depth ? y : 0)) * bpr +
+                            size_t(is_depth ? x : 0) * bpp;
+    if (is_depth && dst_format == GPU_DATA_UINT) {
+      /* Match normalized OpenGL depth reads used by gpu_select_pick: near is
+       * zero, far/cleared is UINT32_MAX. Never cast a rounded float 2^32 to
+       * uint32_t, which would overflow at the far plane. */
+      for (int column = 0; column < w; column++) {
+        float depth;
+        std::memcpy(&depth, source + size_t(column) * sizeof(float), sizeof(depth));
+        const double normalized = std::clamp(double(depth), 0.0, 1.0);
+        static_cast<uint32_t *>(r_data)[size_t(row) * w + column] =
+            uint32_t(normalized * double(UINT32_MAX));
+      }
+    }
+    else {
+      std::memcpy(out + size_t(row) * w * bpp, source, size_t(w) * bpp);
+    }
   }
   return true;
 }
