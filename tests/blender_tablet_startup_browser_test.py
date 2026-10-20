@@ -7,6 +7,7 @@ from threading import Thread
 import argparse
 import json
 import os
+import struct
 from playwright.sync_api import sync_playwright
 from PIL import Image
 
@@ -142,6 +143,25 @@ try:
             assert options.interact,'Runtime-error recovery needs the native project saved by the interaction test'
             saved=page.evaluate("({size:blenderEditor.FS.stat('/projects/tablet-stock-interaction.blend').size,magic:Array.from(blenderEditor.FS.readFile('/projects/tablet-stock-interaction.blend').slice(0,7))})")
             assert saved['size']>1000 and (bytes(saved['magic'])==b'BLENDER' or bytes(saved['magic'][:4])==b'\x28\xb5\x2f\xfd'),saved
+            # Saving from the Console uses native front-buffer screenshot reads.
+            # Check real thumbnail pixels, not merely successful file creation.
+            blend=bytes(page.evaluate("Array.from(blenderEditor.FS.readFile('/projects/tablet-stock-interaction.blend'))"))
+            assert blend[:9]==b'BLENDER_v','Expected the native wasm32 uncompressed file header'
+            offset=12;thumbnail=None
+            while offset+20<=len(blend):
+                code,length=struct.unpack_from('<4sI',blend,offset)
+                block=blend[offset+20:offset+20+length]
+                assert len(block)==length,'Truncated native saved block'
+                if code==b'TEST':thumbnail=block;break
+                offset+=20+length
+            assert thumbnail is not None,'Native screen thumbnail was not saved'
+            width,height=struct.unpack_from('<ii',thumbnail)
+            assert 0<width<=1024 and 0<height<=1024,(width,height)
+            pixels=thumbnail[8:8+width*height*4]
+            assert len(pixels)==width*height*4,'Truncated native thumbnail pixels'
+            colors={pixels[i:i+3] for i in range(0,len(pixels),4)}
+            assert len(colors)>16,('Blank front-buffer screenshot thumbnail',len(colors))
+            print('PASS: native Console save includes a nonblank presented-frame thumbnail '+str((width,height,len(colors))),flush=True)
             page.evaluate("setTimeout(()=>{throw new WebAssembly.RuntimeError('post-viewport error fixture');},0)")
             page.wait_for_function("document.body.dataset.error?.includes('post-viewport error fixture')")
             page.wait_for_function("blenderStartupStats.snapshot().watchdogStatus==='finished'")
