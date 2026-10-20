@@ -144,7 +144,7 @@ jobs:
       - name: Capture shader translations from the new native engine
         run: |
           mkdir -p work
-          .cache/browser-tests/bin/python tests/blender_tablet_startup_browser_test.py --no-shader-seed --capture-shaders work/native-startup-shaders.json
+          .cache/browser-tests/bin/python tests/blender_tablet_startup_browser_test.py --no-shader-seed --interact --slow-readback --capture-shaders work/native-startup-shaders.json
           python3 scripts/generate_startup_shader_seed.py --capture work/native-startup-shaders.json
       - name: Validate and record the exact editor assets
         env:
