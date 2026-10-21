@@ -987,7 +987,8 @@ void WebGPUTexture::copy_to(Texture *dst_tex, IndexRange mip_levels)
     WGPUExtent3D ext = {mw, uint32_t(std::max(int(mh), 1)), uint32_t(layers)};
     wgpuCommandEncoderCopyTextureToTexture(enc, &src_info, &dst_info, &ext);
   }
-  ctx->flush_encoder();
+  /* Preserve GPU ordering in the existing encoder instead of submitting
+   * every intermediate framebuffer copy separately. */
 }
 
 void WebGPUTexture::clear(const double4 source)

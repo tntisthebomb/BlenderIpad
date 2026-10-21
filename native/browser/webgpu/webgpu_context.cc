@@ -899,7 +899,8 @@ WGPUBuffer WebGPUContext::snapshot_buffer(WGPUBuffer src, uint64_t size)
     return nullptr;
   }
   wgpuCommandEncoderCopyBufferToBuffer(enc, src, 0, scratch, 0, size);
-  flush_encoder();
+  /* Copies and subsequent consumers stay ordered in the same encoder.
+   * Submission belongs to presentation, explicit flush, or a CPU readback. */
   return scratch;
 }
 
@@ -958,7 +959,8 @@ WGPUTextureView WebGPUContext::snapshot_for_sampling(WebGPUTexture *t)
     WGPUExtent3D ext = {std::max(w >> m, 1u), std::max(h >> m, 1u), layers};
     wgpuCommandEncoderCopyTextureToTexture(enc, &src, &dst, &ext);
   }
-  flush_encoder();
+  /* Copies and subsequent consumers stay ordered in the same encoder.
+   * Submission belongs to presentation, explicit flush, or a CPU readback. */
 
   /* View of the scratch mirroring the original texture object's view window. */
   WGPUTextureView view = t->make_view_of(scratch);
@@ -1156,6 +1158,7 @@ void WebGPUContext::present_backbuffer(int w, int h)
     }
 #ifdef WITH_GHOST_WEBGPU_CONTEXT
     WGPUCommandBufferDescriptor command_descriptor=WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
+    command_descriptor.label = {"Blender present", WGPU_STRLEN};
     auto command=wgpuCommandEncoderFinish(encoder_,&command_descriptor);
     if (!command || ghost_canvas_->submit(command)!=GHOST_kSuccess) throw std::runtime_error("GHOST presentation submission failed");
     wgpuCommandBufferRelease(command);wgpuCommandEncoderRelease(encoder_);encoder_=nullptr;
@@ -1377,7 +1380,7 @@ void WebGPUContext::generate_mipmaps(WebGPUTexture *t)
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
       }
-      flush_encoder();
+      /* Dependent mip passes remain ordered in the same encoder. */
       if (bg) {
         wgpuBindGroupRelease(bg);
       }

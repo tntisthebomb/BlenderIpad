@@ -63,6 +63,32 @@ del _stock_snapshot
   session.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':points(0)})
   for offset in (12,24,36):session.send('Input.dispatchTouchEvent',{'type':'touchMove','touchPoints':points(offset)})
   session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
+ # Warmed viewport interactions must batch offscreen work into few submissions.
+ # Count the real device queue, retaining the application's existing wrapper.
+ page.evaluate("""()=>{
+  const queue=blenderEditor.preinitializedWebGPUDevice.queue,submit=queue.submit;
+  window.stockOrbitGPU={submits:0,presents:0};
+  queue.submit=function(commands){
+   stockOrbitGPU.submits++;
+   stockOrbitGPU.presents+=Array.from(commands).filter(c=>c.label==='Blender present').length;
+   return Reflect.apply(submit,this,[commands]);
+  };
+  window.restoreStockOrbitQueue=()=>{queue.submit=submit;};
+ }""")
+ try:
+  for repeat in range(3):
+   points=lambda offset:[{'id':1,'x':cx-40+offset,'y':cy},{'id':2,'x':cx+40+offset,'y':cy}]
+   session.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':points(0)})
+   for offset in (12,24,36):
+    session.send('Input.dispatchTouchEvent',{'type':'touchMove','touchPoints':points(offset)})
+    page.wait_for_timeout(40)
+   session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
+  page.wait_for_timeout(500)
+  orbit_gpu=page.evaluate('stockOrbitGPU')
+ finally:page.evaluate('restoreStockOrbitQueue()')
+ print('STOCK_ORBIT_GPU '+json.dumps(orbit_gpu),flush=True)
+ assert orbit_gpu['presents']>=3,'Repeated orbit did not present real native frames'
+ assert orbit_gpu['submits']<=4*orbit_gpu['presents'],orbit_gpu
  orbited=inspect('orbited')
  print('STOCK_TOUCH_AUDIT '+json.dumps(page.evaluate('stockTouchAudit')),flush=True)
  assert any(abs(a-b)>.001 for a,b in zip(selected['rotation'],orbited['rotation'])),(selected,orbited)
@@ -81,4 +107,4 @@ del _stock_snapshot
  final=inspect('object-mode',save=True);assert final['mode']=='OBJECT' and final['selected'],final
  page.locator('#canvas').screenshot(path=str(output/'stock-interaction-final.png'))
  assert not page.evaluate('editorErrors.length'),page.evaluate('editorErrors')
- return {'initial':initial,'selected':selected,'orbited':orbited,'translated':moved,'edited':edited,'final':final}
+ return {'orbitGPU':orbit_gpu,'initial':initial,'selected':selected,'orbited':orbited,'translated':moved,'edited':edited,'final':final}
