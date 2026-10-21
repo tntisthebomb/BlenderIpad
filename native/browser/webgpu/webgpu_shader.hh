@@ -95,7 +95,7 @@ class WebGPUShader : public Shader {
    * cached slice buffer holds a ref (the arena rolls over). */
   WGPUBuffer pc_slice_buf_ = nullptr;
   uint64_t pc_slice_off_ = 0;
-  uint32_t pc_slice_epoch_ = 0;
+  uint64_t pc_slice_epoch_ = 0;
   uint8_t *push_const_data_ = nullptr;
   size_t push_const_size_ = 0;
   bool push_const_dirty_ = false;

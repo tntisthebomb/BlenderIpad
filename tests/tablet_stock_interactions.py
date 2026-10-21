@@ -1,5 +1,6 @@
 """Drive stock Blender through its UI; inspect results through its native console."""
 import json
+import os
 from pathlib import Path
 
 def exercise_stock_editor(page,context,output):
@@ -88,6 +89,9 @@ del _stock_snapshot
    page.wait_for_timeout(500)
    orbit_gpu=page.evaluate('stockOrbitGPU')
   finally:page.evaluate('restoreStockOrbitQueue()')
+  orbit_gpu['sourceCommit']=os.environ.get('GITHUB_SHA','local')
+  orbit_gpu['nativeFrames']=page.evaluate("editorOutput.filter(line=>line.startsWith('WGPU_STATS ')).slice(-6)")
+  (output/f'stock-orbit-{label}-gpu.json').write_text(json.dumps(orbit_gpu,indent=2)+'\n')
   print('STOCK_ORBIT_GPU '+label+' '+json.dumps(orbit_gpu),flush=True)
   assert orbit_gpu['presents']>=3,'Repeated orbit did not present real native frames'
   assert orbit_gpu['submits']<=4*orbit_gpu['presents'],orbit_gpu

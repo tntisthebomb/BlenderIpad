@@ -144,10 +144,19 @@ jobs:
             python3 scripts/build_native_editor.py
           fi
       - name: Capture shader translations from the new native engine
+        id: shader-capture
         run: |
           mkdir -p work
+          rm -f .cache/stock-orbit-*-gpu.json
           .cache/browser-tests/bin/python tests/blender_tablet_startup_browser_test.py --no-shader-seed --interact --slow-readback --capture-shaders work/native-startup-shaders.json
           python3 scripts/generate_startup_shader_seed.py --capture work/native-startup-shaders.json
+      - name: Preserve real interaction measurements
+        if: always() && (steps.shader-capture.outcome == 'success' || steps.shader-capture.outcome == 'failure')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-interaction-measurements
+          path: .cache/stock-orbit-*-gpu.json
+          if-no-files-found: ignore
       - name: Validate and record the exact editor assets
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome

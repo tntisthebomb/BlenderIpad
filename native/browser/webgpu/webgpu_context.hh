@@ -101,6 +101,9 @@ class WebGPUContext : public Context {
   std::unordered_map<uint64_t, WGPUTexture> snapshot_textures_;
   std::unordered_map<uint64_t, WGPUBuffer> snapshot_buffers_;
 
+  /* System-backed viewport contexts have begin/end-frame boundaries even when
+   * their output is a texture rather than the canvas. */
+  bool batches_render_scopes_ = false;
   TransientBufferPool transient_buffers_;
   TextureUploadStaging texture_upload_;
 
@@ -124,12 +127,9 @@ class WebGPUContext : public Context {
 
   static void yield_startup();
   void activate() override;
-  void deactivate() override
-  {
-    immDeactivate();
-  }
+  void deactivate() override;
   void begin_frame() override {}
-  void end_frame() override {}
+  void end_frame() override;
   void flush() override;
   void finish() override;
 
@@ -151,6 +151,7 @@ class WebGPUContext : public Context {
 
   WGPUDevice device() const { return device_; }
   WGPUQueue queue() const { return queue_; }
+  bool batches_render_scopes() const { return batches_render_scopes_; }
   bool has_window_surface() const
   {
 #ifdef WITH_GHOST_WEBGPU_CONTEXT
@@ -361,13 +362,13 @@ class WebGPUContext : public Context {
   int backbuffer_w_ = 0, backbuffer_h_ = 0;
   WGPUBuffer null_attr_buffer_ = nullptr;
   /* Transient uniform arena (see uniform_arena_alloc). The cursor RESETS every
-   * present (uniform_arena_reset) so push-constant slices land at the SAME
+   * frame boundary (uniform_arena_reset) so push-constant slices land at the SAME
    * offsets frame after frame — that is what lets the bind-group cache hit for
    * push-constant groups (keys include the offset). The epoch invalidates
    * shader-cached slices so no one keeps pointing into reused space. */
   WGPUBuffer uni_arena_buf_ = nullptr;
   uint64_t uni_arena_off_ = 0, uni_arena_cap_ = 0;
-  uint32_t uni_arena_epoch_ = 1;
+  uint64_t uni_arena_epoch_ = 0;
 
  public:
   /* 1x1 dummy storage view of an exact format/dimension, for bindings whose
@@ -389,17 +390,11 @@ class WebGPUContext : public Context {
    * recorded draw — no pass flush/submit needed. Full chunks are released (bind
    * groups/command buffers keep them alive until the GPU is done). */
   bool uniform_arena_alloc(uint64_t size, WGPUBuffer &r_buf, uint64_t &r_off);
-  uint32_t uniform_arena_epoch() const
+  uint64_t uniform_arena_epoch() const
   {
     return uni_arena_epoch_;
   }
-  void uniform_arena_reset()
-  {
-    /* Safe to reuse: everything referencing the old slices was submitted at
-     * present, and queue writes enqueued afterwards execute after them. */
-    uni_arena_off_ = 0;
-    uni_arena_epoch_++;
-  }
+  void uniform_arena_reset();
   /* Async self-readback of the film texture (GUI F12): pixels are injected
    * into the RenderResult from the main loop when the map completes. */
   void film_capture_async(WGPUTexture tex, WGPUTextureFormat fmt, int w, int h);

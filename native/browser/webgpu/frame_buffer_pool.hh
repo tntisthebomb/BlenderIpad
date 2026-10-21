@@ -14,7 +14,7 @@ namespace blender::gpu {
 class TransientBufferPool {
   struct Entry { WGPUBuffer buffer; uint64_t size; WGPUBufferUsage usage; };
   std::vector<Entry> pending_, reusable_;
-  uint64_t bytes_ = 0;
+  uint64_t bytes_ = 0, reused_ = 0, created_ = 0;
 
  public:
   static constexpr uint64_t max_bytes = 8 * 1024 * 1024;
@@ -29,6 +29,7 @@ class TransientBufferPool {
     /* A later queue write executes after the preceding frame even if the GPU
      * has not finished it. No GPU completion wait is needed for reuse. */
     if (descriptor.nextInChain || descriptor.mappedAtCreation) {
+      created_++;
       return wgpuDeviceCreateBuffer(device, &descriptor);
     }
     for (size_t i = 0; i < reusable_.size(); i++) {
@@ -37,9 +38,11 @@ class TransientBufferPool {
         reusable_[i] = reusable_.back();
         reusable_.pop_back();
         bytes_ -= entry.size;
+        reused_++;
         return entry.buffer;
       }
     }
+    created_++;
     return wgpuDeviceCreateBuffer(device, &descriptor);
   }
 
@@ -70,6 +73,8 @@ class TransientBufferPool {
     pending_.clear();
   }
   uint64_t bytes() const { return bytes_; }
+  uint64_t reused() const { return reused_; }
+  uint64_t created() const { return created_; }
   size_t count() const { return pending_.size() + reusable_.size(); }
   void clear()
   {

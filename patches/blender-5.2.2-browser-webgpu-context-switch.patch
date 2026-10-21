@@ -1,0 +1,18 @@
+--- a/source/blender/gpu/intern/gpu_context.cc
++++ b/source/blender/gpu/intern/gpu_context.cc
+@@ -242,6 +242,15 @@
+   Context *ctx = unwrap(ctx_);
+ 
+   if (active_ctx) {
++#ifdef WITH_WEBGPU_BACKEND
++    /* Shared resources must observe outgoing work before a different context
++     * records consumers. Re-activating the same context is only a state reset. */
++    if (active_ctx != ctx) {
++      if (auto *webgpu = dynamic_cast<gpu::WebGPUContext *>(active_ctx)) {
++        webgpu->submit();
++      }
++    }
++#endif
+     GPU_shader_unbind();
+     active_ctx->deactivate();
+   }

@@ -693,13 +693,14 @@ class WebGPUBackend : public GPUBackend {
   void render_begin() override {}
   void render_end() override
   {
-    /* Blender ends a render scope for each UI region. Window scopes share the
-     * frame's encoder and submit at presentation; submitting every region made
-     * a single viewport redraw issue ten extra queue submissions. Headless work
-     * has no presentation boundary and must still submit here. Explicit flush,
-     * CPU readback and render_step keep their own synchronization. */
+    /* Window and shared viewport contexts submit at their frame boundary.
+     * Close each pass here to preserve resource usage scopes without sending
+     * every UI region to the GPU separately. Context switches flush outgoing
+     * work; direct headless rendering has no frame boundary and submits here.
+     * Explicit flush, CPU readback and render_step keep their synchronization. */
     if (WebGPUContext *ctx = WebGPUContext::get()) {
-      if (!ctx->has_window_surface()) ctx->submit();
+      if (ctx->batches_render_scopes()) ctx->render_pass_end();
+      else ctx->submit();
     }
   }
   void render_step(bool /*force_resource_release*/) override

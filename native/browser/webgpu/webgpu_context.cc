@@ -7,6 +7,7 @@
  */
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -156,6 +157,8 @@ static WGPUInstance webgpu_instance()
 WebGPUContext::WebGPUContext(GHOST_IWindow *ghost_window,
                              GHOST_IContext *ghost_context)
 {
+  uniform_arena_reset();
+  batches_render_scopes_ = ghost_window != nullptr || ghost_context != nullptr;
 #ifdef WITH_GHOST_WEBGPU_CONTEXT
   if (!ghost_context && ghost_window) {
     ghost_context=ghost_window->getDrawingContext();
@@ -223,6 +226,22 @@ extern "C" void blender_browser_startup_checkpoint(const char *stage)
   WebGPUContext::yield_startup();
 }
 #endif
+
+void WebGPUContext::deactivate()
+{
+  immDeactivate();
+}
+
+void WebGPUContext::end_frame()
+{
+  if (!has_window_surface()) {
+    /* Viewport/preview contexts render into textures, then the window context
+     * composites them. They never call present_backbuffer themselves. */
+    submit();
+    transient_buffers_.submitted();
+    uniform_arena_reset();
+  }
+}
 
 void WebGPUContext::activate()
 {
@@ -852,6 +871,16 @@ void WebGPUContext::film_capture_async(WGPUTexture tex, WGPUTextureFormat fmt, i
   wgpuBufferMapAsync(map_buf, WGPUMapMode_Read, 0, size, cb);
 }
 
+void WebGPUContext::uniform_arena_reset()
+{
+  /* All old slices have been submitted before this boundary. The epoch is
+   * globally unique: shaders can be shared by contexts whose local frame
+   * counters would otherwise match, including destroyed/recreated contexts. */
+  static std::atomic<uint64_t> next_epoch{1};
+  uni_arena_off_ = 0;
+  uni_arena_epoch_ = next_epoch.fetch_add(1, std::memory_order_relaxed);
+}
+
 bool WebGPUContext::uniform_arena_alloc(uint64_t size, WGPUBuffer &r_buf, uint64_t &r_off)
 {
   if (device_ == nullptr || size == 0) {
@@ -1223,9 +1252,14 @@ void WebGPUContext::present_backbuffer(int w, int h)
     s_last_ms = now_ms;
     s_frame++;
     if (s_frame <= 8 || (s_frame % 60) == 0 || frame_ms > 25.0) {
+      uint64_t pooled_reuses = 0, pooled_creations = 0;
+      for (const auto *context : g_all_contexts) {
+        pooled_reuses += context->transient_buffers_.reused();
+        pooled_creations += context->transient_buffers_.created();
+      }
       fprintf(stderr,
               "WGPU_STATS frame=%d dt=%.1fms submits=%d passes=%d bindgroups=%d bg_hits=%d "
-              "guard_flushes=%d fb_switches=%d tex=%d/%lldMB\n",
+              "guard_flushes=%d fb_switches=%d tex=%d/%lldMB pool_reuse=%llu pool_create=%llu\n",
               s_frame,
               frame_ms,
               g_stat_submits,
@@ -1235,7 +1269,9 @@ void WebGPUContext::present_backbuffer(int w, int h)
               g_stat_flushes,
               g_stat_fbswitch,
               [] { extern int g_stat_tex_count; return g_stat_tex_count; }(),
-              [] { extern long long g_stat_tex_bytes; return g_stat_tex_bytes / (1024 * 1024); }());
+              [] { extern long long g_stat_tex_bytes; return g_stat_tex_bytes / (1024 * 1024); }(),
+              static_cast<unsigned long long>(pooled_reuses),
+              static_cast<unsigned long long>(pooled_creations));
       extern void webgpu_stat_flush_dump();
       webgpu_stat_flush_dump();
     }

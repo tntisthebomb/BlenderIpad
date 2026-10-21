@@ -1314,7 +1314,7 @@ bool WebGPUShader::push_const_slice(WGPUBuffer &r_buf, uint64_t &r_off, uint64_t
     push_const_dirty_ = true;
   }
   /* A slice from a previous frame lives in reused arena space (the arena
-   * resets every present) — it MUST be re-uploaded even when clean. */
+   * resets at its frame boundary) — it MUST be re-uploaded even when clean. */
   if (push_const_dirty_ || pc_slice_buf_ == nullptr ||
       pc_slice_epoch_ != ctx->uniform_arena_epoch())
   {
