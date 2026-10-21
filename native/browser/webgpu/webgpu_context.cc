@@ -559,6 +559,19 @@ void WebGPUContext::retire_transient_buffer(WGPUBuffer buffer,
   transient_buffers_.retire(buffer, descriptor);
 }
 
+bool WebGPUContext::record_texture_upload(const WGPUTexelCopyTextureInfo &destination,
+                                          const void *data, size_t size,
+                                          const WGPUTexelCopyBufferLayout &layout,
+                                          const WGPUExtent3D &extent)
+{
+  /* With no recorded work, the direct queue upload is already ordered and
+   * avoids a staging allocation. Never end a pass for an unsupported upload. */
+  if (!encoder_ || !TextureUploadStaging::padded_size(size, layout, extent)) return false;
+  render_pass_end();
+  return texture_upload_.record(device_, queue_, ensure_encoder(), transient_buffers_,
+                                destination, data, size, layout, extent);
+}
+
 void WebGPUContext::submit()
 {
   render_pass_end();

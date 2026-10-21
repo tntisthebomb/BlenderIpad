@@ -10,7 +10,7 @@ from setup_browser import CACHE, ROOT
 ASSETS = ('index.html', 'editor.html', 'ipad-startup.html', 'ipad-update.html', 'editor_files.js', 'editor_input.js','startup_stats.js', 'startup_watchdog.js', 'startup_shaders.js', 'startup_shader_seed.json', 'engine_identity.json', 'tablet_touch.js', 'blender-core.js',
           'blender-core.wasm', 'blender-core.data', 'manifest.webmanifest',
           'icon.svg', 'icon-192.png', 'icon-512.png', 'service-worker.js')
-TESTS = ('native/browser/webgpu/frame_buffer_pool.hh','native/browser/frame_buffer_pool_probe.cc','scripts/build_frame_buffer_pool_probe.py','tests/frame_buffer_pool_browser_test.py','tests/startup_shader_cache_browser_test.py','tests/tablet_stock_interactions.py','tests/tablet_touch_browser_test.py','scripts/generate_startup_shader_seed.py',
+TESTS = ('native/browser/webgpu/texture_upload.hh','native/browser/webgpu/frame_buffer_pool.hh','native/browser/frame_buffer_pool_probe.cc','scripts/build_frame_buffer_pool_probe.py','tests/frame_buffer_pool_browser_test.py','tests/startup_shader_cache_browser_test.py','tests/tablet_stock_interactions.py','tests/tablet_touch_browser_test.py','scripts/generate_startup_shader_seed.py',
          'tests/python_startup_yield_browser_test.py', 'native/browser/python_startup_yield_probe.cc',
          'native/browser/python_startup_yield_probe.html', 'scripts/build_python_startup_yield_probe.py',
          'tests/fixtures/tablet_startup_stress.js', 'patches/blender-5.2.2-browser-zz-startup-cooperate.patch',
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     stamp.write_text(json.dumps({'version': [5, 2, 2], 'profile': 'experimental-editor',
         'render_engines': engines,
         'physicalSafariAccepted': False,
-        'checks': ['native_transient_buffer_reuse','startup_shader_seed','tablet_touch_intent','tablet_slow_cpu_startup','tablet_native_compiler_fallback','tablet_stock_interaction_and_runtime_recovery',
+        'checks': ['native_texture_upload_ordering','native_transient_buffer_reuse','startup_shader_seed','tablet_touch_intent','tablet_slow_cpu_startup','tablet_native_compiler_fallback','tablet_stock_interaction_and_runtime_recovery',
                    'python_startup_cooperation', 'tablet_startup_responsiveness', 'tablet_cooperative_input', 'native_cooperative_startup', 'canvas_surface_refresh_after_paint', 'independent_recovery', 'gpu_resources', 'font_pixels', 'native_viewport', 'keyboard_transform',
                    'touch_selection', 'touch_viewport_navigation', 'tablet_keyboard_unicode',
                    'native_save_load', 'durable_projects', 'offline_reload',

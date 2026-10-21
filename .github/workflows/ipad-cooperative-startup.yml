@@ -21,7 +21,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ipad-interactive-performance
+  group: ipad-texture-upload-performance
   cancel-in-progress: true
 
 jobs:

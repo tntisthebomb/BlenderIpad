@@ -657,10 +657,6 @@ void WebGPUTexture::update_sub(int mip,
     }
     return;
   }
-  /* WriteTexture executes before later submits — don't let it retroactively
-   * change what an in-recording pass reads (same hazard as WriteBuffer). */
-  ctx->flush_if_pass_open("tex");
-
   if (getenv("WGPU_LOG_TEXUP")) {
     fprintf(stderr,
             "WGPU_TEXUP '%s' tex=%dx%d up=%dx%dx%d off=%d,%d,%d mip=%d fmt=%d data_fmt=%d "
@@ -933,11 +929,12 @@ void WebGPUTexture::update_sub(int mip,
     }
     fflush(stderr);
   }
-  /* WriteTexture executes before recorded-but-unsubmitted passes — flush so a
-   * mid-render texture update cannot retroactively clobber data that pending
-   * passes were recorded against (same hazard as the clear() zero-fill). */
-  ctx->flush_if_pass_open("tex_update");
-  wgpuQueueWriteTexture(ctx->queue(), &dst, upload, byte_size, &layout, &wext);
+  /* Small updates are copies inside the encoder, preserving draw/upload order
+   * without submitting each icon separately. Large uploads keep the guard. */
+  if (!ctx->record_texture_upload(dst, upload, byte_size, layout, wext)) {
+    ctx->flush_if_pass_open("tex_update");
+    wgpuQueueWriteTexture(ctx->queue(), &dst, upload, byte_size, &layout, &wext);
+  }
   if (tmp) {
     free(tmp);
   }
@@ -1128,11 +1125,6 @@ void WebGPUTexture::clear(const double4 source)
     }
   }
   if (fill_supported && !is_depth && ctx->queue() != nullptr) {
-    /* MUST flush first: WriteTexture executes before any recorded-but-
-     * unsubmitted passes — an unguarded atlas clear raced the batched shadow
-     * passes (the once-per-render bimodal weak-shadow flake: whether the
-     * encoder happened to be flushed decided the clear/write order). */
-    ctx->flush_if_pass_open("tex_clear");
     {
       static int s_zc_log = 0;
       if (s_zc_log < 48) {
@@ -1164,7 +1156,10 @@ void WebGPUTexture::clear(const double4 source)
     layout.rowsPerImage = uint32_t(std::max(h_, 1));
     WGPUExtent3D ext = {
         uint32_t(std::max(w_, 1)), uint32_t(std::max(h_, 1)), uint32_t(depth_or_layers)};
-    wgpuQueueWriteTexture(ctx->queue(), &dst, zeros.data(), zeros.size(), &layout, &ext);
+    if (!ctx->record_texture_upload(dst, zeros.data(), zeros.size(), layout, ext)) {
+      ctx->flush_if_pass_open("tex_clear");
+      wgpuQueueWriteTexture(ctx->queue(), &dst, zeros.data(), zeros.size(), &layout, &ext);
+    }
     return;
   }
   static int s_unimpl_logged = 0;

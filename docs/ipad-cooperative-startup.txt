@@ -7,6 +7,12 @@ Install using http://localhost:8080/ipad-update.html, then close all Blender and
 updater tabs/Home Screen windows before reopening http://localhost:8080/.
 Press Start once. The statistics panel identifies v10 and counts native yields and Python checkpoints.
 
+Interactive redraws batch intermediate copies and small texture uploads in the
+same command buffer. A bounded buffer pool reuses submitted-frame allocations;
+unsubmitted work cannot share those buffers. Display resolution, Blender tools
+and render features are unchanged. Automated orbit checks cover both Object and
+Edit Mode, with limits on submissions and fresh buffer allocations per frame.
+
 This build preserves a separate presented front framebuffer for native screen
 thumbnail reads. Two-finger touch intent avoids selecting before orbiting.
 Native-generated shader translations are matched to the exact engine; a

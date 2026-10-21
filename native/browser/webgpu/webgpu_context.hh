@@ -23,6 +23,7 @@
 #include <webgpu/webgpu.h>
 
 #include "frame_buffer_pool.hh"
+#include "texture_upload.hh"
 #include "webgpu_framebuffer.hh"
 #include "webgpu_shader.hh"
 
@@ -101,6 +102,7 @@ class WebGPUContext : public Context {
   std::unordered_map<uint64_t, WGPUBuffer> snapshot_buffers_;
 
   TransientBufferPool transient_buffers_;
+  TextureUploadStaging texture_upload_;
 
   /* Debug capture: the WGPU handle (AddRef'd at draw time so it survives the
    * pooled texture being freed/reused) of the first content color texture; copied
@@ -154,6 +156,11 @@ class WebGPUContext : public Context {
    * acquire returns one owned reference, exactly like CreateBuffer. */
   WGPUBuffer acquire_transient_buffer(const WGPUBufferDescriptor &descriptor);
   void retire_transient_buffer(WGPUBuffer buffer, const WGPUBufferDescriptor &descriptor);
+  bool record_texture_upload(const WGPUTexelCopyTextureInfo &destination,
+                             const void *data, size_t size,
+                             const WGPUTexelCopyBufferLayout &layout,
+                             const WGPUExtent3D &extent);
+
 
   /* --- command / render-pass lifecycle --- */
   WGPUCommandEncoder ensure_encoder();
