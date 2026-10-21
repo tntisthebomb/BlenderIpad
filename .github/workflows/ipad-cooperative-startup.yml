@@ -21,7 +21,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ipad-cooperative-startup
+  group: ipad-interactive-performance
   cancel-in-progress: true
 
 jobs:
@@ -97,6 +97,8 @@ jobs:
         run: |
           if [ '${{ steps.native-dependencies.outputs.reuse }}' != 'true' ]; then python3 scripts/build_browser_ghost_webgpu.py; fi
           .cache/browser-tests/bin/python tests/ghost_webgpu_browser_test.py
+      - name: Build production buffer-pool ordering probe
+        run: python3 scripts/build_frame_buffer_pool_probe.py
       - name: Build and verify native event routing and startup guard
         run: |
           if [ '${{ steps.native-dependencies.outputs.reuse }}' != 'true' ]; then python3 scripts/build_browser_platform.py; fi

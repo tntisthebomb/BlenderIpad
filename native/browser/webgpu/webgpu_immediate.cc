@@ -75,7 +75,7 @@ void WebGPUImmediate::end()
   bd.label = {"immediate", WGPU_STRLEN};
   bd.size = buf_size;
   bd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
-  WGPUBuffer buf = wgpuDeviceCreateBuffer(ctx->device(), &bd);
+  WGPUBuffer buf = ctx->acquire_transient_buffer(bd);
   if (buf == nullptr) {
     return;
   }
@@ -94,8 +94,9 @@ void WebGPUImmediate::end()
     webgpu_immediate_draw(prim_type, vertex_format, buf, vertex_idx);
   }
 
-  /* The recorded commands (and bind groups) hold their own references. */
-  wgpuBufferRelease(buf);
+  /* Polyline slots can still expose this handle to subsequent native work.
+   * Ordinary immediate draws only retain it in already-recorded commands. */
+  ctx->retire_transient_buffer(buf, bd);
 }
 
 }  // namespace blender::gpu

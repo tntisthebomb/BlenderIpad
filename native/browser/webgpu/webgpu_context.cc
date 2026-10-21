@@ -266,6 +266,7 @@ WebGPUContext::~WebGPUContext()
     }
   }
   clear_bind_group_cache();
+  transient_buffers_.clear();
   for (const auto &item : snapshot_textures_) {
     if (item.second) wgpuTextureRelease(item.second);
   }
@@ -533,6 +534,29 @@ void WebGPUContext::flush_encoder()
   }
   wgpuCommandEncoderRelease(encoder_);
   encoder_ = nullptr;
+}
+
+WGPUBuffer WebGPUContext::acquire_transient_buffer(const WGPUBufferDescriptor &descriptor)
+{
+  return transient_buffers_.acquire(device_, descriptor);
+}
+
+void WebGPUContext::retire_transient_buffer(WGPUBuffer buffer,
+                                           const WGPUBufferDescriptor &descriptor)
+{
+  if (!buffer) return;
+  /* Other contexts can retain unsubmitted work. Binding tables also keep
+   * handles available for future native draws. Neither is safe to recycle. */
+  for (const WebGPUContext *context : g_all_contexts) {
+    if (context != this && context->encoder_) { wgpuBufferRelease(buffer); return; }
+    for (const WGPUBuffer bound : context->bound_ubo_) {
+      if (bound == buffer) { wgpuBufferRelease(buffer); return; }
+    }
+    for (const WGPUBuffer bound : context->bound_ssbo_) {
+      if (bound == buffer) { wgpuBufferRelease(buffer); return; }
+    }
+  }
+  transient_buffers_.retire(buffer, descriptor);
 }
 
 void WebGPUContext::submit()
@@ -1162,6 +1186,7 @@ void WebGPUContext::present_backbuffer(int w, int h)
     auto command=wgpuCommandEncoderFinish(encoder_,&command_descriptor);
     if (!command || ghost_canvas_->submit(command)!=GHOST_kSuccess) throw std::runtime_error("GHOST presentation submission failed");
     wgpuCommandBufferRelease(command);wgpuCommandEncoderRelease(encoder_);encoder_=nullptr;
+    transient_buffers_.submitted();
 #endif
     if (bg) {
       wgpuBindGroupRelease(bg);

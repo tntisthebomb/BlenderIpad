@@ -90,12 +90,17 @@ bool WebGPUVertexBuffer::cow_if_pass_open(WebGPUContext *ctx)
   desc.size = buffer_size_;
   desc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst | WGPUBufferUsage_Storage |
                WGPUBufferUsage_CopySrc;
-  WGPUBuffer fresh = wgpuDeviceCreateBuffer(ctx->device(), &desc);
+  /* A capacity larger than the uploaded range depends on fresh zeroed bytes.
+   * Pool only complete rewrites; leave that partial-capacity case unchanged. */
+  const bool full_rewrite = buffer_size_ == ((size_used_get() + 3) & ~size_t(3));
+  WGPUBuffer fresh = full_rewrite ? ctx->acquire_transient_buffer(desc) :
+                                  wgpuDeviceCreateBuffer(ctx->device(), &desc);
   if (fresh == nullptr) {
     return false;
   }
   ctx->rebind_buffer(buffer_, fresh); /* VBOs can be bound as SSBOs. */
-  wgpuBufferRelease(buffer_);
+  if (full_rewrite) ctx->retire_transient_buffer(buffer_, desc);
+  else wgpuBufferRelease(buffer_);
   buffer_ = fresh;
   return true;
 }

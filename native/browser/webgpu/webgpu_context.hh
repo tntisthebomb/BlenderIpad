@@ -22,6 +22,7 @@
 
 #include <webgpu/webgpu.h>
 
+#include "frame_buffer_pool.hh"
 #include "webgpu_framebuffer.hh"
 #include "webgpu_shader.hh"
 
@@ -99,6 +100,8 @@ class WebGPUContext : public Context {
   std::unordered_map<uint64_t, WGPUTexture> snapshot_textures_;
   std::unordered_map<uint64_t, WGPUBuffer> snapshot_buffers_;
 
+  TransientBufferPool transient_buffers_;
+
   /* Debug capture: the WGPU handle (AddRef'd at draw time so it survives the
    * pooled texture being freed/reused) of the first content color texture; copied
    * to a persistent readback buffer right after its render pass ends, so JS can
@@ -146,6 +149,11 @@ class WebGPUContext : public Context {
 
   WGPUDevice device() const { return device_; }
   WGPUQueue queue() const { return queue_; }
+
+  /* Reuse fully overwritten buffers. retire consumes the caller's reference;
+   * acquire returns one owned reference, exactly like CreateBuffer. */
+  WGPUBuffer acquire_transient_buffer(const WGPUBufferDescriptor &descriptor);
+  void retire_transient_buffer(WGPUBuffer buffer, const WGPUBufferDescriptor &descriptor);
 
   /* --- command / render-pass lifecycle --- */
   WGPUCommandEncoder ensure_encoder();

@@ -74,12 +74,12 @@ bool WebGPUUniformBuf::cow_if_pass_open(WebGPUContext *ctx)
   WGPUBufferDescriptor desc = {};
   desc.size = alloc_size_;
   desc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
-  WGPUBuffer fresh = wgpuDeviceCreateBuffer(ctx->device(), &desc);
+  WGPUBuffer fresh = ctx->acquire_transient_buffer(desc);
   if (fresh == nullptr) {
     return false;
   }
   ctx->rebind_buffer(buffer_, fresh);
-  wgpuBufferRelease(buffer_);
+  ctx->retire_transient_buffer(buffer_, desc);
   buffer_ = fresh;
   return true;
 }

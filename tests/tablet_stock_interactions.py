@@ -66,14 +66,15 @@ del _stock_snapshot
  # Warmed viewport interactions must batch offscreen work into few submissions.
  # Count the real device queue, retaining the application's existing wrapper.
  page.evaluate("""()=>{
-  const queue=blenderEditor.preinitializedWebGPUDevice.queue,submit=queue.submit;
-  window.stockOrbitGPU={submits:0,presents:0};
+  const device=blenderEditor.preinitializedWebGPUDevice,queue=device.queue,submit=queue.submit,create=device.createBuffer;
+  window.stockOrbitGPU={submits:0,presents:0,buffers:0,bufferBytes:0};
+  device.createBuffer=function(d){stockOrbitGPU.buffers++;stockOrbitGPU.bufferBytes+=d.size;return Reflect.apply(create,this,[d]);};
   queue.submit=function(commands){
    stockOrbitGPU.submits++;
    stockOrbitGPU.presents+=Array.from(commands).filter(c=>c.label==='Blender present').length;
    return Reflect.apply(submit,this,[commands]);
   };
-  window.restoreStockOrbitQueue=()=>{queue.submit=submit;};
+  window.restoreStockOrbitQueue=()=>{queue.submit=submit;device.createBuffer=create;};
  }""")
  try:
   for repeat in range(3):
@@ -89,6 +90,7 @@ del _stock_snapshot
  print('STOCK_ORBIT_GPU '+json.dumps(orbit_gpu),flush=True)
  assert orbit_gpu['presents']>=3,'Repeated orbit did not present real native frames'
  assert orbit_gpu['submits']<=4*orbit_gpu['presents'],orbit_gpu
+ assert orbit_gpu['buffers']<=40*orbit_gpu['presents'],orbit_gpu
  orbited=inspect('orbited')
  print('STOCK_TOUCH_AUDIT '+json.dumps(page.evaluate('stockTouchAudit')),flush=True)
  assert any(abs(a-b)>.001 for a,b in zip(selected['rotation'],orbited['rotation'])),(selected,orbited)
