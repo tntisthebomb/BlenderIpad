@@ -3,8 +3,10 @@
 #include "webgpu/texture_upload.hh"
 #include <emscripten.h>
 #include <array>
+#include <cstddef>
 #include <cassert>
 
+static_assert(offsetof(WGPUCommandBufferDescriptor, label) == 4);
 static constexpr uint32_t frames = 60;
 static int completed_cases = 0;
 static void complete_case()
@@ -136,7 +138,9 @@ int main()
       assert(premature != buffer); /* The first frame is still unsubmitted. */
       wgpuBufferRelease(premature);
     }
-    auto command = wgpuCommandEncoderFinish(encoder, nullptr);
+    WGPUCommandBufferDescriptor command_descriptor = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
+    command_descriptor.label = {"pool frame", WGPU_STRLEN};
+    auto command = wgpuCommandEncoderFinish(encoder, &command_descriptor);
     wgpuQueueSubmit(queue, 1, &command);
     wgpuCommandBufferRelease(command);
     wgpuCommandEncoderRelease(encoder);

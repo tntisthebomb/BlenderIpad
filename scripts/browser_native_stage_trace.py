@@ -1,5 +1,12 @@
 """Guarded diagnostics for the existing emdawnwebgpu C/JS bridge."""
 
+def preserve_command_buffer_labels(js):
+ """Restore labels dropped by the pinned wasm32 emdawnwebgpu finish bridge."""
+ original='commandEncoder.finish()'
+ if js.count(original)!=1:raise ValueError('Unrecognized command-buffer finish bridge')
+ return js.replace(original, 'commandEncoder.finish(descriptor ? {label: WebGPU.makeStringFromOptionalStringView(descriptor + 4)} : undefined)')
+
+
 def instrument_native_stages(js):
  def replace(old,new):
   nonlocal js
@@ -43,4 +50,4 @@ var browserNativeTrace = (stage, status, detail) => {
  if 'ENV["BLENDER_GPU_INIT_TRACE"]' not in js:
   replace('  ENV["XDG_CACHE_HOME"] = "/cache";',
           '  ENV["XDG_CACHE_HOME"] = "/cache";\n  if (Module["browserStartupTrace"]) ENV["BLENDER_GPU_INIT_TRACE"] = "1";')
- return js
+ return preserve_command_buffer_labels(js)

@@ -6,6 +6,21 @@ import json
 import subprocess
 from setup_browser import ROOT, CACHE, toolchain, prepare_source, run
 
+def link_prerequisites(build, env):
+    """Build the link's complete object/archive inputs without a redundant CLI link."""
+    query = subprocess.check_output(['ninja', '-t', 'query', 'bin/blender.js'],
+                                    cwd=build, env=env, text=True)
+    if 'input: CXX_EXECUTABLE_LINKER__blender_Release' not in query:
+        raise SystemExit('Unrecognized native application link rule')
+    inputs = []
+    for line in query.split('  outputs:', 1)[0].splitlines():
+        if not line.startswith('    '): continue
+        name = line.strip().removeprefix('|| ').removeprefix('| ')
+        if name.endswith(('.o', '.a')) and name not in inputs: inputs.append(name)
+    if not any(name.endswith('.o') for name in inputs) or len(inputs) < 20:
+        raise SystemExit('Incomplete application link prerequisites')
+    run('ninja', '-j4', *inputs, cwd=build, env=env)
+
 def host_shader_tool(source):
     directory = source / "source/blender/gpu/shader_tool"
     build = CACHE / "host-shader-tool"
@@ -32,6 +47,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--configure-only", action="store_true")
     parser.add_argument("--webgpu", action="store_true", help="Experimental GPU backend integration profile; editor remains headless")
+    parser.add_argument("--objects-only", action="store_true", help="Build all application link inputs; the browser engine is linked and validated separately")
     parser.add_argument("--gpu-library-only", action="store_true", help="Compile real GPU interfaces before application linking")
     parser.add_argument("--editor",action="store_true",help="Experimental actual editor with GHOST WebGPU window")
     parser.add_argument("--cycles",action="store_true",help="Experimental scalar CPU Cycles with the validated browser oneTBB scheduler")
@@ -97,5 +113,7 @@ if __name__ == "__main__":
         "-DCMAKE_PROJECT_INCLUDE=" + str(ROOT / "cmake/threaded-emscripten.cmake"),
         "-DCMAKE_C_FLAGS=" + flags, "-DCMAKE_CXX_FLAGS=" + flags,
         "-DCMAKE_EXE_LINKER_FLAGS=" + link, *graphics, env=env)
-    if not args.configure_only:
+    if not args.configure_only and args.objects_only:
+        link_prerequisites(build, env)
+    elif not args.configure_only:
         run("cmake", "--build", build, "--target", "bf_gpu" if args.gpu_library_only else "blender", "--parallel", "4", env=env)

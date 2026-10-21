@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Run bpy modeling and native .blend I/O in the browser's actual Blender WASM."""
 import json
+import argparse
+import hashlib
 import os
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -9,6 +11,11 @@ from threading import Thread
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
+parser=argparse.ArgumentParser()
+parser.add_argument('--runtime',type=Path,default=ROOT/'.cache/blender-core-browser')
+parser.add_argument('--webgpu',action='store_true')
+options=parser.parse_args()
+
 
 class Handler(SimpleHTTPRequestHandler):
     def log_message(self, *args): pass
@@ -18,7 +25,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
 server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler,
-    directory=str(ROOT / '.cache/blender-core-browser')))
+    directory=str(options.runtime.resolve())))
 Thread(target=server.serve_forever, daemon=True).start()
 diagnostics = (ROOT / '.cache/blender-core-browser-console.log').open('w')
 def record(kind, message):
@@ -26,8 +33,13 @@ def record(kind, message):
     diagnostics.flush()
 try:
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(executable_path=os.environ.get(
-            'CHROMIUM_PATH', '/usr/lib/chromium/chromium'), args=['--no-sandbox'])
+        executable=os.environ.get('CHROMIUM_PATH','/usr/lib/chromium/chromium')
+        environment=dict(os.environ)
+        driver=Path(executable).resolve().parent/'vk_swiftshader_icd.json'
+        if driver.exists():environment['VK_ICD_FILENAMES']=str(driver)
+        arguments=['--no-sandbox']
+        if options.webgpu:arguments+=['--enable-unsafe-webgpu','--enable-features=Vulkan','--use-angle=swiftshader','--enable-unsafe-swiftshader']
+        browser = playwright.chromium.launch(executable_path=executable,env=environment,args=arguments)
         context = browser.new_context()
         page = context.new_page()
         errors = []
@@ -52,6 +64,11 @@ try:
         assert all(value is True for key, value in checks.items() if key != 'version'), checks
         assert page.evaluate("new TextDecoder().decode(blenderCore.FS.readFile('/scene-output/offline-scene.blend').slice(0,7))") == 'BLENDER'
         assert not errors, errors
+        if options.webgpu:
+            proof={'checks':checks,'scene_test_sha256':hashlib.sha256((ROOT/'tests/blender_core_scene.py').read_bytes()).hexdigest(),
+                   'files':{name:hashlib.sha256((options.runtime/name).read_bytes()).hexdigest() for name in ('blender-core.js','blender-core.wasm','blender-core.data')}}
+            (options.runtime/'core-validation-browser.json').write_text(json.dumps(proof,indent=2)+'\n')
+
         browser.close()
     print('PASS: real browser Blender bpy, modeling, modifier, animation, PNG image I/O, original startup load and native .blend roundtrip after network disconnect.')
 finally:

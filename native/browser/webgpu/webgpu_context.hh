@@ -151,6 +151,15 @@ class WebGPUContext : public Context {
 
   WGPUDevice device() const { return device_; }
   WGPUQueue queue() const { return queue_; }
+  bool has_window_surface() const
+  {
+#ifdef WITH_GHOST_WEBGPU_CONTEXT
+    return ghost_canvas_ != nullptr;
+#else
+    return false;
+#endif
+  }
+
 
   /* Reuse fully overwritten buffers. retire consumes the caller's reference;
    * acquire returns one owned reference, exactly like CreateBuffer. */

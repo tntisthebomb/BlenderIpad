@@ -21,7 +21,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ipad-texture-upload-performance
+  group: ipad-frame-performance
   cancel-in-progress: true
 
 jobs:
@@ -139,12 +139,10 @@ jobs:
         run: |
           python3 scripts/test_browser_binaryen.py
           if [ '${{ matrix.profile }}' = 'cpu-cycles' ]; then
-            python3 scripts/build_blender_core.py --editor --cycles
+            python3 scripts/build_native_editor.py --cycles
           else
-            python3 scripts/build_blender_core.py --editor
+            python3 scripts/build_native_editor.py
           fi
-          python3 scripts/test_blender_core.py --webgpu
-          python3 scripts/build_blender_core_browser.py --editor
       - name: Capture shader translations from the new native engine
         run: |
           mkdir -p work

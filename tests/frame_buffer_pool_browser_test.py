@@ -26,6 +26,7 @@ try:
         page.goto(f'http://127.0.0.1:{server.server_port}/')
         page.wait_for_function('document.body.dataset.passed || document.body.dataset.error', timeout=60000)
         assert not page.evaluate('document.body.dataset.error'), page.evaluate('document.body.dataset.error')
+        assert page.evaluate('labeledPoolFrames')==60,'Native command-buffer labels were dropped by the bridge'
         assert not errors, errors
         browser.close()
 finally:
