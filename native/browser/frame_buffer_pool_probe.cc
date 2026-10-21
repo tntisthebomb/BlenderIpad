@@ -144,6 +144,14 @@ int main()
     wgpuQueueSubmit(queue, 1, &command);
     wgpuCommandBufferRelease(command);
     wgpuCommandEncoderRelease(encoder);
+    if (!frame) {
+      /* Submitted work alone does not end a binding-table borrow. Do not
+       * overwrite that buffer until the borrower explicitly becomes safe. */
+      pool.submitted([](WGPUBuffer) { return false; });
+      auto still_borrowed = pool.acquire(device, descriptor);
+      assert(still_borrowed != buffer);
+      wgpuBufferRelease(still_borrowed);
+    }
     pool.submitted();
     previous = buffer;
   }

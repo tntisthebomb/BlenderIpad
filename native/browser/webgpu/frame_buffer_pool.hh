@@ -66,12 +66,19 @@ class TransientBufferPool {
     bytes_ += descriptor.size;
   }
 
-  /* Call only after successful submission of every command using pending_. */
-  void submitted()
+  /* Submit the current encoder first. A context may keep old bindings or
+   * another context may still own an encoder: defer those borrowers, bounded
+   * by the same byte/handle limits, until a later safe frame boundary. */
+  template<typename IsReusable> void submitted(IsReusable is_reusable)
   {
-    reusable_.insert(reusable_.end(), pending_.begin(), pending_.end());
-    pending_.clear();
+    size_t retained = 0;
+    for (const Entry &entry : pending_) {
+      if (is_reusable(entry.buffer)) reusable_.push_back(entry);
+      else pending_[retained++] = entry;
+    }
+    pending_.resize(retained);
   }
+  void submitted() { submitted([](WGPUBuffer) { return true; }); }
   uint64_t bytes() const { return bytes_; }
   uint64_t reused() const { return reused_; }
   uint64_t created() const { return created_; }

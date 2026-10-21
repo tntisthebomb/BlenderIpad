@@ -31,4 +31,4 @@ try:
         browser.close()
 finally:
     server.shutdown(); server.server_close()
-print('PASS: production native buffer pool, 60 in-flight frame values, no unsubmitted reuse, bounded bytes/handles, large-buffer bypass release before GPU completion, ordered small texture updates, row padding, mip/layer offsets and 3D uploads.')
+print('PASS: production native buffer pool, 60 in-flight frame values, no unsubmitted or still-borrowed reuse, bounded bytes/handles, large-buffer bypass release before GPU completion, ordered small texture updates, row padding, mip/layer offsets and 3D uploads.')

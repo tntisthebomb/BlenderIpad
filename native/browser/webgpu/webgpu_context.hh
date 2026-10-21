@@ -112,6 +112,7 @@ class WebGPUContext : public Context {
   bool pass_viewport_valid_ = false, pass_scissor_valid_ = false;
   TransientBufferPool transient_buffers_;
   TextureUploadStaging texture_upload_;
+  void recycle_submitted_buffers();
 
   /* Debug capture: the WGPU handle (AddRef'd at draw time so it survives the
    * pooled texture being freed/reused) of the first content color texture; copied

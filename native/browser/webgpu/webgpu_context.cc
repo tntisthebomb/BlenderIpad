@@ -238,7 +238,7 @@ void WebGPUContext::end_frame()
     /* Viewport/preview contexts render into textures, then the window context
      * composites them. They never call present_backbuffer themselves. */
     submit();
-    transient_buffers_.submitted();
+    recycle_submitted_buffers();
     uniform_arena_reset();
   }
 }
@@ -564,19 +564,25 @@ WGPUBuffer WebGPUContext::acquire_transient_buffer(const WGPUBufferDescriptor &d
 void WebGPUContext::retire_transient_buffer(WGPUBuffer buffer,
                                            const WGPUBufferDescriptor &descriptor)
 {
-  if (!buffer) return;
-  /* Other contexts can retain unsubmitted work. Binding tables also keep
-   * handles available for future native draws. Neither is safe to recycle. */
-  for (const WebGPUContext *context : g_all_contexts) {
-    if (context != this && context->encoder_) { wgpuBufferRelease(buffer); return; }
-    for (const WGPUBuffer bound : context->bound_ubo_) {
-      if (bound == buffer) { wgpuBufferRelease(buffer); return; }
-    }
-    for (const WGPUBuffer bound : context->bound_ssbo_) {
-      if (bound == buffer) { wgpuBufferRelease(buffer); return; }
-    }
-  }
+  /* Ownership ends now, but binding-table borrowers may outlive this draw.
+   * Keep such buffers quarantined until a safe submitted frame boundary. */
   transient_buffers_.retire(buffer, descriptor);
+}
+
+void WebGPUContext::recycle_submitted_buffers()
+{
+  transient_buffers_.submitted([this](WGPUBuffer buffer) {
+    for (const WebGPUContext *context : g_all_contexts) {
+      if (context != this && context->encoder_) return false;
+      for (const WGPUBuffer bound : context->bound_ubo_) {
+        if (bound == buffer) return false;
+      }
+      for (const WGPUBuffer bound : context->bound_ssbo_) {
+        if (bound == buffer) return false;
+      }
+    }
+    return true;
+  });
 }
 
 bool WebGPUContext::record_texture_upload(const WGPUTexelCopyTextureInfo &destination,
@@ -1229,7 +1235,7 @@ void WebGPUContext::present_backbuffer(int w, int h)
     auto command=wgpuCommandEncoderFinish(encoder_,&command_descriptor);
     if (!command || ghost_canvas_->submit(command)!=GHOST_kSuccess) throw std::runtime_error("GHOST presentation submission failed");
     wgpuCommandBufferRelease(command);wgpuCommandEncoderRelease(encoder_);encoder_=nullptr;
-    transient_buffers_.submitted();
+    recycle_submitted_buffers();
 #endif
     if (bg) {
       wgpuBindGroupRelease(bg);

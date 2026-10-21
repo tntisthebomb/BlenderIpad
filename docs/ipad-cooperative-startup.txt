@@ -11,7 +11,9 @@ Interactive redraws batch intermediate copies and small texture uploads in the
 same command buffer. A bounded buffer pool reuses submitted-frame allocations;
 unsubmitted work cannot share those buffers. Shared viewport contexts reset
 their upload arenas at their own frame boundaries; repeated viewport/scissor
-state calls within a pass are skipped. Display resolution, Blender tools
+state calls within a pass are skipped. Compute passes stay ordered in the same
+frame encoder. Buffers still borrowed by native binding tables are quarantined
+until a later safe boundary, under the same pool memory limits. Display resolution, Blender tools
 and render features are unchanged. Automated orbit checks cover both Object and
 Edit Mode, with limits on submissions and fresh buffer allocations per frame.
 
