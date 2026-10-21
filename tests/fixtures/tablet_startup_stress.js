@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Deliberately slow real GPU calls; measure from explicit launch through the first frame.
 
-window.firstFrameProfile={pipelines:0,rafTicks:0,timerTicks:0,injectedDelayMs:60,maxHeartbeatGapMs:0,maxLaunchHeartbeatGapMs:0,maxPreWarmupHeartbeatGapMs:0,nativeSetupMarkers:[]};
+window.firstFrameProfile={pipelines:0,rafTicks:0,timerTicks:0,injectedDelayMs:60,maxHeartbeatGapMs:0,maxLaunchHeartbeatGapMs:0,maxPreWarmupHeartbeatGapMs:0,nativeSetupMarkers:[],longGaps:[]};
 const metrics=firstFrameProfile;
 let statsObject;
 Object.defineProperty(window,'blenderStartupStats',{configurable:true,
@@ -36,9 +36,16 @@ if(carry?.start){
  metrics.maxPreWarmupHeartbeatGapMs=carry.maxPreGap;
 }
 let lastTimer=carry?.lastHeartbeat?carry.lastHeartbeat-performance.timeOrigin:performance.now();
+let lastGapStart=null,lastTickState=null;
+function diagnosticState(){const s=window.blenderStartupStats?.snapshot();return s?{phase:s.phase,operation:s.operation,label:s.label,dependencies:s.dependencies,workersRequested:s.workersRequested,workersReady:s.workersReady,lastNativeMarker:s.lastNativeMarker}:null;}
 function accountGap(now){
  if(metrics.launchStartedAt&&!metrics.finishedAt){
   const gap=now-Math.max(lastTimer,metrics.launchStartedAt);
+  if(gap>250){
+   const record={startMs:Math.max(lastTimer,metrics.launchStartedAt),endMs:now,gapMs:gap,before:lastTickState,after:diagnosticState()};
+   if(lastGapStart===lastTimer)metrics.longGaps[metrics.longGaps.length-1]=record;
+   else{metrics.longGaps.push(record);if(metrics.longGaps.length>80)metrics.longGaps.shift();lastGapStart=lastTimer;}
+  }
   metrics.maxLaunchHeartbeatGapMs=Math.max(metrics.maxLaunchHeartbeatGapMs,gap);
   if(!metrics.warmupStartedAt)metrics.maxPreWarmupHeartbeatGapMs=Math.max(metrics.maxPreWarmupHeartbeatGapMs,gap);
  }
@@ -64,7 +71,7 @@ GPUDevice.prototype.createRenderPipeline=function(...args){
   return Reflect.apply(pipeline,this,args);
 };
 setInterval(()=>{
- const now=performance.now();accountGap(now);lastTimer=now;
+ const now=performance.now();accountGap(now);lastTimer=now;lastTickState=diagnosticState();
  if(now-lastPersist>=250)persistLaunch();
  if(metrics.warmupStartedAt&&!document.body?.dataset.rendered)metrics.timerTicks++;
 },10);

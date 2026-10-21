@@ -19,7 +19,7 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='wasm-mime-') as folder:
  base=Path(folder)
  for name in ['index.html','editor.html']:(base/name).write_text(PAGE)
  (base/'service-worker.js').write_text((ROOT/'native/browser/service-worker.js').read_text().replace('__BUILD_CACHE__','mime-regression'))
- for name in ['blender-core.js','blender-core.data','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js','editor_input.js','startup_stats.js','startup_watchdog.js','ipad-startup.html']:
+ for name in ['blender-core.js','blender-core.data','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','editor_files.js','editor_input.js','startup_stats.js','startup_watchdog.js','startup_shaders.js','startup_shader_seed.json','engine_identity.json','tablet_touch.js','ipad-startup.html']:
   (base/name).write_text('Explicitly small infrastructure fixture')
  wasm=bytes([0,97,115,109,1,0,0,0])
  for name in ['blender-core.wasm','uncached.wasm']:(base/name).write_bytes(wasm)

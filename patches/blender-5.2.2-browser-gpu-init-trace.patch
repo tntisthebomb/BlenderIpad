@@ -10,13 +10,20 @@
  
  #include "BKE_material.hh"
  
-@@ -24,6 +27,19 @@
+@@ -24,6 +27,26 @@
   */
  static bool initialized = false;
  
-+/* Opt-in diagnostics for browser startup; no initialization is skipped. */
++#if defined(__EMSCRIPTEN__) && defined(WITH_WEBGPU_BACKEND)
++extern "C" void blender_browser_startup_checkpoint(const char *stage);
++#endif
++
++/* Yield between complete CPU registration stages, never inside their registries. */
 +static void gpu_init_trace(const char *stage)
 +{
++#if defined(__EMSCRIPTEN__) && defined(WITH_WEBGPU_BACKEND)
++  blender_browser_startup_checkpoint(nullptr);
++#endif
 +#ifdef __EMSCRIPTEN__
 +  const char *enabled = std::getenv("BLENDER_GPU_INIT_TRACE");
 +  if (enabled && enabled[0] == '1') {
@@ -30,7 +37,7 @@
  void GPU_init()
  {
    /* can't avoid calling this multiple times, see wm_window_ghostwindow_add */
-@@ -33,15 +49,22 @@
+@@ -33,15 +56,22 @@
  
    initialized = true;
  
