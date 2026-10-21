@@ -9,7 +9,9 @@ Press Start once. The statistics panel identifies v10 and counts native yields a
 
 Interactive redraws batch intermediate copies and small texture uploads in the
 same command buffer. A bounded buffer pool reuses submitted-frame allocations;
-unsubmitted work cannot share those buffers. Display resolution, Blender tools
+unsubmitted work cannot share those buffers. Shared viewport contexts reset
+their upload arenas at their own frame boundaries; repeated viewport/scissor
+state calls within a pass are skipped. Display resolution, Blender tools
 and render features are unchanged. Automated orbit checks cover both Object and
 Edit Mode, with limits on submissions and fresh buffer allocations per frame.
 

@@ -53,15 +53,15 @@ void WebGPUVertexBuffer::release_data()
   MEM_SAFE_DELETE(data_);
 }
 
-void WebGPUVertexBuffer::ensure_buffer()
+bool WebGPUVertexBuffer::ensure_buffer()
 {
   const size_t needed = this->size_used_get();
   if (buffer_ && buffer_size_ >= needed) {
-    return;
+    return false;
   }
   WebGPUContext *ctx = WebGPUContext::get();
   if (ctx == nullptr || ctx->device() == nullptr || needed == 0) {
-    return;
+    return false;
   }
   if (buffer_) {
     wgpuBufferRelease(buffer_);
@@ -74,6 +74,7 @@ void WebGPUVertexBuffer::ensure_buffer()
   desc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst | WGPUBufferUsage_Storage |
                WGPUBufferUsage_CopySrc;
   buffer_ = wgpuDeviceCreateBuffer(ctx->device(), &desc);
+  return buffer_ != nullptr;
 }
 
 /* Copy-on-write: updating a live buffer while a pass is recording would either
@@ -107,11 +108,12 @@ bool WebGPUVertexBuffer::cow_if_pass_open(WebGPUContext *ctx)
 
 void WebGPUVertexBuffer::upload_data()
 {
-  ensure_buffer();
+  const bool newly_allocated = ensure_buffer();
   WebGPUContext *ctx = WebGPUContext::get();
   if (buffer_ && ctx && ctx->queue() && data_) {
     const size_t used = this->size_used_get();
-    cow_if_pass_open(ctx);
+    /* A newly allocated handle cannot occur in an earlier recorded draw. */
+    if (!newly_allocated) cow_if_pass_open(ctx);
     wgpuQueueWriteBuffer(ctx->queue(), buffer_, 0, data_, (used + 3) & ~size_t(3));
   }
 }

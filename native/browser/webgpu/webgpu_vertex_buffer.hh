@@ -58,7 +58,7 @@ class WebGPUVertexBuffer : public VertBuf {
   void upload_data() override;
 
  private:
-  void ensure_buffer();
+  bool ensure_buffer();
   /* Swap in a fresh WGPUBuffer when updating while a pass records (see impl). */
   bool cow_if_pass_open(WebGPUContext *ctx);
 };

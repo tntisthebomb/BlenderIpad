@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -104,6 +105,11 @@ class WebGPUContext : public Context {
   /* System-backed viewport contexts have begin/end-frame boundaries even when
    * their output is a texture rather than the canvas. */
   bool batches_render_scopes_ = false;
+  /* Dynamic raster state persists within a pass. Avoid crossing the browser
+   * API for unchanged state on every text/widget/mesh draw. */
+  std::array<float, 6> pass_viewport_{};
+  std::array<uint32_t, 4> pass_scissor_{};
+  bool pass_viewport_valid_ = false, pass_scissor_valid_ = false;
   TransientBufferPool transient_buffers_;
   TextureUploadStaging texture_upload_;
 
@@ -275,6 +281,25 @@ class WebGPUContext : public Context {
   WGPUBuffer bound_ubo_get(int slot) const
   {
     return (slot >= 0 && slot < WEBGPU_MAX_UBO) ? bound_ubo_[slot] : nullptr;
+  }
+  void set_pass_viewport(float x, float y, float width, float height,
+                         float min_depth, float max_depth)
+  {
+    const std::array<float, 6> value{x, y, width, height, min_depth, max_depth};
+    if (!pass_viewport_valid_ || value != pass_viewport_) {
+      wgpuRenderPassEncoderSetViewport(render_pass_, x, y, width, height, min_depth, max_depth);
+      pass_viewport_ = value;
+      pass_viewport_valid_ = true;
+    }
+  }
+  void set_pass_scissor(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
+  {
+    const std::array<uint32_t, 4> value{x, y, width, height};
+    if (!pass_scissor_valid_ || value != pass_scissor_) {
+      wgpuRenderPassEncoderSetScissorRect(render_pass_, x, y, width, height);
+      pass_scissor_ = value;
+      pass_scissor_valid_ = true;
+    }
   }
   WGPURenderPassEncoder render_pass() const { return render_pass_; }
   /* Submit recorded commands to the queue (ends any active pass first). */

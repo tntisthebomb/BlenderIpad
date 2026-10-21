@@ -21,7 +21,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ipad-optimized-runtime
+  group: ipad-raster-state-optimized
   cancel-in-progress: true
 
 jobs:

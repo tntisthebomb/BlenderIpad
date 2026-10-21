@@ -295,7 +295,7 @@ static bool to_wgpu_blend(GPUBlend blend, WGPUBlendState &r_bs)
 
 /* Apply the framebuffer's viewport + scissor to the pass (UI region drawing
  * depends on both). GL rects are y-up-from-bottom; WebGPU y-down-from-top. */
-static void apply_viewport_scissor(WGPURenderPassEncoder pass, WebGPUFrameBuffer *fb)
+static void apply_viewport_scissor(WebGPUContext *ctx, WebGPUFrameBuffer *fb)
 {
   const int2 size = fb->size_get();
   if (size.x <= 0 || size.y <= 0) {
@@ -307,8 +307,8 @@ static void apply_viewport_scissor(WGPURenderPassEncoder pass, WebGPUFrameBuffer
      * Using viewport_[0] here squeezed every shadow view into the first 256px
      * corner — pages landed at wrong atlas texels and shadow_eval read empty
      * pages (the "no cast shadows" bug). */
-    wgpuRenderPassEncoderSetViewport(
-        pass, 0.0f, 0.0f, float(size.x), float(size.y), 0.0f, 1.0f);
+    ctx->set_pass_viewport(
+        0.0f, 0.0f, float(size.x), float(size.y), 0.0f, 1.0f);
     return;
   }
   /* The window backbuffer stores content in GL's bottom-up row order and is
@@ -328,7 +328,7 @@ static void apply_viewport_scissor(WGPURenderPassEncoder pass, WebGPUFrameBuffer
     int h = std::min(vp[3], size.y - y_bottom);
     int y = flip_y ? (size.y - y_bottom - h) : y_bottom;
     if (w > 0 && h > 0) {
-      wgpuRenderPassEncoderSetViewport(pass, float(x), float(y), float(w), float(h), 0.0f, 1.0f);
+      ctx->set_pass_viewport(float(x), float(y), float(w), float(h), 0.0f, 1.0f);
     }
   }
   if (fb->scissor_test_get()) {
@@ -340,11 +340,11 @@ static void apply_viewport_scissor(WGPURenderPassEncoder pass, WebGPUFrameBuffer
     int h = std::min(sc[3], size.y - y_bottom);
     int y = flip_y ? (size.y - y_bottom - h) : y_bottom;
     if (w > 0 && h > 0) {
-      wgpuRenderPassEncoderSetScissorRect(pass, uint32_t(x), uint32_t(y), uint32_t(w), uint32_t(h));
+      ctx->set_pass_scissor(uint32_t(x), uint32_t(y), uint32_t(w), uint32_t(h));
     }
   }
   else {
-    wgpuRenderPassEncoderSetScissorRect(pass, 0, 0, uint32_t(size.x), uint32_t(size.y));
+    ctx->set_pass_scissor(0, 0, uint32_t(size.x), uint32_t(size.y));
   }
 }
 
@@ -921,7 +921,7 @@ void WebGPUBatch::record_draw(int vertex_first,
     wgpuBindGroupLayoutRelease(bgl);
     return;
   }
-  apply_viewport_scissor(pass, fb);
+  apply_viewport_scissor(ctx, fb);
   if (stencil.enabled) {
     wgpuRenderPassEncoderSetStencilReference(pass, mst.stencil_reference);
     if (getenv("WGPU_LOG_STENCIL")) {
@@ -1417,7 +1417,7 @@ void webgpu_immediate_draw(GPUPrimType prim_type,
     wgpuBindGroupLayoutRelease(bgl);
     return;
   }
-  apply_viewport_scissor(pass, fb);
+  apply_viewport_scissor(ctx, fb);
   if (stencil.enabled) {
     wgpuRenderPassEncoderSetStencilReference(pass, mst.stencil_reference);
   }

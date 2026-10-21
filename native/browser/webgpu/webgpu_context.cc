@@ -453,6 +453,7 @@ void WebGPUContext::render_pass_end()
     wgpuRenderPassEncoderRelease(render_pass_);
     render_pass_ = nullptr;
     render_pass_fb_ = nullptr;
+    pass_viewport_valid_ = pass_scissor_valid_ = false;
     pass_buffer_usage_.clear();
 
     /* Debug capture: copy the captured framebuffer's color into the persistent
