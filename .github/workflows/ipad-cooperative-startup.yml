@@ -21,7 +21,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ipad-frame-performance
+  group: ipad-optimized-runtime
   cancel-in-progress: true
 
 jobs:

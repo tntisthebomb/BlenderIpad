@@ -24,7 +24,7 @@ Object.defineProperty(navigator,'platform',{get:()=> 'MacIntel'});
 Object.defineProperty(navigator,'maxTouchPoints',{get:()=>5});
 Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw new Error('Clipboard denied fixture')}}});
 '''
-ENGINE='''window.createBlenderCore=async options=>({
+ENGINE='''window.createBlenderCore=async options=>(window.emitEditorLog=options.print,{
   getBlenderMemoryBytes:()=>134217728,pauseBlenderLoop(){window.pausedLoops=(window.pausedLoops||0)+1;},resumeBlenderLoop(){},
   runBlenderMain:async args=>{window.fixtureOptions={lowResource:options.browserLowResource,args};options.print('WGPU_FIRST_CONTENT');}
 });'''
@@ -80,6 +80,15 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='startup-preflight-') as direct
             assert '128.0 MiB' in page.locator('#startup-stats-text').inner_text()
             assert page.evaluate('requestedFeatures.includes("indirect-first-instance")')
             assert page.evaluate('fixtureOptions.lowResource') is True
+            output=page.evaluate("""()=>{
+              const source='generated shader '+('source '.repeat(10000))+'diagnostic tail';
+              for(let i=0;i<200;i++)emitEditorLog(i+' '+source);
+              return {count:editorOutput.length,characters:editorOutput.reduce((n,line)=>n+line.length,0),
+                longest:Math.max(...editorOutput.map(line=>line.length)),tail:editorOutput.at(-1)};
+            }""")
+            assert 0<output['count']<200 and output['characters']<=1048576,output
+            assert output['longest']<=16100 and output['tail'].endswith('diagnostic tail'),output
+
             args=page.evaluate('fixtureOptions.args')
             assert args[args.index('--threads')+1]=='1',args
             size=page.evaluate('({w:canvas.width,h:canvas.height})')

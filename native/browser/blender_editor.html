@@ -62,7 +62,9 @@ function boundedFailure(message) {
   // WebKit puts the Metal compiler's explanation AFTER the generated source.
   // Retain the end as well as the heading without persisting megabytes of code.
   const text=String(message);
-  return text.length<=16000 ? text : text.slice(0,2000)+'\n[generated source omitted]\n'+text.slice(-14000);
+  if(text.length<=16000)return text;
+  // Copy the shortened value so substring views cannot retain the full source.
+  return JSON.parse(JSON.stringify(text.slice(0,2000)+'\n[generated source omitted]\n'+text.slice(-14000)));
 }
 function startupPhase(phase) {
   window.blenderStartupStats?.phase(phase);
@@ -98,11 +100,15 @@ async function startupStep(phase,operation,timeout=180000) {
 }
 window.editorOutput=[];
 window.editorErrors=[];
+let editorOutputCharacters=0;
 function log(message) {
-  window.blenderStartupStats?.line(message);
-  editorOutput.push(String(message));
-  if (editorOutput.length>1000) editorOutput.shift();
-  if (String(message).includes('WGPU_FIRST_CONTENT') && !document.body.dataset.error) {
+  const text=boundedFailure(message);
+  window.blenderStartupStats?.line(text);
+  editorOutput.push(text);editorOutputCharacters+=text.length;
+  while(editorOutput.length>1000 || editorOutputCharacters>1048576) {
+    editorOutputCharacters-=editorOutput.shift().length;
+  }
+  if (text.includes('WGPU_FIRST_CONTENT') && !document.body.dataset.error) {
     if(window.blenderEditor)window.blenderEditor.browserStartupComplete=true;
     startupPhase('Viewport presented');
     document.body.dataset.rendered='true';
