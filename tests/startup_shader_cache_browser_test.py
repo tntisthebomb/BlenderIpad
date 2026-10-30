@@ -32,6 +32,16 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='shader-seed-') as tmp:
    assert v.evaluate('__WGSL_CACHE__.get("missing")===undefined')
    assert v.evaluate('blenderStartupShaderCacheReport.hits===1&&blenderStartupShaderCacheReport.misses===1')
    assert v.evaluate('()=>{__WGSL_CACHE__.set("new-native-variant","translated");return __WGSL_CACHE__.get("new-native-variant")}')=='translated'
+   assert r['persistence']=='enabled' and r['stored']==0,r
+   # The native cache-put hook persists a new translation for this exact engine.
+   variant=['v8:f:0123456789abcdef:42','@fragment fn main() {}']
+   v.evaluate('([k,value])=>{__WGSL_CACHE__.set(k,value);__WGSL_CACHE_PUT__(k,value);__WGSL_CACHE_PUT__("invalid key",value);return blenderFlushNativeShaderCache()}',variant)
+   assert v.evaluate('blenderStartupShaderCacheReport.persisted')==1
+   v.close()
+   v=page();r=v.evaluate('prepareBlenderStartupShaders()')
+   assert r['status']=='native translations loaded' and r['stored']==1,r
+   assert v.evaluate('k=>__WGSL_CACHE__.get(k)',variant[0])==variant[1]
+   assert v.evaluate('__WGSL_CACHE__.get("invalid key")===undefined')
    v.close()
    context.route('**/engine_identity.json',lambda route:route.fulfill(json={'sha256':'0'*64}))
    v=page();r=v.evaluate('prepareBlenderStartupShaders()');assert r['status'].startswith('engine mismatch'),r
@@ -48,4 +58,4 @@ with TemporaryDirectory(dir=ROOT/'.cache',prefix='shader-seed-') as tmp:
    assert not errors,errors
    browser.close()
  finally:server.shutdown();server.server_close()
-print('PASS: '+args.browser+' exact-engine native shader seed, real cache lookup/miss semantics, engine mismatch, missing/corrupt seed and disabled-cache fallback (no native GPU loaded in this fixture).')
+print('PASS: '+args.browser+' exact-engine native shader seed, persisted session translations, real cache lookup/miss semantics, engine mismatch, missing/corrupt seed and disabled-cache fallback (no native GPU loaded in this fixture).')

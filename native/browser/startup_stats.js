@@ -5,7 +5,7 @@
   const key='blender-startup-stats-last';
   let began=performance.now();
   let monitorEditing=false,lastInteractionAt=-Infinity;
-  const state={version:'startup-stats-v10',attemptId:null,progressSequence:0,startedAt:null,pageVisible:!document.hidden,traceUnavailable:[],watchdogStatus:'not started',watchdogMaxGapMs:0,recentOperations:[],active:false,editorActive:false,lastInteraction:null,nativeFrame:null,nativeTextureBytes:null,nativeTextureCount:null,phase:'Waiting to start',phaseSeconds:0,
+  const state={version:'startup-stats-v11',attemptId:null,progressSequence:0,startedAt:null,pageVisible:!document.hidden,traceUnavailable:[],watchdogStatus:'not started',watchdogMaxGapMs:0,recentOperations:[],active:false,editorActive:false,lastInteraction:null,nativeFrame:null,nativeTextureBytes:null,nativeTextureCount:null,phase:'Waiting to start',phaseSeconds:0,
     elapsedSeconds:0,operation:'None yet',operationStatus:'not started',label:'',wasmMemoryBytes:null,dependencies:null,
     wasmMode:'not started',wasmMimeType:null,mainInstanceReady:false,workersRequested:0,workersReady:0,
     shaderModules:0,renderPipelines:0,computePipelines:0,texturesCreated:0,buffersCreated:0,
@@ -59,7 +59,7 @@
     const previousView=previousSnapshot();
     const view=!state.active&&previousView ? previousView : state;
     const hasRecovery=!!previousWatchdog&&view.attemptId!=null&&previousWatchdog.attemptId===view.attemptId;
-    title.textContent=!state.active&&previousView ? (previousView.editorActive?'Previous editing session — Blender is stopped':'Previous startup — Blender is stopped') : (state.editorActive?'Blender editor · diagnostic stats v10':'Blender startup · diagnostic stats v10');
+    title.textContent=!state.active&&previousView ? (previousView.editorActive?'Previous editing session — Blender is stopped':'Previous startup — Blender is stopped') : (state.editorActive?'Blender editor · diagnostic stats v11':'Blender startup · diagnostic stats v11');
     const mib=value=>(value/1048576).toFixed(1)+' MiB';
     text.textContent=[
       'Step: '+view.phase,

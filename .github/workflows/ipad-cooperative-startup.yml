@@ -51,7 +51,7 @@ jobs:
   editor:
     needs: cancel-obsolete
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 355
     env:
       CHROMIUM_PATH: /usr/bin/google-chrome
     strategy:

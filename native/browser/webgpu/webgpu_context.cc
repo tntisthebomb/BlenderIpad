@@ -77,6 +77,14 @@ uint8_t *g_capture_pixels = nullptr;
 volatile int g_capture_ready = 0; /* 0 = pending, 1 = ok, -1 = fail */
 }  // namespace
 
+/* Native duration of the previous browser main-loop iteration (event handling,
+ * notifiers and drawing), reported by the window manager. */
+static double g_main_loop_iteration_ms = 0.0;
+void webgpu_note_main_loop_iteration(double milliseconds)
+{
+  g_main_loop_iteration_ms = milliseconds;
+}
+
 namespace blender::gpu {
 
 /* All live contexts, for cross-context scrubbing of freed texture wrappers. */
@@ -1265,10 +1273,11 @@ void WebGPUContext::present_backbuffer(int w, int h)
         pooled_creations += context->transient_buffers_.created();
       }
       fprintf(stderr,
-              "WGPU_STATS frame=%d dt=%.1fms submits=%d passes=%d bindgroups=%d bg_hits=%d "
+              "WGPU_STATS frame=%d dt=%.1fms loop=%.1fms submits=%d passes=%d bindgroups=%d bg_hits=%d "
               "guard_flushes=%d fb_switches=%d tex=%d/%lldMB pool_reuse=%llu pool_create=%llu\n",
               s_frame,
               frame_ms,
+              g_main_loop_iteration_ms,
               g_stat_submits,
               g_stat_passes,
               g_stat_bindgroups,

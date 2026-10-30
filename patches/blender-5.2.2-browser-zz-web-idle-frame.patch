@@ -1,0 +1,54 @@
+--- a/source/blender/windowmanager/intern/wm.cc
++++ b/source/blender/windowmanager/intern/wm.cc
+@@ -16,6 +16,10 @@
+ #ifdef WITH_GHOST_WEB
+ #  include <emscripten.h>
+ #endif
++#ifdef WITH_GHOST_WEBGPU_CONTEXT
++/* Defined by the WebGPU backend (source/blender/gpu/webgpu/webgpu_context.cc). */
++void webgpu_note_main_loop_iteration(double milliseconds);
++#endif
+ #include <cstring>
+ 
+ #include "DNA_ID_enums.h"
+@@ -608,6 +612,9 @@
+ #ifdef WITH_GHOST_WEB
+   emscripten_set_main_loop_arg([](void *context) {
+     bContext *C=static_cast<bContext *>(context);
++#  ifdef WITH_GHOST_WEBGPU_CONTEXT
++    const double iteration_start_ms = emscripten_get_now();
++#  endif
+ 
+     /* Get events from ghost, handle window events, add to window queues. */
+     wm_window_events_process(C);
+@@ -622,6 +629,10 @@
+     wm_draw_update(C);
+ 
+     PRF_frame_mark;
++#  ifdef WITH_GHOST_WEBGPU_CONTEXT
++    /* Native time of the whole iteration, reported with the next frame's statistics. */
++    webgpu_note_main_loop_iteration(emscripten_get_now() - iteration_start_ms);
++#  endif
+   },C,0,true);
+ #else
+   while (true) {
+--- a/source/blender/windowmanager/intern/wm_window.cc
++++ b/source/blender/windowmanager/intern/wm_window.cc
+@@ -2220,11 +2220,17 @@
+ #endif
+   GPU_render_end();
+ 
++#ifndef WITH_GHOST_WEB
+   /* Skip sleeping when simulating events so tests don't idle unnecessarily as simulated
+    * events are typically generated from a timer that runs in the main loop. */
+   if ((has_event == false) && (sleep_us != 0) && !(G.f & G_FLAG_EVENT_SIMULATE)) {
+     BLI_time_sleep_precise_us(sleep_us);
+   }
++#else
++  /* Each browser main-loop iteration runs from an animation frame, which already
++   * waits while idle. Sleeping would busy-wait on the browser's main thread. */
++  UNUSED_VARS(sleep_us);
++#endif
+ }
+ 
+ /** \} */

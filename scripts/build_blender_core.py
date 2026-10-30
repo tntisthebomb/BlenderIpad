@@ -6,6 +6,20 @@ import json
 import subprocess
 from setup_browser import ROOT, CACHE, toolchain, prepare_source, run
 
+# Leaf libraries never reach a GPU wait, a cooperative startup yield or a Python
+# call, so no suspension can occur while their frames are on the stack.
+# Instrumenting them for Asyncify only enlarges and slows them; the shader
+# compilers in particular run on the main thread for every new shader variant.
+ASYNCIFY_LEAF_LIBRARIES = [
+    "*tint::*", "*absl::*", "*glslang::*", "*spv::*", "*spvtools::*", "spv*",
+    "shaderc_*", "*shaderc::*", "*shaderc_util::*",
+    "*OpenImageIO_v3_1::*", "*OpenColorIO_v2_*::*", "*Imf_3_*::*", "*Iex_3_*::*",
+    "*IlmThread_3_*::*", "*Imath_3_*::*", "*OpenSubdiv::*", "*fmt::v12::*",
+    "*woff2::*", "*pugi::*", "*YAML::*", "FT_*", "ft_*", "tt_*", "cff_*", "af_*",
+    "ps_*", "sfnt_*", "Brotli*", "png_*", "jpeg_*", "jinit_*", "ZSTD_*", "HUF_*",
+    "FSE_*", "inflate*", "deflate*", "TIFF*", "_TIFF*", "XML_*",
+]
+
 def link_prerequisites(build, env):
     """Build the link's complete object/archive inputs without a redundant CLI link."""
     query = subprocess.check_output(['ninja', '-t', 'query', 'bin/blender.js'],
@@ -51,6 +65,8 @@ if __name__ == "__main__":
     parser.add_argument("--gpu-library-only", action="store_true", help="Compile real GPU interfaces before application linking")
     parser.add_argument("--editor",action="store_true",help="Experimental actual editor with GHOST WebGPU window")
     parser.add_argument("--cycles",action="store_true",help="Experimental scalar CPU Cycles with the validated browser oneTBB scheduler")
+    parser.add_argument("--diagnostic", action="store_true",
+                        help="Retain Blender assertions, -O1 and stack checks on every function (much slower)")
     args = parser.parse_args()
     if args.editor: args.webgpu=True
     env = toolchain()
@@ -60,12 +76,24 @@ if __name__ == "__main__":
     build = CACHE / ("blender-webgpu-build" if args.webgpu else "blender-core-build")
     build.mkdir(exist_ok=True)
     (build / "package.json").write_text('{"type":"commonjs"}\n')
-    flags = "-pthread -fexceptions -DPY_CALL_TRAMPOLINE -UNDEBUG"
-    link = "-g2 -pthread -sNODERAWFS=1 -sENVIRONMENT=node -sASSERTIONS=2 -sDISABLE_EXCEPTION_CATCHING=0 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=134217728 -sMAXIMUM_MEMORY=1073741824 -sSTACK_SIZE=8388608 -sDEFAULT_PTHREAD_STACK_SIZE=2097152 -sUSE_ZLIB=1 -sUSE_BZIP2=1 --pre-js " + str(ROOT / "native/browser/core_node_env.js")
+    flags = "-pthread -fexceptions -DPY_CALL_TRAMPOLINE"
+    # Blender assertions, minimal inlining and a bounds check on every stack
+    # pointer update made each iPad frame several times slower and enlarged the
+    # code Safari must compile and keep resident. Release builds use Blender's
+    # normal NDEBUG configuration; --diagnostic restores the checks.
+    if args.diagnostic:
+        flags += " -UNDEBUG"
+        optimize, stack_check = "-O1", 2
+    else:
+        optimize, stack_check = "-O2 -DNDEBUG", 1
+    link = "-g2 -pthread -sNODERAWFS=1 -sENVIRONMENT=node -sASSERTIONS=2 -sSTACK_OVERFLOW_CHECK=" + str(stack_check) + " -sDISABLE_EXCEPTION_CATCHING=0 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=134217728 -sMAXIMUM_MEMORY=1073741824 -sSTACK_SIZE=8388608 -sDEFAULT_PTHREAD_STACK_SIZE=2097152 -sUSE_ZLIB=1 -sUSE_BZIP2=1 --pre-js " + str(ROOT / "native/browser/core_node_env.js")
     if args.webgpu:
         # Optimize the linked module before and after suspension instrumentation.
         # CPython's evaluation loop otherwise exceeds ordinary engine stack limits.
-        link += " -O2 -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=2097152 -sASYNCIFY_IMPORTS=@" + str(ROOT / "cmake/python-asyncify-imports.json") + " -sASYNCIFY_REMOVE=@" + str(ROOT / "cmake/asyncify-cpu-initializers.json")
+        removed = build / "asyncify-remove.json"
+        removed.write_text(json.dumps(json.loads((ROOT / "cmake/asyncify-cpu-initializers.json").read_text())
+                                      + ASYNCIFY_LEAF_LIBRARIES) + "\n")
+        link += " -O2 -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=2097152 -sASYNCIFY_IMPORTS=@" + str(ROOT / "cmake/python-asyncify-imports.json") + " -sASYNCIFY_REMOVE=@" + str(removed)
         # Binaryen otherwise merges singly-called registration units back
         # together, creating functions too large for browser compilers.
         link += " -sBINARYEN_EXTRA_PASSES=--one-caller-inline-max-function-size=0"
@@ -112,6 +140,8 @@ if __name__ == "__main__":
         "-DCMAKE_FIND_ROOT_PATH=" + str(prefix),
         "-DCMAKE_PROJECT_INCLUDE=" + str(ROOT / "cmake/threaded-emscripten.cmake"),
         "-DCMAKE_C_FLAGS=" + flags, "-DCMAKE_CXX_FLAGS=" + flags,
+        # After -C, so these replace the profile's cached -O1 defaults.
+        "-DCMAKE_C_FLAGS_RELEASE=" + optimize, "-DCMAKE_CXX_FLAGS_RELEASE=" + optimize,
         "-DCMAKE_EXE_LINKER_FLAGS=" + link, *graphics, env=env)
     if not args.configure_only and args.objects_only:
         link_prerequisites(build, env)
