@@ -13,7 +13,9 @@ now compiled with Blender's normal release settings (-O2, NDEBUG) instead of
 Shader compilers and image/font libraries no longer carry Asyncify suspension
 code. The idle main loop no longer busy-waits 5 ms in every animation frame.
 Shaders translated during a session are saved for this exact engine, so they
-are not recompiled after a reload. WGPU_STATS lines report loop=, the native
+are not recompiled after a reload. CPU Cycles is no longer included: its
+kernel enlarged the engine Safari must hold in memory, and software rendering
+in the browser is impractical on the iPad. Workbench and Eevee remain. WGPU_STATS lines report loop=, the native
 time of the previous main-loop iteration. These changes are validated in
 Chromium only; whether they stop the reloads on the iPad is not yet known.
 

@@ -57,7 +57,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: [cpu-cycles]
+        # CPU Cycles is not shipped to the iPad: its kernel enlarges the engine
+        # Safari must compile and hold, and scalar WASM rendering is impractical.
+        profile: [webgpu]
     steps:
       - name: Check out project
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -72,13 +74,11 @@ jobs:
           path: .cache
           key: cooperative-v1-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-${{ github.sha }}
           restore-keys: |
-            cooperative-v1-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-c24201df702a4ce4a7a055c71d2cbd683e237f60
-            cooperative-v1-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-8eb8d406680e26746331748371928cd3b8064328
-            cooperative-v1-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-7f940bc0fa86c69216122b6407c57acee0477d9b
-            cooperative-v1-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-2de544a4dafed1502827f04aca876c95a0a71f59
-            cooperative-v1-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
-            browser-v2-${{ runner.os }}-${{ matrix.profile }}-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
-            browser-v2-${{ runner.os }}-${{ matrix.profile }}-
+            cooperative-v1-${{ runner.os }}-webgpu-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
+            cooperative-v1-${{ runner.os }}-cpu-cycles-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-4efd132bafc9a33b640b2910e9b21b26a6194a97
+            cooperative-v1-${{ runner.os }}-cpu-cycles-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-c24201df702a4ce4a7a055c71d2cbd683e237f60
+            cooperative-v1-${{ runner.os }}-cpu-cycles-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
+            browser-v2-${{ runner.os }}-cpu-cycles-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
             browser-v2-${{ runner.os }}-webgpu-${{ hashFiles('port.lock.json', 'browser-port.lock.json') }}-
       - name: Verify accepted dependency content for an incremental native build
         id: native-dependencies
