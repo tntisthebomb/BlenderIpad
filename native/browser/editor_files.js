@@ -74,6 +74,8 @@ async function downloadDeviceReport() {
     const report={...window.blenderDeviceReport,
       installation,
       started:document.body.dataset.started==='true',error:document.body.dataset.error || null,
+      runtimeErrors:(window.editorErrors || []).slice(-20),
+      recentOutput:(window.editorOutput || []).slice(-40).map(line=>String(line).slice(0,2048)),
       persistentStorage:document.body.dataset.persistentStorage || 'unknown',
       // Emscripten installs throwing getters for unexported runtime symbols.
       // Optional chaining still invokes those getters and can abort Blender.

@@ -63,7 +63,8 @@ try:
                                  'switch_fallthrough':True,'volume_query':True,
                                  'atomic_image_coherence':True,'buffered_image_coherence':True,'float32_nearest_sampling':True,'float32_texel_load_helpers':True,'float32_texel_load':True,'shader_lifetime_cache':True,
                                  'array_layers':True,'cube_faces':True,'builtin_shader_triangle':True,
-                                 'font_storage_shader':True,'depth_stencil_clear':True},checks
+                                 'font_storage_shader':True,'depth_stencil_clear':True,
+                                 'depth_pick_subrectangles':True},checks
         aspect_checks=page.evaluate('''async()=>{
           const device=nativeTestDevice,results=[];
           for(const texture of nativeDepthTargets){

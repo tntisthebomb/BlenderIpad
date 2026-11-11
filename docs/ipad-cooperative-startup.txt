@@ -1,4 +1,4 @@
-Experimental Blender iPad cooperative-startup candidate
+Experimental Blender iPad interaction-repair candidate
 
 This full package contains a NEW native engine. Replace all files in the
 existing WorldWideWeb Blender folder, including blender-core.js, .wasm and
@@ -34,6 +34,13 @@ thumbnail reads. Two-finger touch intent avoids selecting before orbiting.
 Native-generated shader translations are matched to the exact engine; a
 mismatch safely uses the native compiler. Editing diagnostics continue after
 the first frame and uncaught runtime errors retain project recovery controls.
+
+This candidate also fixes viewport depth picking: WebGPU requires copying the
+entire depth surface before cropping the pixel/rectangle Blender requested.
+The previous cooperative-startup engine issued invalid one-pixel copies when
+placing the 3D Cursor. The repair also supports unsigned depth for gizmo picking.
+Late frame/wait exceptions now open recovery and appear in the device report.
+The full native engine must be replaced; updating only HTML cannot fix picking.
 
 Native initialization, Python module loading/registration and shader/pipeline
 creation can yield during startup, allowing browser timers/painting to run. Canvas presentation

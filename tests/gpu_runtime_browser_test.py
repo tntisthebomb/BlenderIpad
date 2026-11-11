@@ -44,8 +44,10 @@ try:
                 page.wait_for_function('document.body.dataset.done || document.body.dataset.error',
                                        timeout=120000)
                 assert page.locator('body').get_attribute('data-done') == 'true', output
+                assert not page.locator('body').get_attribute('data-error'), output
                 assert 'Actual Blender GPU registration and builtin warm-up completed.' in output, output
                 assert 'Shader binding mapping preserves native slots, array names and resource types.' in output, output
+                assert 'Actual viewport picking depth reads pass for FLOAT and UINT subrectangles.' in output, output
                 assert not errors, errors
             finally:
                 browser.close()
