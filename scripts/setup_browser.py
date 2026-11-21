@@ -10,6 +10,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = ROOT / ".cache"
@@ -18,6 +20,35 @@ BLENDER = json.loads((ROOT / LOCK["blender_lock"]).read_text())["blender"]
 
 def run(*args, **kwargs):
     subprocess.run(list(map(str, args)), check=True, **kwargs)
+
+def retry(action, what, attempts=5, delay=10):
+    """Run action(), retrying transient network failures with backoff.
+
+    Only process/network errors are retried; checksum and pin failures raise
+    SystemExit and are never retried or bypassed.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            return action()
+        except (OSError, subprocess.CalledProcessError) as error:
+            if attempt == attempts:
+                raise SystemExit(f"{what}: failed after {attempts} attempts: {error}")
+            wait = delay * attempt
+            print(f"{what}: attempt {attempt}/{attempts} failed ({error}); retrying in {wait}s", flush=True)
+            time.sleep(wait)
+
+def download(url, destination, timeout=120):
+    """Download url to destination via a partial file, retrying transient errors."""
+    def attempt():
+        partial = destination.with_name(destination.name + ".partial")
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response, partial.open("wb") as output:
+                while block := response.read(1024 * 1024):
+                    output.write(block)
+            partial.replace(destination)
+        finally:
+            partial.unlink(missing_ok=True)
+    retry(attempt, "download " + url)
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -28,15 +59,16 @@ def toolchain():
     CACHE.mkdir(exist_ok=True)
     sdk = CACHE / "emsdk"
     if not sdk.exists():
-        run("git", "clone", "--depth", "1", "--branch", LOCK["emsdk"]["version"],
-            LOCK["emsdk"]["repository"], sdk)
+        retry(lambda: run("git", "clone", "--depth", "1", "--branch", LOCK["emsdk"]["version"],
+                          LOCK["emsdk"]["repository"], sdk), "clone emsdk")
     head = subprocess.check_output(["git", "-C", str(sdk), "rev-parse", "HEAD"], text=True).strip()
     if head != LOCK["emsdk"]["commit"]:
         raise SystemExit("SDK source does not match the pinned commit; refusing to overwrite it.")
     if subprocess.check_output(["git", "-C", str(sdk), "status", "--porcelain"], text=True):
         raise SystemExit("SDK has local changes; preserve them before preparing the toolchain.")
     if not (sdk / "upstream/emscripten/emcc").exists():
-        run(sys.executable, sdk / "emsdk.py", "install", LOCK["emsdk"]["version"], cwd=sdk)
+        retry(lambda: run(sys.executable, sdk / "emsdk.py", "install", LOCK["emsdk"]["version"], cwd=sdk),
+              "emsdk install")
     if not (sdk / ".emscripten").exists():
         run(sys.executable, sdk / "emsdk.py", "activate", LOCK["emsdk"]["version"], cwd=sdk,
             stdout=subprocess.DEVNULL)
@@ -44,8 +76,9 @@ def toolchain():
     if not (tools / "bin/cmake").exists() or not (tools / "bin/ninja").exists():
         if not (tools / "bin/python").exists():
             run(sys.executable, "-m", "venv", tools)
-        run(tools / "bin/python", "-m", "pip", "install", "--cache-dir", CACHE / "pip",
-            "cmake==" + LOCK["cmake"], "ninja==" + LOCK["ninja"])
+        retry(lambda: run(tools / "bin/python", "-m", "pip", "install", "--cache-dir", CACHE / "pip",
+                          "--retries", "5", "--timeout", "60",
+                          "cmake==" + LOCK["cmake"], "ninja==" + LOCK["ninja"]), "pip install cmake/ninja")
     env = dict(os.environ)
     env.update({"EMSDK": str(sdk), "EM_CONFIG": str(sdk / ".emscripten"),
                 "EMCC_CORES": "4", "PATH": str(tools / "bin") + os.pathsep +
@@ -78,8 +111,8 @@ def toolchain():
 def prepare_source(materialize_assets=False):
     pristine = CACHE / "blender"
     if not pristine.exists():
-        run("git", "clone", "--depth", "1", "--branch", BLENDER["tag"], BLENDER["repository"], pristine,
-            env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"})
+        retry(lambda: run("git", "clone", "--depth", "1", "--branch", BLENDER["tag"], BLENDER["repository"], pristine,
+                          env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"}), "clone Blender")
     head = subprocess.check_output(["git", "-C", str(pristine), "rev-parse", "HEAD"], text=True).strip()
     if head != BLENDER["commit"]:
         raise SystemExit("Pristine Blender source differs from the release pin.")
@@ -151,9 +184,9 @@ def prepare_source(materialize_assets=False):
     if materialize_assets and missing_assets:
         # Blender's public LFS objects are hosted upstream, not in the GitHub mirror.
         endpoint = "https://projects.blender.org/blender/blender.git/info/lfs"
-        run("git", "-C", pristine, "-c", "lfs.url=" + endpoint, "-c", "lfs." + endpoint + ".access=none",
-            "lfs", "fetch", "--include=release/datafiles/**", "origin", "HEAD",
-            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+        retry(lambda: run("git", "-C", pristine, "-c", "lfs.url=" + endpoint, "-c", "lfs." + endpoint + ".access=none",
+                          "lfs", "fetch", "--include=release/datafiles/**", "origin", "HEAD",
+                          env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}), "fetch Blender LFS assets")
         for name in missing_assets:
             oid = assets[name]
             object_path = pristine / ".git/lfs/objects" / oid[:2] / oid[2:4] / oid

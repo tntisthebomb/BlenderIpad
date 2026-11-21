@@ -7,11 +7,34 @@ import os
 from pathlib import Path
 import subprocess
 import tarfile
+import time
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = json.loads((ROOT / "port.lock.json").read_text())
 CACHE = ROOT / ".cache"
+
+def retry(action, what, attempts=5, delay=10):
+    for attempt in range(1, attempts + 1):
+        try:
+            return action()
+        except (OSError, subprocess.CalledProcessError) as error:
+            if attempt == attempts:
+                raise SystemExit(f"{what}: failed after {attempts} attempts: {error}")
+            print(f"{what}: attempt {attempt}/{attempts} failed ({error}); retrying", flush=True)
+            time.sleep(delay * attempt)
+
+def download(url, destination, timeout=120):
+    def attempt():
+        partial = destination.with_name(destination.name + ".download")
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response, partial.open("wb") as output:
+                while block := response.read(1024 * 1024):
+                    output.write(block)
+            partial.replace(destination)
+        finally:
+            partial.unlink(missing_ok=True)
+    retry(attempt, "download " + url)
 
 def run(*args):
     subprocess.run(args, check=True)
@@ -25,9 +48,9 @@ def setup():
     if not source.exists():
         # Use LFS's supported skip flag. Overriding only its smudge filter is
         # inconsistent on runners that also configure filter.lfs.process.
-        subprocess.run(["git", "clone", "--depth", "1", "--branch", ref["tag"],
+        retry(lambda: subprocess.run(["git", "clone", "--depth", "1", "--branch", ref["tag"],
                         ref["repository"], str(source)], check=True,
-                       env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"})
+                       env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"}), "clone Blender")
     head = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
     if head != ref["commit"]:
         raise SystemExit("Blender source differs from port.lock.json. Preserve it before fetching a new version.")
@@ -37,11 +60,7 @@ def setup():
     sdk = LOCK["wasi_sdk"]
     archive = CACHE / "wasi-sdk.tar.gz"
     if not archive.exists():
-        partial = archive.with_suffix(".download")
-        with urllib.request.urlopen(sdk["url"], timeout=90) as response, partial.open("wb") as output:
-            while block := response.read(1024 * 1024):
-                output.write(block)
-        partial.replace(archive)
+        download(sdk["url"], archive)
     if hashlib.sha256(archive.read_bytes()).hexdigest() != sdk["sha256"]:
         raise SystemExit("WASI SDK checksum mismatch; compiler will not be used.")
     compiler = CACHE / "wasi-sdk-25.0-x86_64-linux" / "bin" / "clang++"

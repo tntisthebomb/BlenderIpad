@@ -5,10 +5,7 @@ import hashlib
 import shutil
 from pathlib import Path
 import tarfile
-import time
-import urllib.error
-import urllib.request
-from setup_browser import ROOT, CACHE, LOCK, toolchain, run
+from setup_browser import ROOT, CACHE, LOCK, toolchain, run, download
 
 def fetch(name):
     spec = (LOCK["dependencies"].get(name) or LOCK.get("runtime_dependencies", {}).get(name)
@@ -18,21 +15,7 @@ def fetch(name):
         raise SystemExit("No pinned dependency: " + name)
     archive = CACHE / spec["archive"]
     if not archive.exists():
-        temporary = archive.with_suffix(".partial")
-        # A transient network failure must not discard hours of CI work. The
-        # pinned checksum below still decides whether the archive is accepted.
-        for attempt in range(5):
-            try:
-                with urllib.request.urlopen(spec["url"], timeout=90) as response, temporary.open("wb") as output:
-                    while block := response.read(1024 * 1024):
-                        output.write(block)
-                break
-            except (OSError, urllib.error.URLError):
-                temporary.unlink(missing_ok=True)
-                if attempt == 4:
-                    raise
-                time.sleep(5 * 2 ** attempt)
-        temporary.replace(archive)
+        download(spec["url"], archive)
     actual = hashlib.new(spec["hash_type"], archive.read_bytes()).hexdigest()
     if actual != spec["hash"]:
         raise SystemExit(f"{name}: artifact checksum differs from Blender's pinned manifest; refusing to build.")

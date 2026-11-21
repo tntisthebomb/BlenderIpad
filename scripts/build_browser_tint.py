@@ -6,17 +6,21 @@ import json
 import shutil
 import tempfile
 from pathlib import Path
-from setup_browser import CACHE, ROOT, LOCK, toolchain, run
+from setup_browser import CACHE, ROOT, LOCK, toolchain, run, retry
 from build_browser_deps import fetch
 
 def pinned_git(name):
     spec = LOCK['webgpu_toolchain'][name]
     source = CACHE / 'graphics-src' / name
-    if not source.exists():
+    if not (source / '.git').exists() or not (source / 'CMakeLists.txt').exists():
+        # An interrupted fetch can leave an empty repository behind; init,
+        # fetch and checkout are idempotent, so retry the whole sequence.
         source.parent.mkdir(parents=True, exist_ok=True)
-        run('git', 'init', source)
-        run('git', '-C', source, 'fetch', '--depth', '1', spec['repository'], spec['commit'])
-        run('git', '-C', source, 'checkout', '--detach', 'FETCH_HEAD')
+        def acquire():
+            run('git', 'init', source)
+            run('git', '-C', source, 'fetch', '--depth', '1', spec['repository'], spec['commit'])
+            run('git', '-C', source, 'checkout', '--detach', 'FETCH_HEAD')
+        retry(acquire, 'fetch pinned ' + name)
     if subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip() != spec['commit']:
         raise SystemExit(name + ': source commit differs from the pin')
     if subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain'], text=True):
@@ -53,8 +57,8 @@ def patched_source(source, relative, patch_name):
 
 if __name__ == '__main__':
     env = toolchain()
-    run(CACHE / 'python/bin/python', '-m', 'pip', 'install', '--cache-dir', CACHE / 'pip',
-        'Jinja2==3.1.6', 'MarkupSafe==3.0.3')
+    retry(lambda: run(CACHE / 'python/bin/python', '-m', 'pip', 'install', '--cache-dir', CACHE / 'pip',
+        '--retries', '5', '--timeout', '60', 'Jinja2==3.1.6', 'MarkupSafe==3.0.3'), 'pip install Jinja2/MarkupSafe')
     packages = subprocess.check_output([str(CACHE / 'python/bin/python'), '-c',
         'import sysconfig; print(sysconfig.get_path("purelib"))'], text=True).strip()
     source, abseil = pinned_git('dawn'), pinned_git('abseil')
