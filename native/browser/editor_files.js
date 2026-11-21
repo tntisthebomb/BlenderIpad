@@ -37,6 +37,7 @@ function savedProjectStore(operation) {
       let result;
       transaction.oncomplete=()=>{database.close();resolve(result);};
       transaction.onerror=()=>{database.close();reject(transaction.error);};
+      transaction.onabort=()=>{database.close();reject(transaction.error||new Error('Saved project storage read was aborted.'));};
       operation(transaction.objectStore('FILE_DATA'),value=>result=value);
     };
   });
