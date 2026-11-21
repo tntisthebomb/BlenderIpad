@@ -45,6 +45,15 @@ log('Last native operation: viewport picking');
                 ):
                     page.goto(f'http://127.0.0.1:{server.server_port}/')
                     assert page.evaluate('document.body.dataset.started') == 'true'
+                    # Errors before an explicit launch (idle/device-check screen)
+                    # must not replace the screen with a failure report.
+                    page.evaluate(trigger)
+                    page.wait_for_timeout(200)
+                    assert page.evaluate('document.body.dataset.error || null') is None
+                    # The editor only reports runtime failures while a launch
+                    # attempt is active; the stripped page skips the launcher
+                    # that sets this guard, so activate it as the launcher does.
+                    page.evaluate('launchAttemptActive=true')
                     page.evaluate(trigger)
                     page.wait_for_function('!!document.body.dataset.error')
                     assert 'Late ' in page.locator('#status-message').inner_text()
