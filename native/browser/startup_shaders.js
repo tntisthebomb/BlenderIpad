@@ -31,14 +31,23 @@
     return database;
   }
   async function restore(database,cache){
-    const transaction=database.transaction(STORE,'readonly'),store=transaction.objectStore(STORE);
-    const [keys,values]=await Promise.all([request(store.getAllKeys()),request(store.getAll())]);
-    let chars=0,count=0;
-    for(let i=0;i<keys.length&&count<MAX_STORED;i++){
-      const key=keys[i],value=values[i];
-      if(!valid(key,value)||chars+value.length>MAX_STORED_CHARS)continue;
-      chars+=value.length;count++;
-      if(!cache.has(key))cache.set(key,value);
+    // Read bounded batches by key instead of getAll() for the whole store, so a
+    // full cache (up to MAX_STORED_CHARS of strings) never has to be resident in
+    // one structured-clone result while the engine is also starting.
+    const BATCH=64;
+    let chars=0,count=0,after=null,exhausted=false;
+    while(!exhausted&&count<MAX_STORED){
+      const range=after===null?null:IDBKeyRange.lowerBound(after,true);
+      const store=database.transaction(STORE,'readonly').objectStore(STORE);
+      const [keys,values]=await Promise.all([request(store.getAllKeys(range,BATCH)),request(store.getAll(range,BATCH))]);
+      if(keys.length<BATCH)exhausted=true;
+      for(let i=0;i<keys.length&&count<MAX_STORED;i++){
+        const key=keys[i],value=values[i];
+        if(!valid(key,value)||chars+value.length>MAX_STORED_CHARS)continue;
+        chars+=value.length;count++;
+        if(!cache.has(key))cache.set(key,value);
+      }
+      if(keys.length)after=keys[keys.length-1];
     }
     return {count,chars};
   }
@@ -64,6 +73,8 @@
       if(timer===null)timer=setTimeout(flush,2000);
     };
     addEventListener('pagehide',()=>{if(pending.size)flush();});
+    // Safari may suspend or kill a backgrounded tab without delivering pagehide.
+    document.addEventListener('visibilitychange',()=>{if(document.hidden&&pending.size)flush();});
   }
   window.prepareBlenderStartupShaders=async()=>{
     if(window.blenderDisableStartupShaderCache){report.status='disabled for validation';return report;}
