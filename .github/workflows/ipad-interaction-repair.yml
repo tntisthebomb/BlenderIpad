@@ -1,8 +1,9 @@
 name: Validate Blender iPad interaction repair
 
+# Manual only: this builds the legacy cpu-cycles profile (Cycles + oneTBB), which
+# the cooperative runtime no longer ships. ipad-cooperative-startup.yml is the
+# automatic validation for the merged branch.
 on:
-  push:
-    branches: [codex/ipad-interaction-crash]
   workflow_dispatch:
 
 permissions:
