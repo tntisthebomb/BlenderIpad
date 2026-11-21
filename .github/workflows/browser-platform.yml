@@ -24,6 +24,7 @@ permissions:
 jobs:
   native-platform:
     runs-on: ubuntu-24.04
+    timeout-minutes: 180
     steps:
       - name: Check out project
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -34,7 +35,7 @@ jobs:
       - name: Install browser test runner
         run: |
           python3 -m venv .cache/browser-tests
-          .cache/browser-tests/bin/python -m pip install playwright==1.62.0
+          .cache/browser-tests/bin/python -m pip install --retries 5 --timeout 60 playwright==1.62.0
       - name: Validate native event delivery and lifecycle
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
@@ -42,6 +43,7 @@ jobs:
 
   python-runtime:
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
       - name: Check out project
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -53,7 +55,7 @@ jobs:
       - name: Install browser test runner
         run: |
           python3 -m venv .cache/browser-tests
-          .cache/browser-tests/bin/python -m pip install playwright==1.62.0
+          .cache/browser-tests/bin/python -m pip install --retries 5 --timeout 60 playwright==1.62.0
       - name: Validate actual interpreter in the browser
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome

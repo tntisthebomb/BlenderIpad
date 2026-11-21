@@ -28,7 +28,7 @@ jobs:
       - name: Install browser test runner
         run: |
           python3 -m venv .cache/browser-tests
-          .cache/browser-tests/bin/python -m pip install playwright==1.62.0
+          .cache/browser-tests/bin/python -m pip install --retries 5 --timeout 60 playwright==1.62.0
       - name: Validate actual Blender after network disconnect
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
