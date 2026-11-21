@@ -196,8 +196,12 @@ function resizeCanvas() {
   // multiplying all full-screen GPU attachments by four.
   const scale=tabletMode ? Math.min(1,1280/Math.max(1,canvas.clientWidth),
     800/Math.max(1,canvas.clientHeight)) : ratio;
-  canvas.width=Math.max(1,Math.round(canvas.clientWidth*scale));
-  canvas.height=Math.max(1,Math.round(canvas.clientHeight*scale));
+  const width=Math.max(1,Math.round(canvas.clientWidth*scale)),height=Math.max(1,Math.round(canvas.clientHeight*scale));
+  // Assigning even an unchanged size discards the canvas backing store and, for
+  // WebGPU, reallocates its surface. Resize events fire often on iPad (toolbar,
+  // keyboard, visibility changes), so only touch the canvas when it changed.
+  if (canvas.width!==width) canvas.width=width;
+  if (canvas.height!==height) canvas.height=height;
 }
 window.addEventListener('resize',resizeCanvas);
 function waitForInstallation(registration) {
