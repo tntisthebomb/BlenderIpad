@@ -48,6 +48,9 @@ Use a Linux builder with at least 16 GiB RAM. Compilation fits in 8 GiB, but
 full-editor Asyncify linking exceeded that limit even with staged optimization.
 The editor CI workflow provides separate graphics and CPU Cycles candidates;
 each must pass its actual engine render checks before producing an accepted ZIP.
+The cooperative iPad workflow (`ipad-cooperative-startup.yml`) builds only the
+graphics profile without Cycles; `ipad-interaction-repair.yml` is a manual-only
+CPU Cycles build.
 
 ```sh
 python3 scripts/build_browser_platform.py
