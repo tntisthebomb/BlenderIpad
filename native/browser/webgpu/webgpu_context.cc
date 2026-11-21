@@ -2071,11 +2071,14 @@ bool WebGPUContext::read_buffer_sync(WGPUBuffer source,size_t offset,size_t size
   const auto staging=wgpuDeviceCreateBuffer(device_,&descriptor);
   if (!staging) return false;
   const auto encoder=ensure_encoder();
-  if (!encoder) {wgpuBufferRelease(staging);return false;}
+  if (!encoder) {wgpuBufferDestroy(staging);wgpuBufferRelease(staging);return false;}
   wgpuCommandEncoderCopyBufferToBuffer(encoder,source,offset,staging,0,aligned);
   flush_encoder();
   std::vector<uint8_t> bytes(aligned);
   const bool valid=map_read_sync(staging,aligned,bytes.data());
+  /* Readback staging can be large: reclaim it now instead of waiting for GC
+   * (the copy was already submitted by flush_encoder above). */
+  wgpuBufferDestroy(staging);
   wgpuBufferRelease(staging);
   if (valid) std::memcpy(destination,bytes.data(),size);
   return valid;
@@ -2252,7 +2255,7 @@ bool WebGPUContext::read_color_sync(WGPUTexture tex,
   WGPUBuffer scratch=wgpuDeviceCreateBuffer(device_,&descriptor);
   if (!scratch) return false;
   auto encoder=ensure_encoder();
-  if (!encoder) {wgpuBufferRelease(scratch);return false;}
+  if (!encoder) {wgpuBufferDestroy(scratch);wgpuBufferRelease(scratch);return false;}
   WGPUTexelCopyTextureInfo source=WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
   source.texture=tex; source.mipLevel=uint32_t(mip);
   source.origin={uint32_t(x),uint32_t(y),uint32_t(std::max(layer,0))};
@@ -2262,7 +2265,9 @@ bool WebGPUContext::read_color_sync(WGPUTexture tex,
   wgpuCommandEncoderCopyTextureToBuffer(encoder,&source,&destination,&extent);
   flush_encoder();
   std::vector<uint8_t> raw(bytes);
-  bool success=map_read_sync(scratch,bytes,raw.data());wgpuBufferRelease(scratch);
+  bool success=map_read_sync(scratch,bytes,raw.data());
+  /* Full-region readbacks can be large; free GPU memory now, not at JS GC. */
+  wgpuBufferDestroy(scratch);wgpuBufferRelease(scratch);
   if (!success) return false;
   for (int row=0;row<h;row++) for (int column=0;column<w;column++) {
     float values[4];
