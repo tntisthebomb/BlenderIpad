@@ -106,7 +106,31 @@ def toolchain():
                                              env=env, text=True)
     if not re.search(r"\b" + re.escape(LOCK["emsdk"]["version"]) + r"\b", version_output):
         raise SystemExit("The installed compiler differs from the pinned Emscripten release.")
+    prewarm_ports(sdk, env)
     return env
+
+def prewarm_ports(sdk, env):
+    """Best effort: fetch the zlib/bzip2 ports with retries before the first link.
+
+    The application links with -sUSE_ZLIB=1 -sUSE_BZIP2=1 and -pthread, so emcc
+    would otherwise download these ports from GitHub on first use without any
+    retry. embuilder populates the same cache with the same artifacts, so output
+    is unchanged. A failure here is logged and ignored: emcc then falls back to
+    its own on-demand fetch exactly as before.
+    """
+    marker = CACHE / "emscripten-ports-prewarmed"
+    if marker.exists():
+        return
+    embuilder = sdk / "upstream/emscripten/embuilder"
+    if not embuilder.exists():
+        print("port pre-warm skipped: embuilder not found", flush=True)
+        return
+    try:
+        retry(lambda: run(embuilder, "build", "zlib", "bzip2", "--pthread", env=env),
+              "pre-warm emscripten zlib/bzip2 ports", attempts=4, delay=15)
+        marker.write_text(LOCK["emsdk"]["version"] + "\n")
+    except (SystemExit, OSError) as error:
+        print(f"port pre-warm failed ({error}); continuing, emcc will fetch ports on demand", flush=True)
 
 def prepare_source(materialize_assets=False):
     pristine = CACHE / "blender"

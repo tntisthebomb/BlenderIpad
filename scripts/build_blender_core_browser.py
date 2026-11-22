@@ -40,6 +40,9 @@ if __name__ == '__main__':
     if len(links) != 1:
         raise SystemExit('Expected exactly one actual Blender link command.')
     args = shlex.split(links[0])
+    if args.count('&&') < 2:
+        raise SystemExit("Unexpected Blender link command layout: expected '<prep> && <emcc link> && <post>' "
+                         f"with at least two '&&' separators, found {args.count('&&')}.")
     args = args[args.index('&&') + 1:args.index('&&', args.index('&&') + 1)]
     if '-sNODERAWFS=1' not in args or '-sENVIRONMENT=node' not in args:
         raise SystemExit('Unrecognized CLI build; refusing to silently reuse host I/O.')
@@ -52,6 +55,9 @@ if __name__ == '__main__':
             raise SystemExit('Unrecognized editor worker pool; validate it before changing startup.')
         args[args.index('-sPTHREAD_POOL_SIZE=8')] = "-sPTHREAD_POOL_SIZE=Module['browserLowResource']?4:8"
     args[args.index('-sENVIRONMENT=node')] = '-sENVIRONMENT=web,worker'
+    for expected in ('--pre-js', '-o'):
+        if expected not in args or args.index(expected) + 1 >= len(args):
+            raise SystemExit(f"Unexpected Blender link command: expected '{expected}' followed by a value.")
     args[args.index('--pre-js') + 1] = str(ROOT / 'native/browser/core_browser_env.js')
     args[args.index('-o') + 1] = str(output / 'blender-core.js')
     scripts = stage_runtime_scripts(core)
