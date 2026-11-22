@@ -160,6 +160,10 @@ try:
         page.keyboard.press('Escape')
         assert not page.evaluate('document.body.dataset.error'),page.evaluate('window.editorErrors')
         state['depthCopies']=depth_copies
+        # The probe above left the 3D Cursor tool active, so a later tap on the
+        # Cube would only move the cursor. Restore the default Select Box tool
+        # (W over the viewport) so the stock interaction test selects objects.
+        page.mouse.move(450,320);page.keyboard.press('w');page.wait_for_timeout(1000)
         assert not errors,errors
         assert not page.evaluate('editorOutput.some(line=>line.includes("wasm streaming compile failed") || line.includes("falling back to ArrayBuffer instantiation"))'), 'Real engine fell back to buffering its WASM'
         (ROOT/('.cache/blender-tablet-startup'+suffix+'-report.json')).write_text(json.dumps(state,indent=2)+'\n')
