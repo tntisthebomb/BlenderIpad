@@ -54,6 +54,38 @@ const tabletMode=/iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (/Mac/.test(navigator.platform) && navigator.maxTouchPoints>1);
 window.blenderStartupStats?.monitorEditing(tabletMode);
 const launchKey='blender-explicit-launch:'+location.pathname;
+// Safari throws a SecurityError just for touching sessionStorage when site data
+// is blocked. The isolation reload switches browsing context group, which
+// clears window.name, so the fallback keeps these flags in the page's own URL
+// fragment, which a same-URL reload preserves.
+const tabFlags={
+  read() {
+    try {
+      const match=/^#blender-flags=(.*)$/.exec(location.hash);
+      return match ? JSON.parse(decodeURIComponent(match[1]))||{} : {};
+    } catch {return {};}
+  },
+  write(flags) {
+    try {
+      const empty=Object.keys(flags).length===0;
+      history.replaceState(history.state,'',location.pathname+location.search+
+        (empty ? '' : '#blender-flags='+encodeURIComponent(JSON.stringify(flags))));
+    } catch {}
+  },
+  get(key) {
+    try {const stored=sessionStorage.getItem(key);if(stored!==null)return stored;} catch {}
+    const value=this.read()[key];return value===undefined ? null : value;
+  },
+  set(key,value) {
+    try {sessionStorage.setItem(key,value);return;} catch {}
+    this.write({...this.read(),[key]:value});
+  },
+  remove(key) {
+    try {sessionStorage.removeItem(key);} catch {}
+    const flags=this.read();
+    if (key in flags) {delete flags[key];this.write(flags);}
+  }
+};
 const startup={phase:'Checking browser',stages:[],remainingDependencies:null};
 const startupTime=performance.now();
 let lastDependencyRefresh=0;
@@ -258,8 +290,8 @@ function waitForInstallation(registration) {
   }
   if (!('serviceWorker' in navigator)) throw new Error('Offline installation is unavailable in this browser.');
   if (tabletMode) {
-    const continueLaunch=sessionStorage.getItem(launchKey)==='true';
-    sessionStorage.removeItem(launchKey);
+    const continueLaunch=tabFlags.get(launchKey)==='true';
+    tabFlags.remove(launchKey);
     if (!continueLaunch) {
       startupPhase('Ready for device check — Blender has not loaded');
       document.getElementById('tablet-note').hidden=false;
@@ -284,15 +316,15 @@ function waitForInstallation(registration) {
   showUpdate();
   if (!navigator.serviceWorker.controller || !crossOriginIsolated) {
     const key='blender-isolation-reload:'+registration.scope;
-    if (sessionStorage.getItem(key)) {
+    if (tabFlags.get(key)) {
       throw new Error('This browser could not enable isolation for Blender. Use a trusted localhost or HTTPS address and download the device report.');
     }
-    sessionStorage.setItem(key,'true');
-    if (tabletMode) sessionStorage.setItem(launchKey,'true');
+    tabFlags.set(key,'true');
+    if (tabletMode) tabFlags.set(launchKey,'true');
     location.reload();
     return;
   }
-  sessionStorage.removeItem('blender-isolation-reload:'+registration.scope);
+  tabFlags.remove('blender-isolation-reload:'+registration.scope);
   startupPhase('Checking graphics support');
   if (!crossOriginIsolated) throw new Error('This server must enable cross-origin isolation to run Blender.');
   if (!navigator.gpu) throw new Error('WebGPU is unavailable. Open Blender in a supported browser using HTTPS or localhost.');
