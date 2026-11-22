@@ -205,6 +205,9 @@ for(const type of ['pointerdown','pointerup','pointermove','mousedown','mouseup'
 }
 canvas.addEventListener('pointerdown',()=>canvas.focus({preventScroll:true}));
 canvas.addEventListener('contextmenu',event=>event.preventDefault());
+// Safari ignores user-scalable=no; without this a pinch that starts on the
+// header or status overlay zooms the whole page and shifts the canvas.
+for(const type of ['gesturestart','gesturechange','gestureend'])document.addEventListener(type,event=>event.preventDefault(),{passive:false});
 window.installBlenderTabletTouch?.(canvas,tabletMode);
 document.addEventListener('visibilitychange',()=>{
   if(window.blenderEditor?.browserCooperativeStartup&&!window.blenderEditor.browserStartupComplete)return;
